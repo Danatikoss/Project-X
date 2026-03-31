@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     export_dir: str = Field(default="./data/exports", env="EXPORT_DIR")
     embedding_model: str = Field(default="text-embedding-3-small", env="EMBEDDING_MODEL")
     assembly_model: str = Field(default="gpt-4o", env="ASSEMBLY_MODEL")
+    generator_model: str = Field(default="anthropic/claude-opus-4-6", env="GENERATOR_MODEL")
     max_upload_size_mb: int = Field(default=500, env="MAX_UPLOAD_SIZE_MB")
     jwt_secret: str = Field(default="change-me-in-production-use-random-32-chars", env="JWT_SECRET")
     jwt_algorithm: str = "HS256"

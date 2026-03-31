@@ -67,7 +67,11 @@
       "mcp__playwright__browser_evaluate",
       "mcp__playwright__browser_run_code",
       "mcp__playwright__browser_console_messages",
-      "mcp__playwright__browser_network_requests"
+      "mcp__playwright__browser_network_requests",
+      "Bash(git rm:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(__NEW_LINE_f11bf5b919f0abfc__ python3:*)",
+      "WebFetch(domain:plusai.com)"
     ]
   }
 }

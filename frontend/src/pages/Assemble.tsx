@@ -12,6 +12,7 @@ import { FilmStrip } from '../components/assemble/FilmStrip'
 import { SlideCard, SlideThumbnail } from '../components/common/SlideCard'
 import { Slideshow } from '../components/common/Slideshow'
 import { Spinner } from '../components/common/Spinner'
+import { GenerateSlideModal } from '../components/common/GenerateSlideModal'
 import { cn } from '../utils/cn'
 import { useAppStore } from '../store'
 import type { Slide, Assembly, Project } from '../types'
@@ -33,10 +34,12 @@ function LibraryPanel({
   existingIds,
   onAdd,
   onAddMultiple,
+  onGenerate,
 }: {
   existingIds: Set<number>
   onAdd: (slide: Slide) => void
   onAddMultiple: (slides: Slide[]) => void
+  onGenerate: () => void
 }) {
   const [query, setQuery] = useState('')
   const [projectId, setProjectId] = useState<number | undefined>()
@@ -125,6 +128,13 @@ function LibraryPanel({
             )}
           >
             {selectMode ? 'Отмена' : 'Выбрать'}
+          </button>
+          <button
+            onClick={onGenerate}
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-brand-700 hover:border-brand-300 hover:bg-brand-50 transition-colors shrink-0"
+            title="Создать слайд с AI"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -291,6 +301,7 @@ export default function Assemble() {
   const [isExporting, setIsExporting] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [showSlideshow, setShowSlideshow] = useState(false)
+  const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [rightTab, setRightTab] = useState<'info' | 'library'>(
     searchParams.get('tab') === 'library' ? 'library' : 'info'
   )
@@ -702,7 +713,12 @@ export default function Assemble() {
             </div>
           </div>
         ) : (
-          <LibraryPanel existingIds={existingIds} onAdd={handleAddSlide} onAddMultiple={handleAddMultiple} />
+          <LibraryPanel
+            existingIds={existingIds}
+            onAdd={handleAddSlide}
+            onAddMultiple={handleAddMultiple}
+            onGenerate={() => setShowGenerateModal(true)}
+          />
         )}
       </div>
 
@@ -711,6 +727,17 @@ export default function Assemble() {
           slides={localSlides}
           startIndex={selectedIndex}
           onClose={() => setShowSlideshow(false)}
+        />
+      )}
+
+      {showGenerateModal && (
+        <GenerateSlideModal
+          onClose={() => setShowGenerateModal(false)}
+          assemblyContext={assembly?.title}
+          onSlideGenerated={(slide) => {
+            handleAddSlide(slide)
+            setShowGenerateModal(false)
+          }}
         />
       )}
     </div>

@@ -133,6 +133,26 @@ export interface AuthResponse {
   user: AuthUser
 }
 
+// ─── Brand Templates ─────────────────────────────────────────────────────────
+
+export interface BrandTemplate {
+  id: number
+  name: string
+  is_default: boolean
+  colors: Record<string, string>
+  created_at: string
+}
+
+export interface GenerateSlideRequest {
+  prompt: string
+  template_id?: number
+  context?: string
+}
+
+export interface GenerateSlideResponse {
+  slide: Slide
+}
+
 // ─── User Profile ────────────────────────────────────────────────────────────
 
 export interface UserProfile {

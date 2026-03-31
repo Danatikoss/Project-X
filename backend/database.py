@@ -86,6 +86,6 @@ def migrate_db():
 
 
 def create_tables():
-    from models import slide, assembly, user, project  # noqa: F401
+    from models import slide, assembly, user, project, brand  # noqa: F401
     Base.metadata.create_all(bind=engine)
     migrate_db()

@@ -3,7 +3,7 @@ import type {
   Slide, SlideListResponse, SlidePatchRequest, SourcePresentation,
   UploadResponse, Assembly, AssemblyListItem, AssembleRequest,
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
-  AuthResponse, Project,
+  AuthResponse, Project, BrandTemplate, GenerateSlideRequest, GenerateSlideResponse,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -262,6 +262,39 @@ export const assemblyApi = {
     link.download = filename
     link.click()
     window.URL.revokeObjectURL(url)
+  },
+}
+
+// ─── Brand & Generation ───────────────────────────────────────────────────────
+
+export const brandApi = {
+  listTemplates: async (): Promise<BrandTemplate[]> => {
+    const res = await api.get<BrandTemplate[]>('/brand/templates')
+    return res.data
+  },
+
+  uploadTemplate: async (name: string, file: File): Promise<BrandTemplate> => {
+    const form = new FormData()
+    form.append('name', name)
+    form.append('file', file)
+    const res = await api.post<BrandTemplate>('/brand/templates', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  },
+
+  setDefault: async (id: number): Promise<BrandTemplate> => {
+    const res = await api.patch<BrandTemplate>(`/brand/templates/${id}/default`)
+    return res.data
+  },
+
+  deleteTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/brand/templates/${id}`)
+  },
+
+  generateSlide: async (req: GenerateSlideRequest): Promise<GenerateSlideResponse> => {
+    const res = await api.post<GenerateSlideResponse>('/brand/generate', req)
+    return res.data
   },
 }
 

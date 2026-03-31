@@ -151,6 +151,29 @@ class ProjectCreateRequest(BaseModel):
     color: str = Field(default="#1E3A8A", pattern="^#[0-9a-fA-F]{6}$")
 
 
+# ─── Brand Templates & Generation ───────────────────────────────────────────
+
+class BrandTemplateResponse(BaseModel):
+    id: int
+    name: str
+    is_default: bool
+    colors: dict = {}
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GenerateSlideRequest(BaseModel):
+    prompt: str = Field(..., min_length=3)
+    template_id: Optional[int] = None
+    context: Optional[str] = None
+
+
+class GenerateSlideResponse(BaseModel):
+    slide: "SlideResponse"
+
+
 # ─── User Profile ────────────────────────────────────────────────────────────
 
 class UserProfileResponse(BaseModel):
