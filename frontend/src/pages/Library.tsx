@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Upload, SlidersHorizontal, Play } from 'lucide-react'
+import { Search, Upload, SlidersHorizontal, Play, X } from 'lucide-react'
 import { libraryApi, searchApi } from '../api/client'
 import { SlideCard } from '../components/common/SlideCard'
 import { SlidePreviewModal } from '../components/common/SlidePreviewModal'
@@ -68,15 +68,16 @@ export default function Library() {
   const total = isSearching ? (searchResults?.total || 0) : (libraryData?.total || 0)
   const isFetching = isSearching ? searchFetching : libraryFetching
 
+  const activeFiltersCount = Object.values(filters).filter(Boolean).length
+
   return (
     <>
     <div className="flex h-full">
-      {/* Filter sidebar — hidden on mobile, shown as overlay or inline on desktop */}
+      {/* Filter sidebar */}
       {showFilters && (
         <div className="fixed inset-0 z-40 md:relative md:inset-auto md:z-auto">
-          {/* Mobile backdrop */}
           <div
-            className="absolute inset-0 bg-black/30 md:hidden"
+            className="absolute inset-0 bg-black/40 md:hidden"
             onClick={() => setShowFilters(false)}
           />
           <div className="relative z-10 h-full">
@@ -92,50 +93,79 @@ export default function Library() {
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="border-b border-gray-200 px-5 py-3 flex items-center gap-3 bg-white sticky top-0 z-10">
+        <div className="border-b border-slate-200 px-5 py-3 flex items-center gap-3 bg-white sticky top-0 z-10 shadow-sm">
           <button
             onClick={() => setShowFilters((v) => !v)}
             className={cn(
-              'p-2 rounded-lg border transition-colors',
-              showFilters ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+              'relative flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all',
+              showFilters
+                ? 'border-brand-400 bg-brand-50 text-brand-700'
+                : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
             )}
           >
             <SlidersHorizontal className="w-4 h-4" />
+            <span className="hidden sm:inline">Фильтры</span>
+            {activeFiltersCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center">
+                {activeFiltersCount}
+              </span>
+            )}
           </button>
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <div className="relative flex-1 max-w-lg">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
               value={query}
               onChange={(e) => { setQuery(e.target.value); setPage(1) }}
               placeholder="Поиск по слайдам..."
               className={cn(
-                'w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm',
-                'focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-400'
+                'w-full pl-10 pr-9 py-2 rounded-xl border border-slate-200 text-sm bg-slate-50',
+                'text-slate-800 placeholder-slate-400',
+                'focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 focus:bg-white',
+                'transition-all'
               )}
             />
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          <div className="ml-auto flex items-center gap-3">
-            <span className="text-sm text-gray-400">
-              {isFetching ? 'Загрузка...' : `${total} слайдов`}
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-sm text-slate-400 hidden sm:block">
+              {isFetching ? (
+                <span className="flex items-center gap-1.5">
+                  <Spinner size="sm" />
+                  Загрузка...
+                </span>
+              ) : `${total} слайдов`}
             </span>
             {slides.length > 0 && (
               <button
                 onClick={() => setSlideshowIndex(0)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:border-brand-300 hover:text-brand-700 transition-colors"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium',
+                  'hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all'
+                )}
               >
                 <Play className="w-4 h-4" />
-                Слайд-шоу
+                <span className="hidden sm:inline">Слайд-шоу</span>
               </button>
             )}
             <button
               onClick={() => navigate('/library/upload')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-900 text-white text-sm font-medium hover:bg-brand-800 transition-colors"
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-sm font-semibold',
+                'bg-gradient-brand hover:opacity-90 transition-all shadow-sm hover:shadow-md'
+              )}
             >
               <Upload className="w-4 h-4" />
-              Загрузить
+              <span className="hidden sm:inline">Загрузить</span>
             </button>
           </div>
         </div>
@@ -147,15 +177,29 @@ export default function Library() {
               <Spinner />
             </div>
           ) : slides.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-              <Search className="w-10 h-10 mb-3 opacity-30" />
-              <p className="text-sm">
-                {query ? 'Ничего не найдено по запросу' : 'Библиотека пуста. Загрузите первую презентацию!'}
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                <Search className="w-8 h-8 opacity-30" />
+              </div>
+              <p className="text-sm font-medium text-slate-500">
+                {query ? 'Ничего не найдено' : 'Библиотека пуста'}
               </p>
+              <p className="text-xs text-slate-400 mt-1">
+                {query ? `По запросу «${query}» слайды не найдены` : 'Загрузите первую презентацию'}
+              </p>
+              {!query && (
+                <button
+                  onClick={() => navigate('/library/upload')}
+                  className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-brand text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all"
+                >
+                  <Upload className="w-4 h-4" />
+                  Загрузить PPTX / PDF
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid gap-3 md:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {slides.map((slide, idx) => (
+              {slides.map((slide) => (
                 <SlideCard
                   key={slide.id}
                   slide={slide}
@@ -172,17 +216,17 @@ export default function Library() {
               <button
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm disabled:opacity-40 hover:border-brand-300 transition-colors"
+                className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium disabled:opacity-40 hover:border-brand-300 hover:bg-brand-50 transition-all"
               >
                 ← Назад
               </button>
-              <span className="text-sm text-gray-500">
-                Страница {page} из {Math.ceil(libraryData.total / PAGE_SIZE)}
+              <span className="px-3 py-2 text-sm text-slate-500 font-medium">
+                {page} / {Math.ceil(libraryData.total / PAGE_SIZE)}
               </span>
               <button
                 disabled={page >= Math.ceil(libraryData.total / PAGE_SIZE)}
                 onClick={() => setPage((p) => p + 1)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm disabled:opacity-40 hover:border-brand-300 transition-colors"
+                className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium disabled:opacity-40 hover:border-brand-300 hover:bg-brand-50 transition-all"
               >
                 Вперёд →
               </button>

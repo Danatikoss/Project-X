@@ -12,24 +12,24 @@ function FileRow({ entry, onRemove }: { entry: UploadEntry; onRemove: () => void
   const isError = entry.status === 'error'
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+    <div className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-white shadow-card">
       <div className={cn(
-        'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5',
-        isDone ? 'bg-green-100' : isError ? 'bg-red-100' : 'bg-brand-100'
+        'w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5',
+        isDone ? 'bg-emerald-100' : isError ? 'bg-red-100' : 'bg-brand-100'
       )}>
         {isDone ? (
-          <CheckCircle className="w-4 h-4 text-green-600" />
+          <CheckCircle className="w-4 h-4 text-emerald-600" />
         ) : isError ? (
           <XCircle className="w-4 h-4 text-red-500" />
         ) : entry.status === 'queued' ? (
-          <FileText className="w-4 h-4 text-gray-400" />
+          <FileText className="w-4 h-4 text-slate-400" />
         ) : (
           <Spinner size="sm" />
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-800 truncate">{entry.filename}</p>
-        <p className="text-xs text-gray-400">
+        <p className="text-sm font-semibold text-slate-800 truncate">{entry.filename}</p>
+        <p className="text-xs text-slate-400">
           {(entry.fileSize / 1024 / 1024).toFixed(1)} МБ
           {entry.status === 'queued' && ' · В очереди'}
           {entry.status === 'uploading' && ' · Загрузка...'}
@@ -38,19 +38,19 @@ function FileRow({ entry, onRemove }: { entry: UploadEntry; onRemove: () => void
         </p>
         {entry.status === 'indexing' && job && job.progress > 0 && (
           <div className="mt-1.5">
-            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-300 bg-brand-700"
+                className="h-full rounded-full transition-all duration-300 bg-gradient-brand"
                 style={{ width: `${Math.round(job.progress * 100)}%` }}
               />
             </div>
-            <p className="text-xs text-gray-400 mt-1">{job.message}</p>
+            <p className="text-xs text-slate-400 mt-1">{job.message}</p>
           </div>
         )}
       </div>
       {(entry.status === 'queued' || isDone || isError) && (
-        <button onClick={onRemove} className="p-1 hover:bg-gray-200 rounded transition-colors shrink-0">
-          <X className="w-3.5 h-3.5 text-gray-400" />
+        <button onClick={onRemove} className="p-1 hover:bg-slate-100 rounded-lg transition-colors shrink-0">
+          <X className="w-3.5 h-3.5 text-slate-400" />
         </button>
       )}
     </div>
@@ -92,18 +92,18 @@ export default function Upload() {
   const allDone = uploadQueue.length > 0 && uploadQueue.every((e) => e.status === 'done' || e.status === 'error')
 
   return (
-    <div className="min-h-full bg-white">
+    <div className="min-h-full bg-surface">
       <div className="max-w-2xl mx-auto px-6 py-8">
         <button
           onClick={() => navigate('/library')}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-8 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-8 transition-colors font-medium"
         >
           <ArrowLeft className="w-4 h-4" />
           Вернуться в библиотеку
         </button>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Загрузить презентации</h1>
-        <p className="text-gray-500 mb-8">
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">Загрузить презентации</h1>
+        <p className="text-slate-500 mb-8">
           Загружайте несколько файлов PPTX или PDF. Каждый слайд будет проиндексирован с помощью AI.
         </p>
 
@@ -115,11 +115,11 @@ export default function Upload() {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
           className={cn(
-            'border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center gap-4',
+            'border-2 border-dashed rounded-2xl p-12 flex flex-col items-center justify-center gap-4',
             'cursor-pointer transition-all',
             isDragging
-              ? 'border-brand-500 bg-brand-50'
-              : 'border-gray-200 hover:border-brand-300 hover:bg-gray-50'
+              ? 'border-brand-500 bg-brand-50 scale-[1.01]'
+              : 'border-slate-200 hover:border-brand-400 hover:bg-brand-50/50'
           )}
         >
           <input
@@ -130,14 +130,17 @@ export default function Upload() {
             className="hidden"
             onChange={(e) => handleFiles(e.target.files)}
           />
-          <div className="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center">
-            <UploadIcon className="w-7 h-7 text-brand-700" />
+          <div className={cn(
+            'w-16 h-16 rounded-2xl flex items-center justify-center transition-colors',
+            isDragging ? 'bg-brand-100' : 'bg-white border border-slate-200 shadow-sm'
+          )}>
+            <UploadIcon className={cn('w-8 h-8', isDragging ? 'text-brand-600' : 'text-slate-400')} />
           </div>
           <div className="text-center">
-            <p className="text-base font-medium text-gray-800">
-              Перетащите файлы сюда или нажмите для выбора
+            <p className="text-base font-semibold text-slate-800">
+              Перетащите файлы или нажмите для выбора
             </p>
-            <p className="text-sm text-gray-400 mt-1">PPTX, PDF — до 500 МБ каждый · Можно несколько</p>
+            <p className="text-sm text-slate-400 mt-1">PPTX, PDF — до 500 МБ каждый · Можно несколько</p>
           </div>
         </div>
 
@@ -145,13 +148,13 @@ export default function Upload() {
         {uploadQueue.length > 0 && (
           <div className="mt-6 flex flex-col gap-2">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-sm font-medium text-gray-700">
-                Файлы ({doneCount}/{uploadQueue.length} готово)
+              <p className="text-sm font-semibold text-slate-700">
+                Файлы <span className="text-slate-400 font-normal">({doneCount}/{uploadQueue.length} готово)</span>
               </p>
               {allDone && (
                 <button
                   onClick={() => navigate('/library')}
-                  className="text-sm text-brand-700 hover:text-brand-900 font-medium transition-colors"
+                  className="text-sm text-brand-600 hover:text-brand-800 font-semibold transition-colors"
                 >
                   Перейти в библиотеку →
                 </button>
@@ -175,12 +178,12 @@ export default function Upload() {
               { step: '2', title: 'AI анализирует', desc: 'Каждый слайд получает заголовок, теги и эмбеддинг' },
               { step: '3', title: 'Используйте', desc: 'Слайды доступны для умной сборки презентаций' },
             ].map(({ step, title, desc }) => (
-              <div key={step} className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 text-sm font-bold flex items-center justify-center mb-2">
+              <div key={step} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-card">
+                <div className="w-8 h-8 rounded-xl bg-gradient-brand text-white text-sm font-bold flex items-center justify-center mb-3 shadow-sm">
                   {step}
                 </div>
-                <p className="font-medium text-sm text-gray-800">{title}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+                <p className="font-semibold text-sm text-slate-800">{title}</p>
+                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>

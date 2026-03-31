@@ -36,7 +36,7 @@ function TemplateCard({ tmpl, onDelete, onSetDefault }: {
   const bg        = tmpl.colors.background || 'FFFFFF'
 
   return (
-    <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-card hover:shadow-card-hover transition-shadow">
       {/* Preview strip */}
       <div
         className="h-20 flex items-center justify-between px-5"
@@ -48,7 +48,7 @@ function TemplateCard({ tmpl, onDelete, onSetDefault }: {
           <div className="h-2 rounded-full bg-white/40 w-16" />
         </div>
         <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm"
           style={{ background: `#${secondary}` }}
         >
           <Palette className="w-4 h-4 text-white" />
@@ -58,9 +58,9 @@ function TemplateCard({ tmpl, onDelete, onSetDefault }: {
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div>
-            <p className="text-sm font-semibold text-gray-900">{tmpl.name}</p>
+            <p className="text-sm font-semibold text-slate-900">{tmpl.name}</p>
             {tmpl.is_default && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded-full font-medium">
+              <span className="text-[10px] px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full font-semibold">
                 По умолчанию
               </span>
             )}
@@ -69,7 +69,7 @@ function TemplateCard({ tmpl, onDelete, onSetDefault }: {
             {!tmpl.is_default && (
               <button
                 onClick={onSetDefault}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 transition-colors"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-yellow-500 hover:bg-yellow-50 transition-colors"
                 title="Сделать основным"
               >
                 <StarOff className="w-4 h-4" />
@@ -82,7 +82,7 @@ function TemplateCard({ tmpl, onDelete, onSetDefault }: {
             )}
             <button
               onClick={onDelete}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
               title="Удалить"
             >
               <Trash2 className="w-4 h-4" />
@@ -92,7 +92,7 @@ function TemplateCard({ tmpl, onDelete, onSetDefault }: {
 
         {/* Color palette */}
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-400 mr-1">Цвета:</span>
+          <span className="text-xs text-slate-400 mr-1">Цвета:</span>
           {[primary, secondary, bg, tmpl.colors.text || '0F172A'].map((hex, i) => (
             <ColorDot key={i} hex={hex} />
           ))}
@@ -156,29 +156,29 @@ export default function Brand() {
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 rounded-2xl bg-brand-100 flex items-center justify-center">
-          <Palette className="w-6 h-6 text-brand-700" />
+        <div className="w-12 h-12 rounded-2xl bg-gradient-brand flex items-center justify-center shadow-md">
+          <Palette className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Бренд-шаблоны</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-xl font-bold text-slate-900">Бренд-шаблоны</h1>
+          <p className="text-sm text-slate-500">
             Загружайте PPTX-шаблоны — сгенерированные слайды будут точно следовать вашему бренду
           </p>
         </div>
       </div>
 
       {/* Upload card */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Загрузить шаблон</h2>
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-8 shadow-card">
+        <h2 className="text-sm font-semibold text-slate-700 mb-4">Загрузить шаблон</h2>
 
         <div className="mb-4">
-          <label className="block text-sm text-gray-600 mb-1.5">Название шаблона</label>
+          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Название шаблона</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Например: Корпоративный 2025"
-            className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 text-slate-800 placeholder-slate-400"
           />
         </div>
 
@@ -189,10 +189,10 @@ export default function Brand() {
           onDrop={handleDrop}
           onClick={() => fileRef.current?.click()}
           className={cn(
-            'border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-all',
+            'border-2 border-dashed rounded-2xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-all',
             dragOver
-              ? 'border-brand-500 bg-brand-50'
-              : 'border-gray-200 hover:border-brand-300 hover:bg-gray-50'
+              ? 'border-brand-500 bg-brand-50 scale-[1.01]'
+              : 'border-slate-200 hover:border-brand-400 hover:bg-brand-50/50'
           )}
         >
           <input
@@ -206,14 +206,14 @@ export default function Brand() {
             <Spinner />
           ) : (
             <>
-              <div className="w-12 h-12 rounded-xl bg-brand-50 flex items-center justify-center">
-                <Upload className="w-6 h-6 text-brand-700" />
+              <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+                <Upload className="w-6 h-6 text-slate-400" />
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-700">
+                <p className="text-sm font-semibold text-slate-700">
                   Перетащите .pptx или нажмите для выбора
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-slate-400 mt-1">
                   Цвета бренда будут извлечены автоматически
                 </p>
               </div>
@@ -223,17 +223,20 @@ export default function Brand() {
       </div>
 
       {/* Templates list */}
-      <h2 className="text-sm font-semibold text-gray-700 mb-4">
-        Ваши шаблоны {templates.length > 0 && `(${templates.length})`}
-      </h2>
+      <div className="flex items-center gap-2 mb-4">
+        <h2 className="text-sm font-semibold text-slate-700">Ваши шаблоны</h2>
+        {templates.length > 0 && (
+          <span className="px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 text-xs font-semibold">{templates.length}</span>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="flex justify-center py-10"><Spinner /></div>
       ) : templates.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-slate-400 bg-white border border-slate-200 rounded-2xl">
           <Palette className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Шаблонов пока нет</p>
-          <p className="text-xs mt-1">Загрузите свой корпоративный PPTX выше</p>
+          <p className="text-sm font-medium text-slate-500">Шаблонов пока нет</p>
+          <p className="text-xs mt-1 text-slate-400">Загрузите свой корпоративный PPTX выше</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -249,13 +252,13 @@ export default function Brand() {
       )}
 
       {/* Layouts reference */}
-      <div className="mt-10 bg-gray-50 border border-gray-100 rounded-2xl p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Доступные макеты слайдов</h2>
+      <div className="mt-10 bg-white border border-slate-200 rounded-2xl p-6 shadow-card">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">Доступные макеты слайдов</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {Object.entries(LAYOUT_LABELS).map(([key, label]) => (
-            <div key={key} className="flex items-center gap-2 py-1.5 px-2 bg-white rounded-lg border border-gray-100">
-              <span className="w-2 h-2 rounded-full bg-brand-400 shrink-0" />
-              <span className="text-xs text-gray-700">{label}</span>
+            <div key={key} className="flex items-center gap-2 py-2 px-3 bg-surface rounded-xl border border-slate-100">
+              <span className="w-2 h-2 rounded-full bg-brand-500 shrink-0" />
+              <span className="text-xs text-slate-700 font-medium">{label}</span>
             </div>
           ))}
         </div>
