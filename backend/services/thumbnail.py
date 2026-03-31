@@ -27,6 +27,7 @@ class SlideData:
     gif_rect: dict | None = None        # {x,y,w,h} as fractions of slide dimensions
     video_bytes: bytes | None = None    # video file (mp4/mov) extracted from PPTX
     video_ext: str | None = None        # 'mp4', 'mov', etc.
+    pptx_title: str | None = None       # raw title from PPTX title shape (preferred over AI)
 
 
 def _make_placeholder_thumbnail(title: str, slide_index: int) -> bytes:
@@ -161,8 +162,8 @@ def _find_gif_rect_in_slide_xml(
                         cy = int(cy * sy)
 
                 return {
-                    "x": max(0.0, x / slide_cx),
-                    "y": max(0.0, y / slide_cy),
+                    "x": max(0.0, min(1.0, x / slide_cx)),
+                    "y": max(0.0, min(1.0, y / slide_cy)),
                     "w": min(1.0, cx / slide_cx),
                     "h": min(1.0, cy / slide_cy),
                 }
@@ -219,7 +220,6 @@ def _detect_media_in_pptx_slide(
     has_video = False
     has_gif = False
     gif_bytes: bytes | None = None
-    gif_rId: str | None = None
     gif_rect: dict | None = None
     video_bytes: bytes | None = None
     video_ext: str | None = None
@@ -230,6 +230,9 @@ def _detect_media_in_pptx_slide(
     try:
         rels_root = ET.fromstring(zip_file.read(rels_name))
         namelist = set(zip_file.namelist())
+
+        # Collect all GIF candidates to pick the most prominent one later
+        gif_candidates: list[tuple[str, bytes]] = []  # [(rId, data), ...]
 
         for rel in rels_root:
             rId = rel.get("Id", "")
@@ -249,10 +252,10 @@ def _detect_media_in_pptx_slide(
 
             if is_image and target_lower.endswith(".gif"):
                 has_gif = True
-                if target in namelist and gif_bytes is None:
+                if target in namelist:
                     try:
-                        gif_bytes = zip_file.read(target)
-                        gif_rId = rId
+                        data = zip_file.read(target)
+                        gif_candidates.append((rId, data))
                     except Exception:
                         pass
 
@@ -271,10 +274,27 @@ def _detect_media_in_pptx_slide(
                 elif ext in ("wmv", "avi"):
                     has_video = True
 
-        if gif_rId:
-            gif_rect = _find_gif_rect_in_slide_xml(
-                zip_file, slide_xml_name, gif_rId, slide_cx, slide_cy
-            )
+        # Pick the GIF with the largest on-screen area (most prominent)
+        if gif_candidates:
+            best_bytes: bytes | None = None
+            best_rect: dict | None = None
+            best_area = -1.0
+            for rId, data in gif_candidates:
+                rect = _find_gif_rect_in_slide_xml(zip_file, slide_xml_name, rId, slide_cx, slide_cy)
+                if rect:
+                    area = rect["w"] * rect["h"]
+                    if area > best_area:
+                        best_area = area
+                        best_bytes = data
+                        best_rect = rect
+            if best_bytes is None:
+                # No rect found for any GIF — just use first one
+                best_bytes = gif_candidates[0][1]
+                best_rect = _find_gif_rect_in_slide_xml(
+                    zip_file, slide_xml_name, gif_candidates[0][0], slide_cx, slide_cy
+                )
+            gif_bytes = best_bytes
+            gif_rect = best_rect
 
     except Exception as e:
         logger.debug(f"Media detection failed for {slide_xml_name}: {e}")
@@ -439,6 +459,18 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
                 text = _extract_text_from_pptx_slide(slide)
                 xml_blob = slide._element.xml
 
+                # Extract title from PPTX title shape (preferred over AI-generated title)
+                pptx_title: str | None = None
+                try:
+                    ts = slide.shapes.title
+                    if ts is not None and hasattr(ts, "text"):
+                        t = ts.text.strip()
+                        # Accept only non-trivial titles (not just digits or very short)
+                        if t and len(t) > 2 and not t.isdigit():
+                            pptx_title = t
+                except Exception:
+                    pass
+
                 # Get the actual XML file path for THIS slide (correct presentation order)
                 slide_xml_name = str(slide.part.partname).lstrip("/")
                 # e.g. "ppt/slides/slide3.xml" — NOT necessarily "ppt/slides/slide{i+1}.xml"
@@ -493,6 +525,7 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
                     gif_rect=gif_rect,
                     video_bytes=video_bytes,
                     video_ext=video_ext,
+                    pptx_title=pptx_title,
                 ))
     except Exception as e:
         logger.error(f"python-pptx extraction failed for {file_path}: {e}")

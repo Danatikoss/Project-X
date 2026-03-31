@@ -95,10 +95,18 @@ async def _extract_single_metadata(
         return {}
 
 
-def _safe_metadata(raw: dict, slide_text: str, slide_idx: int) -> dict:
-    title = str(raw.get("title", "") or "").strip()
-    if not title or title.lower().startswith("слайд"):
+def _safe_metadata(raw: dict, slide_text: str, slide_idx: int, pptx_title: str | None = None) -> dict:
+    ai_title = str(raw.get("title", "") or "").strip()
+
+    # Prefer the PPTX title shape — it's the author's explicit label.
+    # Fall back to AI only when the PPTX title is absent or trivial.
+    if pptx_title and len(pptx_title) > 2 and not pptx_title.isdigit():
+        title = pptx_title
+    elif ai_title and not ai_title.lower().startswith("слайд"):
+        title = ai_title
+    else:
         title = f"Слайд {slide_idx + 1}"
+
     return {
         "title": title[:120],
         "summary": str(raw.get("summary", "") or slide_text[:200]),
@@ -200,7 +208,7 @@ async def index_presentation(source_id: int, ws_token: str):
             raw_metas = await asyncio.gather(*tasks)
 
             for j, (sd, raw_meta) in enumerate(zip(batch, raw_metas)):
-                all_metadata[batch_start + j] = _safe_metadata(raw_meta, sd.text, batch_start + j)
+                all_metadata[batch_start + j] = _safe_metadata(raw_meta, sd.text, batch_start + j, pptx_title=sd.pptx_title)
 
             progress = 0.3 + ((batch_start + len(batch)) / total) * 0.35
             await ws_manager.send_progress(
