@@ -52,7 +52,10 @@
       "Bash(find /Users/danatikoss/Desktop/project2/frontend -name logo* -o -name *.png)",
       "Bash(find /Users/danatikoss/Desktop/project2 -name logo*)",
       "Bash(brew --version)",
-      "Bash(gh:*)"
+      "Bash(gh:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
