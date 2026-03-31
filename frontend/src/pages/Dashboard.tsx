@@ -307,40 +307,40 @@ export default function Dashboard() {
         {isLoading ? (
           <div className="flex justify-center py-8"><Spinner /></div>
         ) : !assemblies?.length ? (
-          <div className="py-8">
+          <div className="py-6">
             <p className="text-xs text-gray-400 text-center mb-4">Сборок пока нет — начните с одного из шагов:</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex gap-2">
               <button
                 onClick={() => navigate('/library/upload')}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50 transition-colors text-left"
+                className="flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50 transition-colors"
               >
-                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
                   <Upload className="w-4 h-4 text-gray-500" />
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-gray-800">1. Загрузите слайды</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">PPTX или PDF файлы</p>
+                <div className="text-center">
+                  <p className="text-xs font-medium text-gray-800">1. Загрузите</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">PPTX или PDF</p>
                 </div>
               </button>
               <button
                 onClick={() => navigate('/library')}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50 transition-colors text-left"
+                className="flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50 transition-colors"
               >
-                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
                   <BookImage className="w-4 h-4 text-gray-500" />
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-gray-800">2. Изучите библиотеку</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Просматривайте слайды</p>
+                <div className="text-center">
+                  <p className="text-xs font-medium text-gray-800">2. Библиотека</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">Просмотр слайдов</p>
                 </div>
               </button>
-              <div className="flex flex-col items-center gap-2 p-4 rounded-xl border border-dashed border-gray-200 bg-brand-50 border-brand-200 text-left">
-                <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center">
+              <div className="flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border border-dashed bg-brand-50 border-brand-200">
+                <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center shrink-0">
                   <Sparkles className="w-4 h-4 text-brand-700" />
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-brand-900">3. Соберите презентацию</p>
-                  <p className="text-[11px] text-brand-600 mt-0.5">AI подберёт слайды</p>
+                <div className="text-center">
+                  <p className="text-xs font-medium text-brand-900">3. Соберите</p>
+                  <p className="text-[10px] text-brand-600 mt-0.5 leading-tight">AI подберёт слайды</p>
                 </div>
               </div>
             </div>

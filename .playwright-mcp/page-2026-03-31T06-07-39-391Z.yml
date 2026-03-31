@@ -1,0 +1,63 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - main [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]:
+            - img [ref=e9]
+            - heading "SLIDEX" [level=1] [ref=e13]
+          - generic [ref=e14]:
+            - button "AI-подбор" [ref=e15] [cursor=pointer]:
+              - img [ref=e16]
+              - text: AI-подбор
+            - button "Вручную" [ref=e18] [cursor=pointer]:
+              - img [ref=e19]
+              - text: Вручную
+          - paragraph [ref=e21]: Создайте пустую презентацию и самостоятельно подберите слайды из библиотеки
+          - generic [ref=e22]:
+            - generic [ref=e23]:
+              - textbox "Название презентации (необязательно)" [active] [ref=e106]
+              - button "Создать" [ref=e107] [cursor=pointer]:
+                - img [ref=e108]
+                - text: Создать
+            - paragraph [ref=e110]: После создания откроется редактор с браузером библиотеки — добавляйте слайды одним кликом
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - img [ref=e51]
+            - heading "Недавние сборки" [level=2] [ref=e54]
+          - generic [ref=e55]:
+            - paragraph [ref=e56]: "Сборок пока нет — начните с одного из шагов:"
+            - generic [ref=e57]:
+              - button "1. Загрузите PPTX или PDF" [ref=e58] [cursor=pointer]:
+                - img [ref=e60]
+                - generic [ref=e63]:
+                  - paragraph [ref=e64]: 1. Загрузите
+                  - paragraph [ref=e65]: PPTX или PDF
+              - button "2. Библиотека Просмотр слайдов" [ref=e66] [cursor=pointer]:
+                - img [ref=e68]
+                - generic [ref=e72]:
+                  - paragraph [ref=e73]: 2. Библиотека
+                  - paragraph [ref=e74]: Просмотр слайдов
+              - generic [ref=e75]:
+                - img [ref=e77]
+                - generic [ref=e79]:
+                  - paragraph [ref=e80]: 3. Соберите
+                  - paragraph [ref=e81]: AI подберёт слайды
+    - navigation [ref=e82]:
+      - link "Главная" [ref=e83] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e84]
+        - generic [ref=e89]: Главная
+      - link "Библиотека" [ref=e90] [cursor=pointer]:
+        - /url: /library
+        - img [ref=e91]
+        - generic [ref=e95]: Библиотека
+      - link "Загрузить" [ref=e96] [cursor=pointer]:
+        - /url: /library/upload
+        - img [ref=e97]
+        - generic [ref=e100]: Загрузить
+      - link "Профиль" [ref=e101] [cursor=pointer]:
+        - /url: /profile
+        - img [ref=e102]
+        - generic [ref=e105]: Профиль
+  - region "Notifications alt+T"

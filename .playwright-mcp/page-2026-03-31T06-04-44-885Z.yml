@@ -1,0 +1,43 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - main [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - img [ref=e8]
+          - generic [ref=e11]:
+            - heading "Профиль" [level=1] [ref=e12]
+            - paragraph [ref=e13]: Настройки пользователя
+        - generic [ref=e14]:
+          - heading "Основная информация" [level=2] [ref=e15]
+          - generic [ref=e16]:
+            - generic [ref=e17]:
+              - generic [ref=e18]: Имя
+              - textbox "Ваше имя" [ref=e19]: Данат
+            - generic [ref=e20]:
+              - generic [ref=e21]: Организация
+              - textbox "Название организации" [ref=e22]: NITEC
+            - button "Сохранить" [ref=e23] [cursor=pointer]:
+              - img [ref=e24]
+              - text: Сохранить
+        - generic [ref=e26]:
+          - heading "Контактный слайд" [level=2] [ref=e27]
+          - paragraph [ref=e28]: Этот слайд будет автоматически добавляться в конец презентации при экспорте, если запрос содержит «мои контакты».
+          - button "+ Выбрать контактный слайд" [ref=e29] [cursor=pointer]
+    - navigation [ref=e30]:
+      - link "Главная" [ref=e31] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e32]
+        - generic [ref=e37]: Главная
+      - link "Библиотека" [ref=e38] [cursor=pointer]:
+        - /url: /library
+        - img [ref=e39]
+        - generic [ref=e43]: Библиотека
+      - link "Загрузить" [ref=e44] [cursor=pointer]:
+        - /url: /library/upload
+        - img [ref=e45]
+        - generic [ref=e48]: Загрузить
+      - link "Профиль" [ref=e49] [cursor=pointer]:
+        - /url: /profile
+        - img [ref=e50]
+        - generic [ref=e53]: Профиль
+  - region "Notifications alt+T"
