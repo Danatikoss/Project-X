@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, Check, User } from 'lucide-react'
+import { Search, X, Check, User, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
 import { profileApi, searchApi, libraryApi } from '../api/client'
 import { SlideCard } from '../components/common/SlideCard'
 import { Spinner } from '../components/common/Spinner'
+import { useAuthStore } from '../store/auth'
 import { cn } from '../utils/cn'
 import type { Slide } from '../types'
 
 export default function Profile() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const clearAuth = useAuthStore((s) => s.clearAuth)
+
+  const handleLogout = () => {
+    clearAuth()
+    queryClient.clear()
+    navigate('/login')
+  }
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile'],
@@ -131,6 +141,17 @@ export default function Profile() {
             Сохранить
           </button>
         </div>
+      </div>
+
+      {/* Logout */}
+      <div className="mb-6">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          Выйти из аккаунта
+        </button>
       </div>
 
       {/* Contact slide */}
