@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, CheckCircle, XCircle, X, Trash2 } from 'lucide-react'
+import { Bell, CheckCircle, XCircle, X, Trash2, Upload } from 'lucide-react'
 import { useIndexingStore } from '../../store/indexing'
 import { Spinner } from '../common/Spinner'
 import { cn } from '../../utils/cn'
@@ -7,10 +7,12 @@ import { cn } from '../../utils/cn'
 export function IndexingBell() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const { jobs, dismiss, dismissCompleted } = useIndexingStore()
+  const { jobs, uploadQueue, dismiss, dismissCompleted } = useIndexingStore()
 
-  const activeCount = jobs.filter((j) => j.status === 'indexing').length
-  const hasAny = jobs.length > 0
+  const uploadingEntries = uploadQueue.filter((e) => e.status === 'queued' || e.status === 'uploading')
+  const activeJobsCount = jobs.filter((j) => j.status === 'indexing').length
+  const activeCount = uploadingEntries.length + activeJobsCount
+  const hasAny = jobs.length > 0 || uploadQueue.length > 0
   const hasCompleted = jobs.some((j) => j.status !== 'indexing')
 
   // Close on outside click
@@ -67,6 +69,26 @@ export function IndexingBell() {
           </div>
 
           <div className="max-h-72 overflow-y-auto">
+            {/* Uploading/queued entries (pre-indexing phase) */}
+            {uploadingEntries.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-2.5 px-3 py-2.5 border-b border-gray-50 last:border-0">
+                <div className="mt-0.5 shrink-0">
+                  {entry.status === 'uploading' ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <Upload className="w-4 h-4 text-gray-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-800 truncate">{entry.filename}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    {entry.status === 'uploading' ? 'Загрузка на сервер...' : 'В очереди'}
+                  </p>
+                </div>
+              </div>
+            ))}
+
+            {/* Indexing jobs */}
             {jobs.map((job) => (
               <div key={job.ws_token} className="flex items-start gap-2.5 px-3 py-2.5 border-b border-gray-50 last:border-0">
                 <div className="mt-0.5 shrink-0">
