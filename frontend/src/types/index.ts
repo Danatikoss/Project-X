@@ -200,3 +200,16 @@ export interface MediaAsset {
   file_size: number | null
   url: string
 }
+
+// ─── Assembly Templates ───────────────────────────────────────────────────────
+
+export interface AssemblyTemplate {
+  id: number
+  name: string
+  emoji: string
+  description: string
+  slide_count_hint: number
+  color_hex: string
+  prompt: string
+  created_at: string
+}

@@ -4,7 +4,7 @@ import type {
   UploadResponse, Assembly, AssemblyListItem, AssembleRequest,
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
   AuthResponse, Project, BrandTemplate, GenerateSlideRequest, GenerateSlideResponse,
-  MediaFolder, MediaAsset,
+  MediaFolder, MediaAsset, AssemblyTemplate,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -367,5 +367,25 @@ export const mediaApi = {
 
   deleteAsset: async (id: number): Promise<void> => {
     await api.delete(`/media/assets/${id}`)
+  },
+}
+
+// ─── Assembly Templates ───────────────────────────────────────────────────────
+
+export const templatesApi = {
+  list: async (): Promise<AssemblyTemplate[]> => {
+    const res = await api.get<AssemblyTemplate[]>('/templates')
+    return res.data
+  },
+  create: async (data: Omit<AssemblyTemplate, 'id' | 'created_at'>): Promise<AssemblyTemplate> => {
+    const res = await api.post<AssemblyTemplate>('/templates', data)
+    return res.data
+  },
+  update: async (id: number, data: Partial<Omit<AssemblyTemplate, 'id' | 'created_at'>>): Promise<AssemblyTemplate> => {
+    const res = await api.patch<AssemblyTemplate>(`/templates/${id}`, data)
+    return res.data
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/templates/${id}`)
   },
 }
