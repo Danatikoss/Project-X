@@ -5,15 +5,16 @@ import {
 } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { SlideThumbnail } from './SlideCard'
-import type { Slide } from '../../types'
+import type { Slide, SlideOverlay } from '../../types'
 
 interface SlideshowProps {
   slides: Slide[]
   startIndex?: number
   onClose: () => void
+  overlays?: Record<string, SlideOverlay[]>
 }
 
-export function Slideshow({ slides, startIndex = 0, onClose }: SlideshowProps) {
+export function Slideshow({ slides, startIndex = 0, onClose, overlays }: SlideshowProps) {
   const [index, setIndex] = useState(Math.max(0, Math.min(startIndex, slides.length - 1)))
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -136,6 +137,33 @@ export function Slideshow({ slides, startIndex = 0, onClose }: SlideshowProps) {
               <SlideThumbnail slide={slide} />
             </div>
           ) : null}
+
+          {/* Media overlays */}
+          {slide && overlays && (overlays[String(slide.id)] || []).map((overlay) => (
+            <div
+              key={overlay.id}
+              className="absolute pointer-events-none"
+              style={{
+                left: `${overlay.x}%`,
+                top: `${overlay.y}%`,
+                width: `${overlay.w}%`,
+                height: `${overlay.h}%`,
+              }}
+            >
+              {overlay.file_type === 'video' ? (
+                <video
+                  src={overlay.url}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <img src={overlay.url} alt="" className="w-full h-full object-contain" />
+              )}
+            </div>
+          ))}
 
           {/* Side nav arrows */}
           {hasPrev && (

@@ -466,7 +466,9 @@ def render_slide_pptx(blueprint: dict, colors: BrandColors,
             sp.getparent().remove(sp)
 
     layout = blueprint.get("layout", "title_content")
-    if layout != "section_divider":
+    # Only force white background when no template is provided.
+    # When using a template, the background image/color comes from the slide master.
+    if layout != "section_divider" and not template_pptx_path:
         _set_bg(slide, RGBColor(255, 255, 255))
 
     renderer = _RENDERERS.get(layout, _render_title_content)
