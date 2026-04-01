@@ -4,6 +4,7 @@ import type {
   UploadResponse, Assembly, AssemblyListItem, AssembleRequest,
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
   AuthResponse, Project, BrandTemplate, GenerateSlideRequest, GenerateSlideResponse,
+  MediaFolder, MediaAsset,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -318,5 +319,53 @@ export const profileApi = {
   update: async (data: UserProfilePatchRequest): Promise<UserProfile> => {
     const res = await api.patch<UserProfile>('/profile', data)
     return res.data
+  },
+}
+
+// ─── Media Library ────────────────────────────────────────────────────────────
+
+export const mediaApi = {
+  listFolders: async (): Promise<MediaFolder[]> => {
+    const res = await api.get<MediaFolder[]>('/media/folders')
+    return res.data
+  },
+
+  createFolder: async (name: string): Promise<MediaFolder> => {
+    const res = await api.post<MediaFolder>('/media/folders', { name })
+    return res.data
+  },
+
+  renameFolder: async (id: number, name: string): Promise<MediaFolder> => {
+    const res = await api.patch<MediaFolder>(`/media/folders/${id}`, { name })
+    return res.data
+  },
+
+  deleteFolder: async (id: number): Promise<void> => {
+    await api.delete(`/media/folders/${id}`)
+  },
+
+  listAssets: async (params?: { folder_id?: number; unfoldered?: boolean }): Promise<MediaAsset[]> => {
+    const res = await api.get<MediaAsset[]>('/media/assets', { params })
+    return res.data
+  },
+
+  upload: async (file: File, name: string, folder_id?: number): Promise<MediaAsset> => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('name', name)
+    if (folder_id != null) form.append('folder_id', String(folder_id))
+    const res = await api.post<MediaAsset>('/media/assets/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  },
+
+  updateAsset: async (id: number, data: { name?: string; folder_id?: number; clear_folder?: boolean }): Promise<MediaAsset> => {
+    const res = await api.patch<MediaAsset>(`/media/assets/${id}`, data)
+    return res.data
+  },
+
+  deleteAsset: async (id: number): Promise<void> => {
+    await api.delete(`/media/assets/${id}`)
   },
 }

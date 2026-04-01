@@ -10,6 +10,7 @@ import Upload from './pages/Upload'
 import Assemble from './pages/Assemble'
 import Profile from './pages/Profile'
 import Brand from './pages/Brand'
+import Media from './pages/Media'
 import Login from './pages/Login'
 import Register from './pages/Register'
 
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="/assemble/:id" element={<ErrorBoundary><Assemble /></ErrorBoundary>} />
             <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
             <Route path="/brand" element={<ErrorBoundary><Brand /></ErrorBoundary>} />
+            <Route path="/media" element={<ErrorBoundary><Media /></ErrorBoundary>} />
           </Route>
         </Routes>
       </BrowserRouter>

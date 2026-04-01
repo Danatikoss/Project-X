@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, BookImage, Upload, User, Layers, Palette } from 'lucide-react'
+import { LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { IndexingBell } from './IndexingBell'
 import { useAuthStore } from '../../store/auth'
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/dashboard',      icon: LayoutDashboard, label: 'Главная' },
   { to: '/library',        icon: BookImage,        label: 'Библиотека' },
   { to: '/library/upload', icon: Upload,           label: 'Загрузить' },
+  { to: '/media',          icon: Film,             label: 'Медиа' },
   { to: '/brand',          icon: Palette,          label: 'Бренд' },
   { to: '/profile',        icon: User,             label: 'Профиль' },
 ]

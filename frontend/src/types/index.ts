@@ -169,3 +169,21 @@ export interface UserProfilePatchRequest {
   contact_slide_id?: number | null
   preferred_tags?: string[]
 }
+
+// ─── Media Library ───────────────────────────────────────────────────────────
+
+export interface MediaFolder {
+  id: number
+  name: string
+  asset_count: number
+}
+
+export interface MediaAsset {
+  id: number
+  folder_id: number | null
+  name: string
+  file_type: 'gif' | 'video' | 'image'
+  mime_type: string | null
+  file_size: number | null
+  url: string
+}

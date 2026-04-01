@@ -6,6 +6,7 @@ from api.profile import router as profile_router
 from api.auth import router as auth_router
 from api.projects import router as projects_router
 from api.brand import router as brand_router
+from api.media import router as media_router
 
 router = APIRouter()
 
@@ -16,3 +17,4 @@ router.include_router(search_router, prefix="/search", tags=["Search"])
 router.include_router(profile_router, prefix="/profile", tags=["Profile"])
 router.include_router(projects_router, prefix="/projects", tags=["Projects"])
 router.include_router(brand_router, prefix="/brand", tags=["Brand"])
+router.include_router(media_router, prefix="/media", tags=["Media"])

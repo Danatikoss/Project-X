@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
     # Ensure data directories exist
     for d in [settings.upload_dir, settings.thumbnail_dir, settings.export_dir]:
         Path(d).mkdir(parents=True, exist_ok=True)
+    Path(settings.upload_dir, "media").mkdir(parents=True, exist_ok=True)
 
     # Create DB tables
     create_tables()
@@ -81,7 +82,7 @@ from fastapi import WebSocket
 async def ws_indexing(websocket: WebSocket, ws_token: str):
     await websocket_endpoint(websocket, ws_token)
 
-# Static file serving (thumbnails + exports)
+# Static file serving (thumbnails + exports + media)
 thumbnail_dir = Path(settings.thumbnail_dir)
 thumbnail_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/thumbnails", StaticFiles(directory=str(thumbnail_dir)), name="thumbnails")
@@ -89,6 +90,10 @@ app.mount("/thumbnails", StaticFiles(directory=str(thumbnail_dir)), name="thumbn
 export_dir = Path(settings.export_dir)
 export_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/exports", StaticFiles(directory=str(export_dir)), name="exports")
+
+media_dir = Path(settings.upload_dir) / "media"
+media_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media-files", StaticFiles(directory=str(media_dir)), name="media-files")
 
 
 @app.get("/health")
