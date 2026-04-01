@@ -79,11 +79,23 @@ export interface IndexProgress {
 
 // ─── Assembly ────────────────────────────────────────────────────────────────
 
+export interface SlideOverlay {
+  id: string
+  asset_id: number
+  url: string
+  file_type: 'gif' | 'video' | 'image'
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 export interface Assembly {
   id: number
   title: string
   prompt: string
   slides: Slide[]
+  overlays: Record<string, SlideOverlay[]>
   status: 'draft' | 'exported'
   share_token: string | null
   created_at: string
@@ -108,6 +120,7 @@ export interface AssembleRequest {
 export interface AssemblyPatchRequest {
   slide_ids?: number[]
   title?: string
+  overlays?: Record<string, SlideOverlay[]>
 }
 
 // ─── Search ──────────────────────────────────────────────────────────────────

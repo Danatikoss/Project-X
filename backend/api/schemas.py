@@ -87,6 +87,7 @@ class AssembleBlankRequest(BaseModel):
 class AssemblyPatchRequest(BaseModel):
     slide_ids: Optional[list[int]] = None
     title: Optional[str] = None
+    overlays: Optional[dict] = None
 
 
 class AssemblyResponse(BaseModel):
@@ -94,6 +95,7 @@ class AssemblyResponse(BaseModel):
     title: str
     prompt: str
     slides: list[SlideResponse]
+    overlays: dict = {}
     status: str
     share_token: Optional[str] = None
     created_at: datetime

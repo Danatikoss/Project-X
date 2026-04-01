@@ -52,6 +52,7 @@ def _assembly_to_response(assembly: AssembledPresentation, db: Session) -> Assem
         title=assembly.title,
         prompt=assembly.prompt,
         slides=slides_ordered,
+        overlays=json.loads(assembly.overlays_json or "{}"),
         status=assembly.status,
         share_token=assembly.share_token,
         created_at=assembly.created_at,
@@ -141,6 +142,8 @@ def update_assembly(assembly_id: int, body: AssemblyPatchRequest, db: Session = 
         assembly.slide_ids_json = json.dumps(body.slide_ids)
     if body.title is not None:
         assembly.title = body.title[:200]
+    if body.overlays is not None:
+        assembly.overlays_json = json.dumps(body.overlays)
 
     db.commit()
     db.refresh(assembly)
@@ -210,6 +213,7 @@ def duplicate_assembly(assembly_id: int, db: Session = Depends(get_db), user: Us
         title=f"{original.title} (копия)",
         prompt=original.prompt,
         slide_ids_json=original.slide_ids_json,
+        overlays_json=original.overlays_json,
         status="draft",
     )
     db.add(copy)

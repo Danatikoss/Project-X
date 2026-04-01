@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Download, ArrowLeft, Plus, Search, X, Edit2, Check,
   Presentation, ChevronLeft, ChevronRight, Share2,
   BookImage, Info, Sparkles, PenLine, FolderOpen, Play,
+  Film, Image, PanelLeftClose, PanelLeftOpen, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { assemblyApi, libraryApi, searchApi, projectsApi } from '../api/client'
+import { assemblyApi, libraryApi, searchApi, projectsApi, mediaApi } from '../api/client'
 import { FilmStrip } from '../components/assemble/FilmStrip'
 import { SlideCard, SlideThumbnail } from '../components/common/SlideCard'
 import { Slideshow } from '../components/common/Slideshow'
@@ -15,7 +16,7 @@ import { Spinner } from '../components/common/Spinner'
 import { GenerateSlideModal } from '../components/common/GenerateSlideModal'
 import { cn } from '../utils/cn'
 import { useAppStore } from '../store'
-import type { Slide, Assembly, Project } from '../types'
+import type { Slide, Assembly, Project, SlideOverlay, MediaAsset } from '../types'
 
 // ─── Library Panel ───────────────────────────────────────────────────────────
 
@@ -74,10 +75,7 @@ function LibraryPanel({
   const isFetching = isSearching ? searchFetching : libraryFetching
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  // Reset page when query/filter changes
   useEffect(() => { setPage(1) }, [debouncedQuery, projectId])
-
-  // Reset selection when leaving select mode
   useEffect(() => { if (!selectMode) setSelected(new Map()) }, [selectMode])
 
   const toggleSelect = (slide: Slide) => {
@@ -97,7 +95,6 @@ function LibraryPanel({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search */}
       <div className="p-3 border-b border-gray-100">
         <div className="flex items-center gap-2 mb-2">
           <div className="relative flex-1">
@@ -138,7 +135,6 @@ function LibraryPanel({
           </button>
         </div>
 
-        {/* Project filter */}
         {projects.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             <button
@@ -171,7 +167,6 @@ function LibraryPanel({
         )}
       </div>
 
-      {/* Slide grid */}
       <div className="flex-1 overflow-y-auto p-2">
         {isFetching && !slides.length ? (
           <div className="flex justify-center py-8"><Spinner /></div>
@@ -200,7 +195,6 @@ function LibraryPanel({
                     {slide.title || '(без названия)'}
                   </p>
 
-                  {/* Select mode overlay */}
                   {selectMode && !added && (
                     <div
                       className={cn(
@@ -218,7 +212,6 @@ function LibraryPanel({
                     </div>
                   )}
 
-                  {/* Normal mode overlays */}
                   {!selectMode && (
                     added ? (
                       <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/70">
@@ -242,7 +235,6 @@ function LibraryPanel({
         )}
       </div>
 
-      {/* Add selected button */}
       {selectMode && selected.size > 0 && (
         <div className="px-3 py-2 border-t border-brand-100 bg-brand-50">
           <button
@@ -255,7 +247,6 @@ function LibraryPanel({
         </div>
       )}
 
-      {/* Pagination */}
       {!isSearching && totalPages > 1 && (
         <div className="px-3 py-2 border-t border-gray-100 flex items-center justify-between">
           <button
@@ -285,6 +276,152 @@ function LibraryPanel({
   )
 }
 
+// ─── Media Panel ─────────────────────────────────────────────────────────────
+
+function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
+  const { data: assets = [], isLoading } = useQuery({
+    queryKey: ['media-assets-all'],
+    queryFn: () => mediaApi.listAssets(),
+  })
+
+  if (isLoading) {
+    return <div className="flex justify-center py-8"><Spinner /></div>
+  }
+
+  if (assets.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 p-6">
+        <Film className="w-10 h-10 opacity-20" />
+        <div className="text-center">
+          <p className="text-xs font-medium text-gray-500">Нет медиафайлов</p>
+          <p className="text-[10px] mt-1 text-gray-400">
+            Загрузите GIF, видео или фото в разделе «Медиа»
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-2">
+      <p className="text-[10px] text-gray-400 px-1 pb-2">
+        Нажмите на медиафайл, чтобы добавить его на текущий слайд
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {assets.map((asset) => (
+          <button
+            key={asset.id}
+            onClick={() => onAdd(asset)}
+            className="relative group rounded-lg overflow-hidden border border-gray-200 hover:border-brand-400 transition-all bg-gray-50 hover:shadow-md"
+            style={{ aspectRatio: '16/9' }}
+            title={asset.name}
+          >
+            {asset.file_type === 'video' ? (
+              <video
+                src={asset.url}
+                className="w-full h-full object-cover"
+                muted
+                preload="metadata"
+              />
+            ) : (
+              <img
+                src={asset.url}
+                alt={asset.name}
+                className="w-full h-full object-cover"
+              />
+            )}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <Plus className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+            </div>
+            {/* Type badge */}
+            <div className="absolute top-1 left-1">
+              {asset.file_type === 'video' ? (
+                <span className="text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium">VID</span>
+              ) : asset.file_type === 'gif' ? (
+                <span className="text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium">GIF</span>
+              ) : (
+                <span className="text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium">IMG</span>
+              )}
+            </div>
+            <p className="absolute bottom-0 left-0 right-0 text-[9px] text-white bg-black/50 px-1.5 py-0.5 truncate">
+              {asset.name}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Overlay Item ─────────────────────────────────────────────────────────────
+
+function OverlayItem({
+  overlay,
+  isSelected,
+  onMouseDown,
+  onDelete,
+}: {
+  overlay: SlideOverlay
+  isSelected: boolean
+  onMouseDown: (e: React.MouseEvent, mode: 'move' | 'resize') => void
+  onDelete: () => void
+}) {
+  return (
+    <div
+      className={cn(
+        'absolute select-none',
+        isSelected
+          ? 'outline outline-2 outline-brand-500 outline-offset-0 cursor-move'
+          : 'cursor-pointer hover:outline hover:outline-1 hover:outline-brand-300'
+      )}
+      style={{
+        left: `${overlay.x}%`,
+        top: `${overlay.y}%`,
+        width: `${overlay.w}%`,
+        height: `${overlay.h}%`,
+      }}
+      onMouseDown={(e) => onMouseDown(e, 'move')}
+    >
+      {overlay.file_type === 'video' ? (
+        <video
+          src={overlay.url}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-contain pointer-events-none"
+        />
+      ) : (
+        <img
+          src={overlay.url}
+          alt=""
+          className="w-full h-full object-contain pointer-events-none"
+          draggable={false}
+        />
+      )}
+
+      {isSelected && (
+        <>
+          <button
+            className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 z-20 cursor-pointer"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+          >
+            <X className="w-3 h-3" />
+          </button>
+          <div
+            className="absolute bottom-0 right-0 w-4 h-4 bg-brand-500 cursor-se-resize rounded-tl z-20"
+            onMouseDown={(e) => {
+              e.stopPropagation()
+              onMouseDown(e, 'resize')
+            }}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function Assemble() {
@@ -298,13 +435,28 @@ export default function Assemble() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState('')
   const [localSlides, setLocalSlides] = useState<Slide[]>([])
+  const [overlays, setOverlays] = useState<Record<string, SlideOverlay[]>>({})
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [showSlideshow, setShowSlideshow] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
-  const [rightTab, setRightTab] = useState<'info' | 'library'>(
+  const [rightTab, setRightTab] = useState<'info' | 'library' | 'media'>(
     searchParams.get('tab') === 'library' ? 'library' : 'info'
   )
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const overlaysRef = useRef<Record<string, SlideOverlay[]>>({})
+  const dragRef = useRef<{
+    overlayId: string
+    slideId: string
+    mode: 'move' | 'resize'
+    startX: number
+    startY: number
+    startOverlay: SlideOverlay
+  } | null>(null)
+  const saveOverlaysRef = useRef<() => void>(() => {})
 
   const { data: assembly, isLoading } = useQuery({
     queryKey: ['assembly', assemblyId],
@@ -316,18 +468,125 @@ export default function Assemble() {
     if (assembly) {
       setLocalSlides(assembly.slides)
       setTitleValue(assembly.title)
+      setOverlays(assembly.overlays || {})
     }
   }, [assembly])
 
+  // Keep overlaysRef in sync for stable drag handler
+  useEffect(() => { overlaysRef.current = overlays }, [overlays])
 
   const updateMutation = useMutation({
-    mutationFn: (data: { slide_ids?: number[]; title?: string }) =>
+    mutationFn: (data: { slide_ids?: number[]; title?: string; overlays?: Record<string, SlideOverlay[]> }) =>
       assemblyApi.update(assemblyId, data),
     onSuccess: (updated: Assembly) => {
       queryClient.setQueryData(['assembly', assemblyId], updated)
     },
     onError: () => toast.error('Не удалось сохранить изменения'),
   })
+
+  // Keep saveOverlaysRef current without causing re-renders
+  saveOverlaysRef.current = () => {
+    updateMutation.mutate({ overlays: overlaysRef.current })
+  }
+
+  // Document-level drag/resize handlers — stable, read from refs
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const drag = dragRef.current
+      if (!drag || !containerRef.current) return
+
+      const rect = containerRef.current.getBoundingClientRect()
+      const dx = ((e.clientX - drag.startX) / rect.width) * 100
+      const dy = ((e.clientY - drag.startY) / rect.height) * 100
+      const { overlayId, slideId, mode, startOverlay } = drag
+
+      setOverlays((prev) => {
+        const list = [...(prev[slideId] || [])]
+        const i = list.findIndex((o) => o.id === overlayId)
+        if (i < 0) return prev
+        const o = { ...list[i] }
+        if (mode === 'move') {
+          o.x = Math.max(0, Math.min(100 - o.w, startOverlay.x + dx))
+          o.y = Math.max(0, Math.min(100 - o.h, startOverlay.y + dy))
+        } else {
+          o.w = Math.max(10, Math.min(100 - startOverlay.x, startOverlay.w + dx))
+          o.h = Math.max(5, Math.min(100 - startOverlay.y, startOverlay.h + dy))
+        }
+        list[i] = o
+        return { ...prev, [slideId]: list }
+      })
+    }
+
+    const onUp = () => {
+      if (!dragRef.current) return
+      dragRef.current = null
+      saveOverlaysRef.current()
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, []) // empty deps — all access via refs
+
+  const handleOverlayMouseDown = useCallback((
+    e: React.MouseEvent,
+    overlayId: string,
+    slideId: string,
+    mode: 'move' | 'resize'
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSelectedOverlayId(overlayId)
+    const overlay = overlaysRef.current[slideId]?.find((o) => o.id === overlayId)
+    if (!overlay) return
+    dragRef.current = {
+      overlayId,
+      slideId,
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      startOverlay: { ...overlay },
+    }
+  }, [])
+
+  const handleAddOverlay = useCallback((asset: MediaAsset) => {
+    const slideId = String(localSlides[selectedIndex]?.id)
+    if (!slideId || slideId === 'undefined') {
+      toast.error('Выберите слайд')
+      return
+    }
+    const newOverlay: SlideOverlay = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      asset_id: asset.id,
+      url: asset.url,
+      file_type: asset.file_type,
+      x: 5,
+      y: 5,
+      w: 35,
+      h: 25,
+    }
+    const newOverlays = {
+      ...overlaysRef.current,
+      [slideId]: [...(overlaysRef.current[slideId] || []), newOverlay],
+    }
+    setOverlays(newOverlays)
+    setSelectedOverlayId(newOverlay.id)
+    updateMutation.mutate({ overlays: newOverlays })
+    toast.success('Медиа добавлено на слайд', { duration: 1500 })
+  }, [localSlides, selectedIndex, updateMutation])
+
+  const deleteOverlay = useCallback((slideId: string, overlayId: string) => {
+    const newOverlays = {
+      ...overlaysRef.current,
+      [slideId]: (overlaysRef.current[slideId] || []).filter((o) => o.id !== overlayId),
+    }
+    setOverlays(newOverlays)
+    setSelectedOverlayId(null)
+    updateMutation.mutate({ overlays: newOverlays })
+  }, [updateMutation])
 
   const handleReorder = (newSlides: Slide[]) => {
     setLocalSlides(newSlides)
@@ -412,53 +671,94 @@ export default function Assemble() {
   const selectedSlide = localSlides[selectedIndex]
   const existingIds = new Set(localSlides.map((s) => s.id))
   const isManual = assembly?.prompt === '(создано вручную)'
+  const currentSlideId = selectedSlide ? String(selectedSlide.id) : null
+  const currentOverlays = currentSlideId ? (overlays[currentSlideId] || []) : []
+
+  const rightPanelWidth = rightTab === 'library' ? 'w-[340px]' : rightTab === 'media' ? 'w-[300px]' : 'w-[260px]'
 
   return (
     <div className="flex h-full overflow-hidden bg-white">
-      {/* Left: filmstrip */}
-      <div className="w-[200px] shrink-0 border-r border-gray-200 flex flex-col bg-surface">
-        <div className="p-3 border-b border-gray-200 flex items-center justify-between">
+      {/* Left: filmstrip (collapsible) */}
+      <div className={cn(
+        'shrink-0 border-r border-gray-200 flex flex-col bg-surface transition-all duration-200 overflow-hidden',
+        sidebarCollapsed ? 'w-[40px]' : 'w-[200px]'
+      )}>
+        <div className="p-2 border-b border-gray-200 flex items-center justify-between shrink-0">
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Назад
+            </button>
+          )}
           <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Назад
-          </button>
-          <span className="text-xs text-gray-400">{localSlides.length} сл.</span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          <FilmStrip
-            slides={localSlides}
-            selectedIndex={selectedIndex}
-            onSelect={setSelectedIndex}
-            onReorder={handleReorder}
-            onRemove={handleRemove}
-          />
-        </div>
-
-        {/* Add slide button */}
-        <div className="p-2 border-t border-gray-200">
-          <button
-            onClick={() => setRightTab('library')}
+            onClick={() => setSidebarCollapsed((v) => !v)}
             className={cn(
-              'w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs transition-colors',
-              rightTab === 'library'
-                ? 'border-brand-400 text-brand-700 bg-brand-50'
-                : 'border-dashed border-gray-300 text-gray-500 hover:border-brand-400 hover:text-brand-700'
+              'p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0',
+              sidebarCollapsed && 'mx-auto'
             )}
+            title={sidebarCollapsed ? 'Развернуть панель' : 'Свернуть панель'}
           >
-            <Plus className="w-3.5 h-3.5" />
-            Добавить слайды
+            {sidebarCollapsed
+              ? <PanelLeftOpen className="w-4 h-4" />
+              : <PanelLeftClose className="w-4 h-4" />
+            }
           </button>
+          {!sidebarCollapsed && (
+            <span className="text-xs text-gray-400">{localSlides.length} сл.</span>
+          )}
         </div>
+
+        {!sidebarCollapsed && (
+          <>
+            <div className="flex-1 overflow-y-auto">
+              <FilmStrip
+                slides={localSlides}
+                selectedIndex={selectedIndex}
+                onSelect={setSelectedIndex}
+                onReorder={handleReorder}
+                onRemove={handleRemove}
+              />
+            </div>
+
+            <div className="p-2 border-t border-gray-200">
+              <button
+                onClick={() => setRightTab('library')}
+                className={cn(
+                  'w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs transition-colors',
+                  rightTab === 'library'
+                    ? 'border-brand-400 text-brand-700 bg-brand-50'
+                    : 'border-dashed border-gray-300 text-gray-500 hover:border-brand-400 hover:text-brand-700'
+                )}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Добавить слайды
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Collapsed state: show slide count */}
+        {sidebarCollapsed && (
+          <div className="flex-1 flex flex-col items-center pt-2 gap-2">
+            <span className="text-[10px] text-gray-400 writing-mode-vertical">{localSlides.length}</span>
+          </div>
+        )}
       </div>
 
       {/* Center: large preview */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Navigation */}
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200">
+          {sidebarCollapsed && (
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors mr-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             disabled={selectedIndex === 0}
             onClick={() => setSelectedIndex(selectedIndex - 1)}
@@ -482,13 +782,36 @@ export default function Assemble() {
               {selectedSlide.title || '(без названия)'}
             </p>
           )}
+
+          {/* Overlay count badge */}
+          {currentOverlays.length > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 shrink-0">
+              {currentOverlays.length} медиа
+            </span>
+          )}
+
+          {/* Deselect overlay hint */}
+          {selectedOverlayId && (
+            <button
+              onClick={() => setSelectedOverlayId(null)}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors shrink-0"
+            >
+              Снять выделение
+            </button>
+          )}
         </div>
 
         {/* Slide preview */}
-        <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
+        <div
+          className="flex-1 flex items-center justify-center p-8 bg-gray-50"
+          onClick={() => setSelectedOverlayId(null)}
+        >
           {selectedSlide ? (
             <div className="w-full max-w-4xl">
-              <div className="relative w-full rounded-xl overflow-hidden shadow-xl border border-gray-200">
+              <div
+                ref={containerRef}
+                className="relative w-full rounded-xl overflow-hidden shadow-xl border border-gray-200"
+              >
                 {selectedSlide.video_url ? (
                   <video
                     src={selectedSlide.video_url}
@@ -501,10 +824,21 @@ export default function Assemble() {
                   <SlideThumbnail slide={selectedSlide} />
                 )}
 
+                {/* Overlay items */}
+                {currentOverlays.map((overlay) => (
+                  <OverlayItem
+                    key={overlay.id}
+                    overlay={overlay}
+                    isSelected={selectedOverlayId === overlay.id}
+                    onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
+                    onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
+                  />
+                ))}
+
                 {/* Slideshow button */}
                 {localSlides.length > 1 && (
                   <button
-                    onClick={() => setShowSlideshow(true)}
+                    onClick={(e) => { e.stopPropagation(); setShowSlideshow(true) }}
                     className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md"
                   >
                     <Play className="w-3 h-3" />
@@ -512,6 +846,13 @@ export default function Assemble() {
                   </button>
                 )}
               </div>
+
+              {/* Overlay instruction */}
+              {currentOverlays.length > 0 && !selectedOverlayId && (
+                <p className="text-center text-[10px] text-gray-400 mt-2">
+                  Нажмите на медиаэлемент для выделения, затем перетащите или измените размер
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center text-gray-400 gap-4">
@@ -539,14 +880,14 @@ export default function Assemble() {
       {/* Right panel */}
       <div className={cn(
         'shrink-0 border-l border-gray-200 flex flex-col bg-white transition-all duration-200',
-        rightTab === 'library' ? 'w-[340px]' : 'w-[260px]'
+        rightPanelWidth
       )}>
         {/* Tabs */}
         <div className="flex items-center border-b border-gray-200 shrink-0">
           <button
             onClick={() => setRightTab('info')}
             className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors border-b-2',
+              'flex-1 flex items-center justify-center gap-1 py-3 text-xs font-medium transition-colors border-b-2',
               rightTab === 'info'
                 ? 'text-brand-700 border-brand-700'
                 : 'text-gray-400 border-transparent hover:text-gray-600'
@@ -558,19 +899,36 @@ export default function Assemble() {
           <button
             onClick={() => setRightTab('library')}
             className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors border-b-2',
+              'flex-1 flex items-center justify-center gap-1 py-3 text-xs font-medium transition-colors border-b-2',
               rightTab === 'library'
                 ? 'text-brand-700 border-brand-700'
                 : 'text-gray-400 border-transparent hover:text-gray-600'
             )}
           >
             <BookImage className="w-3.5 h-3.5" />
-            Библиотека
+            Слайды
+          </button>
+          <button
+            onClick={() => setRightTab('media')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1 py-3 text-xs font-medium transition-colors border-b-2 relative',
+              rightTab === 'media'
+                ? 'text-brand-700 border-brand-700'
+                : 'text-gray-400 border-transparent hover:text-gray-600'
+            )}
+          >
+            <Film className="w-3.5 h-3.5" />
+            Медиа
+            {currentOverlays.length > 0 && (
+              <span className="absolute top-2 right-2 w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[8px] flex items-center justify-center font-bold">
+                {currentOverlays.length}
+              </span>
+            )}
           </button>
         </div>
 
         {/* Tab content */}
-        {rightTab === 'info' ? (
+        {rightTab === 'info' && (
           <div className="flex flex-col flex-1 overflow-auto">
             {/* Title */}
             <div className="p-4 border-b border-gray-200">
@@ -712,13 +1070,79 @@ export default function Assemble() {
               </div>
             </div>
           </div>
-        ) : (
+        )}
+
+        {rightTab === 'library' && (
           <LibraryPanel
             existingIds={existingIds}
             onAdd={handleAddSlide}
             onAddMultiple={handleAddMultiple}
             onGenerate={() => setShowGenerateModal(true)}
           />
+        )}
+
+        {rightTab === 'media' && (
+          <div className="flex flex-col h-full">
+            {!selectedSlide ? (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400 p-6">
+                <Image className="w-8 h-8 opacity-20" />
+                <p className="text-xs text-center text-gray-400">
+                  Выберите слайд в левой панели, чтобы добавить медиа
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Current overlays list */}
+                {currentOverlays.length > 0 && (
+                  <div className="p-3 border-b border-gray-100">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2 font-medium">
+                      На этом слайде ({currentOverlays.length})
+                    </p>
+                    <div className="flex flex-col gap-1">
+                      {currentOverlays.map((overlay) => (
+                        <div
+                          key={overlay.id}
+                          className={cn(
+                            'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors',
+                            selectedOverlayId === overlay.id
+                              ? 'bg-brand-50 border border-brand-200'
+                              : 'hover:bg-gray-50 border border-transparent'
+                          )}
+                          onClick={() => setSelectedOverlayId(
+                            selectedOverlayId === overlay.id ? null : overlay.id
+                          )}
+                        >
+                          <div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-gray-100">
+                            {overlay.file_type === 'video' ? (
+                              <video src={overlay.url} className="w-full h-full object-cover" muted />
+                            ) : (
+                              <img src={overlay.url} alt="" className="w-full h-full object-cover" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[10px] text-gray-600 block truncate">
+                              {overlay.file_type.toUpperCase()}
+                            </span>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteOverlay(currentSlideId!, overlay.id)
+                            }}
+                            className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <MediaPanel onAdd={handleAddOverlay} />
+              </>
+            )}
+          </div>
         )}
       </div>
 

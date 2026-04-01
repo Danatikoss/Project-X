@@ -59,6 +59,7 @@ def migrate_db():
         if "assembled_presentations" in tables:
             _add_column_if_missing(conn, "assembled_presentations", "owner_id", "INTEGER REFERENCES users(id)")
             _add_column_if_missing(conn, "assembled_presentations", "share_token", "TEXT")
+            _add_column_if_missing(conn, "assembled_presentations", "overlays_json", "TEXT DEFAULT '{}'")
             if _is_sqlite:
                 conn.execute(text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_assembled_presentations_share_token "
