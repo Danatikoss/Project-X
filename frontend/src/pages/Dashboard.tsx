@@ -11,19 +11,7 @@ import { Spinner } from '../components/common/Spinner'
 import { cn } from '../utils/cn'
 import type { AssemblyListItem, AssemblyTemplate } from '../types'
 
-// ─── Template definitions ─────────────────────────────────────────────────────
-
-interface BuiltinTemplate {
-  id: string
-  emoji: string
-  title: string
-  desc: string
-  slides: number
-  accentHex: string
-  bodyColor: string
-  prompt: string
-  isUser?: false
-}
+// ─── Template card type ───────────────────────────────────────────────────────
 
 interface UserTemplateCard {
   id: string
@@ -31,112 +19,7 @@ interface UserTemplateCard {
   desc: string
   slidesPreview: AssemblyTemplate['slides_preview']
   slideCount: number
-  isUser: true
   dbId: number
-}
-
-type TemplateCard = BuiltinTemplate | UserTemplateCard
-
-const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
-  {
-    id: 'pitch',
-    emoji: '🚀',
-    title: 'Питч-дек',
-    desc: 'Проблема, решение, рынок, команда',
-    slides: 8,
-    accentHex: '#f97316',
-    bodyColor: '#fff7ed',
-    prompt: 'Питч-дек для инвестора: проблема на рынке, наше решение, объём рынка, бизнес-модель, команда и текущие метрики роста',
-  },
-  {
-    id: 'quarterly',
-    emoji: '📊',
-    title: 'Квартальный отчёт',
-    desc: 'KPI, достижения, риски, планы',
-    slides: 7,
-    accentHex: '#3b82f6',
-    bodyColor: '#eff6ff',
-    prompt: 'Квартальный отчёт: выполнение KPI, ключевые достижения периода, выявленные риски и проблемы, планы на следующий квартал',
-  },
-  {
-    id: 'project',
-    emoji: '📋',
-    title: 'Статус проекта',
-    desc: 'Прогресс, риски, следующие шаги',
-    slides: 6,
-    accentHex: '#14b8a6',
-    bodyColor: '#f0fdf4',
-    prompt: 'Статус-отчёт по проекту: цели и задачи, текущий прогресс выполнения, риски и блокеры, следующие шаги и дедлайны',
-  },
-  {
-    id: 'strategy',
-    emoji: '🎯',
-    title: 'Стратегия',
-    desc: 'Анализ, приоритеты, дорожная карта',
-    slides: 9,
-    accentHex: '#8b5cf6',
-    bodyColor: '#f5f3ff',
-    prompt: 'Стратегический план: анализ текущего состояния и рынка, стратегические цели и приоритеты, дорожная карта реализации',
-  },
-  {
-    id: 'review',
-    emoji: '🔍',
-    title: 'Бизнес-обзор',
-    desc: 'Показатели, тренды, выводы',
-    slides: 7,
-    accentHex: '#f59e0b',
-    bodyColor: '#fffbeb',
-    prompt: 'Бизнес-обзор: ключевые показатели и их динамика, сравнение с целями и конкурентами, выводы и рекомендации',
-  },
-  {
-    id: 'onboarding',
-    emoji: '👋',
-    title: 'Онбординг',
-    desc: 'Компания, структура, процессы',
-    slides: 8,
-    accentHex: '#ec4899',
-    bodyColor: '#fdf2f8',
-    prompt: 'Онбординг-презентация: знакомство с компанией и миссией, организационная структура и команда, процессы и инструменты, первые шаги нового сотрудника',
-  },
-]
-
-// ─── DeckPreview (builtins only) ──────────────────────────────────────────────
-
-function DeckPreview({ colorHex, bgColor }: { colorHex: string; bgColor: string }) {
-  return (
-    <div
-      className="w-full rounded-t-2xl overflow-hidden flex gap-2 p-3"
-      style={{ background: bgColor, height: '140px' }}
-    >
-      <div
-        className="w-[38%] h-full rounded-xl flex flex-col p-2.5 shrink-0"
-        style={{ background: colorHex }}
-      >
-        <div className="h-2 rounded-full bg-white/80 w-4/5 mb-1.5" />
-        <div className="h-1.5 rounded-full bg-white/50 w-3/5 mb-1" />
-        <div className="h-1.5 rounded-full bg-white/40 w-4/5" />
-        <div className="mt-auto h-1.5 rounded-full bg-white/25 w-3/4" />
-      </div>
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="flex-1 h-full rounded-xl bg-white/90 flex flex-col p-2 border border-gray-100/60"
-        >
-          <div
-            className="h-1.5 rounded-full mb-1.5 w-[70%]"
-            style={{ background: colorHex, opacity: 0.7 }}
-          />
-          <div className="h-1 rounded-full bg-gray-200 mb-1 w-full" />
-          <div className="h-1 rounded-full bg-gray-200 mb-1 w-4/5" />
-          <div className="h-1 rounded-full bg-gray-200 w-3/5" />
-          <div
-            className="mt-auto h-1 rounded-full w-1/2"
-            style={{ background: colorHex, opacity: 0.2 }}
-          />
-        </div>
-      ))}
-    </div>
-  )
 }
 
 // ─── UserTemplateThumbnail ────────────────────────────────────────────────────
@@ -210,31 +93,16 @@ export default function Dashboard() {
     queryFn: templatesApi.list,
   })
 
-  // Merge user templates (first) + builtins
-  const allTemplates: TemplateCard[] = [
-    ...userTemplates.map((t): UserTemplateCard => ({
-      id: `user-${t.id}`,
-      title: t.name,
-      desc: t.description,
-      slidesPreview: t.slides_preview,
-      slideCount: t.slide_ids.length,
-      isUser: true,
-      dbId: t.id,
-    })),
-    ...BUILTIN_TEMPLATES,
-  ]
+  const allTemplates: UserTemplateCard[] = userTemplates.map((t) => ({
+    id: `user-${t.id}`,
+    title: t.name,
+    desc: t.description,
+    slidesPreview: t.slides_preview,
+    slideCount: t.slide_ids.length,
+    dbId: t.id,
+  }))
 
-  // One-click builtin template assembly (AI)
-  const templateMutation = useMutation({
-    mutationFn: (prompt: string) => assemblyApi.create({ prompt, max_slides: 15 }),
-    onSuccess: (assembly) => {
-      queryClient.invalidateQueries({ queryKey: ['assemblies'] })
-      navigate(`/assemble/${assembly.id}`)
-    },
-    onError: () => toast.error('Не удалось собрать презентацию'),
-  })
-
-  // User template → create assembly from template
+  // Create assembly from template
   const createFromTemplateMutation = useMutation({
     mutationFn: (templateId: number) => assemblyApi.createFromTemplate(templateId),
     onSuccess: (assembly) => {
@@ -318,13 +186,9 @@ export default function Dashboard() {
     if (customOpen) promptRef.current?.focus()
   }, [customOpen])
 
-  const handleTemplateClick = (t: TemplateCard) => {
+  const handleTemplateClick = (t: UserTemplateCard) => {
     setActiveTemplateId(t.id)
-    if (t.isUser) {
-      createFromTemplateMutation.mutate(t.dbId)
-    } else {
-      templateMutation.mutate(t.prompt)
-    }
+    createFromTemplateMutation.mutate(t.dbId)
   }
 
   const handleCustomSubmit = (e: React.FormEvent) => {
@@ -333,7 +197,7 @@ export default function Dashboard() {
     customMutation.mutate()
   }
 
-  const isBuilding = templateMutation.isPending || createFromTemplateMutation.isPending
+  const isBuilding = createFromTemplateMutation.isPending
 
   return (
     <div className="min-h-full bg-surface">
@@ -343,10 +207,10 @@ export default function Dashboard() {
         <div className="max-w-3xl mx-auto">
           <p className="text-xs font-semibold text-brand-600 uppercase tracking-widest mb-2">Быстрый старт</p>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">
-            Выбери шаблон — получи готовую сборку
+            Мои шаблоны
           </h1>
           <p className="text-sm text-slate-500">
-            Один клик. AI подберёт слайды из вашей библиотеки и выстроит логичную структуру.
+            Создайте шаблон из слайдов библиотеки — один клик для сборки презентации.
           </p>
         </div>
       </div>
@@ -369,20 +233,13 @@ export default function Dashboard() {
                 )}
                 onClick={() => !isBuilding && handleTemplateClick(t)}
               >
-                {/* Preview area */}
-                {t.isUser
-                  ? <UserTemplateThumbnail slides={t.slidesPreview} />
-                  : <DeckPreview colorHex={t.accentHex} bgColor={t.bodyColor} />
-                }
+                <UserTemplateThumbnail slides={t.slidesPreview} />
 
-                {/* User template actions */}
-                {t.isUser && !isBuilding && (
+                {/* Actions */}
+                {!isBuilding && (
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        navigate(`/templates/${t.dbId}/edit`)
-                      }}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/templates/${t.dbId}/edit`) }}
                       className="p-1.5 rounded-lg bg-white/90 shadow-sm hover:bg-white text-gray-500 hover:text-gray-800 transition-colors"
                       title="Редактировать"
                     >
@@ -404,27 +261,21 @@ export default function Dashboard() {
 
                 <div className="px-4 pt-3 pb-4">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 truncate">
-                      {!t.isUser && <span>{t.emoji}</span>}
-                      {t.title}
-                    </span>
-                    <span className="text-[11px] text-gray-400 shrink-0 ml-1">
-                      {t.isUser ? `${t.slideCount} сл.` : `~${t.slides} сл.`}
-                    </span>
+                    <span className="text-sm font-semibold text-gray-900 truncate">{t.title}</span>
+                    <span className="text-[11px] text-gray-400 shrink-0 ml-1">{t.slideCount} сл.</span>
                   </div>
                   {t.desc && (
                     <p className="text-[12px] text-gray-500 mb-3 leading-snug">{t.desc}</p>
                   )}
-                  <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center mt-2">
                     {isThisBuilding ? (
                       <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-600">
                         <Spinner size="sm" className="border-brand-500 border-t-transparent" />
-                        {t.isUser ? 'Создаём...' : 'Собираем...'}
+                        Создаём...
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-sm font-semibold text-brand-600 group-hover:text-brand-700">
-                        {t.isUser ? 'Использовать' : 'Собрать'}{' '}
-                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        Использовать <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     )}
                   </div>

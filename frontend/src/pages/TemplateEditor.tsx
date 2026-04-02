@@ -532,7 +532,7 @@ export default function TemplateEditor() {
         </div>
         <button
           onClick={handleSave}
-          disabled={saving || !name.trim()}
+          disabled={saving}
           className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
         >
           {saving ? <Spinner size="sm" className="border-white border-t-transparent" /> : <Check className="w-3.5 h-3.5" />}
