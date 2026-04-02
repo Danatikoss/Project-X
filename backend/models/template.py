@@ -8,9 +8,7 @@ class AssemblyTemplate(Base):
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(100), nullable=False)
-    emoji = Column(String(10), default="📋")
     description = Column(String(200), default="")
-    slide_count_hint = Column(Integer, default=8)
-    color_hex = Column(String(7), default="#3b82f6")
-    prompt = Column(Text, nullable=False)
+    slide_ids_json = Column(Text, default="[]")   # JSON array of SlideLibraryEntry IDs (ordered)
+    overlays_json = Column(Text, default="{}")    # {"slide_id": [{id,asset_id,url,file_type,x,y,w,h}]}
     created_at = Column(DateTime, default=datetime.utcnow)

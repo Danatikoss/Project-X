@@ -81,6 +81,34 @@ def create_blank_assembly(body: AssembleBlankRequest, db: Session = Depends(get_
     return _assembly_to_response(assembly, db)
 
 
+@router.post("/from-template/{template_id}", response_model=AssemblyResponse, status_code=201)
+def create_from_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Create a new assembly pre-populated with slides from a template."""
+    from models.template import AssemblyTemplate
+    template = db.query(AssemblyTemplate).get(template_id)
+    if not template:
+        raise HTTPException(404, detail="Шаблон не найден")
+    if template.owner_id != user.id:
+        raise HTTPException(403, detail="Нет доступа")
+
+    assembly = AssembledPresentation(
+        owner_id=user.id,
+        title=template.name,
+        prompt=f"(из шаблона: {template.name})",
+        slide_ids_json=template.slide_ids_json,
+        overlays_json=template.overlays_json,
+        status="draft",
+    )
+    db.add(assembly)
+    db.commit()
+    db.refresh(assembly)
+    return _assembly_to_response(assembly, db)
+
+
 @router.post("", response_model=AssemblyResponse, status_code=201)
 async def create_assembly(body: AssembleRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     assembly = await run_assembly(db, body.prompt, body.max_slides, user_id=user.id)

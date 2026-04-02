@@ -206,10 +206,9 @@ export interface MediaAsset {
 export interface AssemblyTemplate {
   id: number
   name: string
-  emoji: string
   description: string
-  slide_count_hint: number
-  color_hex: string
-  prompt: string
+  slide_ids: number[]
+  overlays: Record<string, SlideOverlay[]>
+  slides_preview: { id: number; thumbnail_url: string; title: string | null }[]
   created_at: string
 }

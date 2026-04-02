@@ -88,5 +88,17 @@ def migrate_db():
 
 def create_tables():
     from models import slide, assembly, user, project, brand, media, template  # noqa: F401
+
+    # Drop old assembly_templates if schema changed (had AI 'prompt' column)
+    try:
+        existing_tables = inspect(engine).get_table_names()
+        if "assembly_templates" in existing_tables:
+            existing_cols = [c["name"] for c in inspect(engine).get_columns("assembly_templates")]
+            if "prompt" in existing_cols:
+                with engine.begin() as conn:
+                    conn.execute(text("DROP TABLE assembly_templates"))
+    except Exception:
+        pass
+
     Base.metadata.create_all(bind=engine)
     migrate_db()

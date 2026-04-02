@@ -209,6 +209,11 @@ export const assemblyApi = {
     return res.data
   },
 
+  createFromTemplate: async (templateId: number): Promise<Assembly> => {
+    const res = await api.post<Assembly>(`/assemble/from-template/${templateId}`)
+    return res.data
+  },
+
   create: async (req: AssembleRequest): Promise<Assembly> => {
     const res = await api.post<Assembly>('/assemble', req)
     return res.data
@@ -377,11 +382,15 @@ export const templatesApi = {
     const res = await api.get<AssemblyTemplate[]>('/templates')
     return res.data
   },
-  create: async (data: Omit<AssemblyTemplate, 'id' | 'created_at'>): Promise<AssemblyTemplate> => {
+  get: async (id: number): Promise<AssemblyTemplate> => {
+    const res = await api.get<AssemblyTemplate>(`/templates/${id}`)
+    return res.data
+  },
+  create: async (data: { name: string; description?: string; slide_ids?: number[]; overlays?: Record<string, unknown[]> }): Promise<AssemblyTemplate> => {
     const res = await api.post<AssemblyTemplate>('/templates', data)
     return res.data
   },
-  update: async (id: number, data: Partial<Omit<AssemblyTemplate, 'id' | 'created_at'>>): Promise<AssemblyTemplate> => {
+  update: async (id: number, data: { name?: string; description?: string; slide_ids?: number[]; overlays?: Record<string, unknown[]> }): Promise<AssemblyTemplate> => {
     const res = await api.patch<AssemblyTemplate>(`/templates/${id}`, data)
     return res.data
   },

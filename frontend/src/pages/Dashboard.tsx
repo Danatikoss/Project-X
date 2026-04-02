@@ -3,27 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Sparkles, Clock, Copy, PenLine, Trash2, Upload, BookImage,
-  Check, ArrowRight, ChevronDown, Plus, Pencil, X,
+  Check, ArrowRight, ChevronDown, Plus, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { assemblyApi, templatesApi } from '../api/client'
 import { Spinner } from '../components/common/Spinner'
 import { cn } from '../utils/cn'
 import type { AssemblyListItem, AssemblyTemplate } from '../types'
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function hexToLightBg(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r},${g},${b},0.08)`
-}
-
-const COLOR_PRESETS = [
-  '#f97316', '#3b82f6', '#14b8a6', '#8b5cf6',
-  '#f59e0b', '#ec4899', '#22c55e', '#ef4444',
-]
 
 // ─── Template definitions ─────────────────────────────────────────────────────
 
@@ -41,13 +27,10 @@ interface BuiltinTemplate {
 
 interface UserTemplateCard {
   id: string
-  emoji: string
   title: string
   desc: string
-  slides: number
-  accentHex: string
-  bodyColor: string
-  prompt: string
+  slidesPreview: AssemblyTemplate['slides_preview']
+  slideCount: number
   isUser: true
   dbId: number
 }
@@ -117,7 +100,7 @@ const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
   },
 ]
 
-// ─── DeckPreview ──────────────────────────────────────────────────────────────
+// ─── DeckPreview (builtins only) ──────────────────────────────────────────────
 
 function DeckPreview({ colorHex, bgColor }: { colorHex: string; bgColor: string }) {
   return (
@@ -125,7 +108,6 @@ function DeckPreview({ colorHex, bgColor }: { colorHex: string; bgColor: string 
       className="w-full rounded-t-2xl overflow-hidden flex gap-2 p-3"
       style={{ background: bgColor, height: '140px' }}
     >
-      {/* Cover slide */}
       <div
         className="w-[38%] h-full rounded-xl flex flex-col p-2.5 shrink-0"
         style={{ background: colorHex }}
@@ -135,7 +117,6 @@ function DeckPreview({ colorHex, bgColor }: { colorHex: string; bgColor: string 
         <div className="h-1.5 rounded-full bg-white/40 w-4/5" />
         <div className="mt-auto h-1.5 rounded-full bg-white/25 w-3/4" />
       </div>
-      {/* Content slides x3 */}
       {[0, 1, 2].map((i) => (
         <div
           key={i}
@@ -158,170 +139,41 @@ function DeckPreview({ colorHex, bgColor }: { colorHex: string; bgColor: string 
   )
 }
 
-// ─── Template Modal ───────────────────────────────────────────────────────────
+// ─── UserTemplateThumbnail ────────────────────────────────────────────────────
 
-interface TemplateModalProps {
-  initial?: AssemblyTemplate | null
-  onClose: () => void
-  onSaved: () => void
-}
-
-function TemplateModal({ initial, onClose, onSaved }: TemplateModalProps) {
-  const [emoji, setEmoji] = useState(initial?.emoji ?? '📋')
-  const [name, setName] = useState(initial?.name ?? '')
-  const [description, setDescription] = useState(initial?.description ?? '')
-  const [colorHex, setColorHex] = useState(initial?.color_hex ?? '#3b82f6')
-  const [prompt, setPrompt] = useState(initial?.prompt ?? '')
-  const [slideCountHint, setSlideCountHint] = useState(initial?.slide_count_hint ?? 8)
-  const [saving, setSaving] = useState(false)
-
-  const isEdit = !!initial
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name.trim() || !prompt.trim()) return
-    setSaving(true)
-    try {
-      const payload = {
-        name: name.trim(),
-        emoji: emoji.trim() || '📋',
-        description: description.trim(),
-        color_hex: colorHex,
-        prompt: prompt.trim(),
-        slide_count_hint: slideCountHint,
-      }
-      if (isEdit) {
-        await templatesApi.update(initial.id, payload)
-        toast.success('Шаблон обновлён')
-      } else {
-        await templatesApi.create(payload)
-        toast.success('Шаблон создан')
-      }
-      onSaved()
-    } catch {
-      toast.error('Не удалось сохранить шаблон')
-    } finally {
-      setSaving(false)
-    }
+function UserTemplateThumbnail({ slides }: { slides: AssemblyTemplate['slides_preview'] }) {
+  if (slides.length === 0) {
+    return (
+      <div
+        className="w-full rounded-t-2xl overflow-hidden bg-gray-50 flex items-center justify-center"
+        style={{ height: '140px' }}
+      >
+        <div className="text-center text-gray-300">
+          <BookImage className="w-8 h-8 mx-auto mb-1 opacity-50" />
+          <p className="text-[10px]">Нет слайдов</p>
+        </div>
+      </div>
+    )
   }
 
+  const count = slides.length
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">
-            {isEdit ? 'Редактировать шаблон' : 'Новый шаблон'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Live preview */}
-          <DeckPreview colorHex={colorHex} bgColor={hexToLightBg(colorHex)} />
-
-          {/* Emoji + Name */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={emoji}
-              onChange={(e) => setEmoji(e.target.value)}
-              maxLength={10}
-              placeholder="📋"
-              className="w-14 text-center px-2 py-2 rounded-xl border border-gray-200 bg-gray-50 text-lg focus:outline-none focus:ring-2 focus:ring-brand-300 focus:bg-white transition-all"
-            />
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={100}
-              placeholder="Название шаблона"
-              required
-              className="flex-1 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:bg-white transition-all"
-            />
-          </div>
-
-          {/* Description */}
-          <input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={200}
-            placeholder="Краткое описание (необязательно)"
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:bg-white transition-all"
-          />
-
-          {/* Color presets */}
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Цвет</p>
-            <div className="flex gap-2 flex-wrap">
-              {COLOR_PRESETS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColorHex(c)}
-                  className={cn(
-                    'w-7 h-7 rounded-full border-2 transition-all',
-                    colorHex === c ? 'border-gray-800 scale-110' : 'border-transparent hover:scale-105'
-                  )}
-                  style={{ background: c }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Slide count */}
-          <div className="flex items-center gap-3">
-            <label className="text-xs font-medium text-gray-500 shrink-0">Примерно слайдов:</label>
-            <input
-              type="number"
-              value={slideCountHint}
-              onChange={(e) => setSlideCountHint(Math.min(50, Math.max(1, parseInt(e.target.value) || 1)))}
-              min={1}
-              max={50}
-              className="w-20 px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:bg-white transition-all"
-            />
-          </div>
-
-          {/* Prompt */}
-          <div>
-            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Промпт для AI</label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={4}
-              required
-              placeholder="Опишите структуру и содержание презентации..."
-              className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-brand-300 focus:bg-white transition-all"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !name.trim() || !prompt.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            >
-              {saving && <Spinner size="sm" className="border-white border-t-transparent" />}
-              {isEdit ? 'Сохранить' : 'Создать шаблон'}
-            </button>
-          </div>
-        </form>
-      </div>
+    <div
+      className="w-full rounded-t-2xl overflow-hidden bg-gray-100 grid gap-0.5 p-0.5"
+      style={{
+        height: '140px',
+        gridTemplateColumns: count === 1 ? '1fr' : count === 2 ? '1fr 1fr' : count === 3 ? '1fr 1fr 1fr' : '1fr 1fr',
+        gridTemplateRows: count <= 2 ? '1fr' : '1fr 1fr',
+      }}
+    >
+      {slides.map((s) => (
+        <img
+          key={s.id}
+          src={s.thumbnail_url}
+          alt={s.title ?? ''}
+          className="w-full h-full object-cover rounded"
+        />
+      ))}
     </div>
   )
 }
@@ -342,8 +194,6 @@ export default function Dashboard() {
   const [manualOpen, setManualOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editTitle, setEditTitle] = useState('')
-  const [showTemplateModal, setShowTemplateModal] = useState(false)
-  const [editingTemplate, setEditingTemplate] = useState<AssemblyTemplate | null>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const cancelRenameRef = useRef(false)
   const promptRef = useRef<HTMLTextAreaElement>(null)
@@ -364,20 +214,17 @@ export default function Dashboard() {
   const allTemplates: TemplateCard[] = [
     ...userTemplates.map((t): UserTemplateCard => ({
       id: `user-${t.id}`,
-      emoji: t.emoji,
       title: t.name,
       desc: t.description,
-      slides: t.slide_count_hint,
-      accentHex: t.color_hex,
-      bodyColor: hexToLightBg(t.color_hex),
-      prompt: t.prompt,
+      slidesPreview: t.slides_preview,
+      slideCount: t.slide_ids.length,
       isUser: true,
       dbId: t.id,
     })),
     ...BUILTIN_TEMPLATES,
   ]
 
-  // One-click template assembly
+  // One-click builtin template assembly (AI)
   const templateMutation = useMutation({
     mutationFn: (prompt: string) => assemblyApi.create({ prompt, max_slides: 15 }),
     onSuccess: (assembly) => {
@@ -385,6 +232,16 @@ export default function Dashboard() {
       navigate(`/assemble/${assembly.id}`)
     },
     onError: () => toast.error('Не удалось собрать презентацию'),
+  })
+
+  // User template → create assembly from template
+  const createFromTemplateMutation = useMutation({
+    mutationFn: (templateId: number) => assemblyApi.createFromTemplate(templateId),
+    onSuccess: (assembly) => {
+      queryClient.invalidateQueries({ queryKey: ['assemblies'] })
+      navigate(`/assemble/${assembly.id}`)
+    },
+    onError: () => toast.error('Не удалось создать презентацию из шаблона'),
   })
 
   // Custom prompt assembly
@@ -463,7 +320,11 @@ export default function Dashboard() {
 
   const handleTemplateClick = (t: TemplateCard) => {
     setActiveTemplateId(t.id)
-    templateMutation.mutate(t.prompt)
+    if (t.isUser) {
+      createFromTemplateMutation.mutate(t.dbId)
+    } else {
+      templateMutation.mutate(t.prompt)
+    }
   }
 
   const handleCustomSubmit = (e: React.FormEvent) => {
@@ -472,13 +333,7 @@ export default function Dashboard() {
     customMutation.mutate()
   }
 
-  const isBuilding = templateMutation.isPending
-
-  const handleTemplateSaved = () => {
-    queryClient.invalidateQueries({ queryKey: ['templates'] })
-    setShowTemplateModal(false)
-    setEditingTemplate(null)
-  }
+  const isBuilding = templateMutation.isPending || createFromTemplateMutation.isPending
 
   return (
     <div className="min-h-full bg-surface">
@@ -514,7 +369,11 @@ export default function Dashboard() {
                 )}
                 onClick={() => !isBuilding && handleTemplateClick(t)}
               >
-                <DeckPreview colorHex={t.accentHex} bgColor={t.bodyColor} />
+                {/* Preview area */}
+                {t.isUser
+                  ? <UserTemplateThumbnail slides={t.slidesPreview} />
+                  : <DeckPreview colorHex={t.accentHex} bgColor={t.bodyColor} />
+                }
 
                 {/* User template actions */}
                 {t.isUser && !isBuilding && (
@@ -522,9 +381,7 @@ export default function Dashboard() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        const dbTemplate = userTemplates.find((ut) => ut.id === t.dbId) ?? null
-                        setEditingTemplate(dbTemplate)
-                        setShowTemplateModal(true)
+                        navigate(`/templates/${t.dbId}/edit`)
                       }}
                       className="p-1.5 rounded-lg bg-white/90 shadow-sm hover:bg-white text-gray-500 hover:text-gray-800 transition-colors"
                       title="Редактировать"
@@ -547,21 +404,27 @@ export default function Dashboard() {
 
                 <div className="px-4 pt-3 pb-4">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
-                      <span>{t.emoji}</span>{t.title}
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 truncate">
+                      {!t.isUser && <span>{t.emoji}</span>}
+                      {t.title}
                     </span>
-                    <span className="text-[11px] text-gray-400 shrink-0">~{t.slides} сл.</span>
+                    <span className="text-[11px] text-gray-400 shrink-0 ml-1">
+                      {t.isUser ? `${t.slideCount} сл.` : `~${t.slides} сл.`}
+                    </span>
                   </div>
-                  <p className="text-[12px] text-gray-500 mb-3 leading-snug">{t.desc}</p>
-                  <div className="flex items-center justify-between">
+                  {t.desc && (
+                    <p className="text-[12px] text-gray-500 mb-3 leading-snug">{t.desc}</p>
+                  )}
+                  <div className="flex items-center justify-between mt-2">
                     {isThisBuilding ? (
                       <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-600">
                         <Spinner size="sm" className="border-brand-500 border-t-transparent" />
-                        Собираем...
+                        {t.isUser ? 'Создаём...' : 'Собираем...'}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-sm font-semibold text-brand-600 group-hover:text-brand-700">
-                        Собрать <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        {t.isUser ? 'Использовать' : 'Собрать'}{' '}
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     )}
                   </div>
@@ -572,7 +435,7 @@ export default function Dashboard() {
 
           {/* Add template card */}
           <button
-            onClick={() => { setEditingTemplate(null); setShowTemplateModal(true) }}
+            onClick={() => navigate('/templates/new')}
             className="rounded-2xl border-2 border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50/30 transition-all flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-brand-600"
             style={{ minHeight: '220px' }}
           >
@@ -816,14 +679,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── Template modal ────────────────────────────────────────────────────── */}
-      {showTemplateModal && (
-        <TemplateModal
-          initial={editingTemplate}
-          onClose={() => { setShowTemplateModal(false); setEditingTemplate(null) }}
-          onSaved={handleTemplateSaved}
-        />
-      )}
     </div>
   )
 }
