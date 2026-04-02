@@ -286,7 +286,7 @@ export default function TemplateEditor() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const isNew = id === 'new'
+  const isNew = !id || id === 'new'
   const templateId = isNew ? null : parseInt(id || '0')
 
   const [name, setName] = useState('')
