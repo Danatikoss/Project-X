@@ -5,7 +5,7 @@ import {
   Download, ArrowLeft, Plus, Search, X, Edit2, Check,
   Presentation, ChevronLeft, ChevronRight, Share2,
   BookImage, Info, Sparkles, PenLine, FolderOpen, Play,
-  Film, Image, PanelLeftClose, PanelLeftOpen, Trash2,
+  Film, Image, PanelLeftClose, PanelLeftOpen, Trash2, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { assemblyApi, libraryApi, searchApi, projectsApi, mediaApi } from '../api/client'
@@ -966,6 +966,13 @@ export default function Assemble() {
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
                 >
                   <Download className="w-4 h-4" /> Скачать PDF
+                </button>
+                <button
+                  onClick={() => navigate(`/theses/${assemblyId}`)}
+                  disabled={localSlides.length === 0}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-violet-200 text-violet-700 text-sm font-medium hover:border-violet-300 hover:bg-violet-50 transition-colors disabled:opacity-50"
+                >
+                  <FileText className="w-4 h-4" /> Тезисы к выступлению
                 </button>
               </div>
             </div>

@@ -8,6 +8,7 @@ from api.projects import router as projects_router
 from api.brand import router as brand_router
 from api.media import router as media_router
 from api.templates import router as templates_router
+from api.theses import router as theses_router
 
 router = APIRouter()
 
@@ -20,3 +21,4 @@ router.include_router(projects_router, prefix="/projects", tags=["Projects"])
 router.include_router(brand_router, prefix="/brand", tags=["Brand"])
 router.include_router(media_router, prefix="/media", tags=["Media"])
 router.include_router(templates_router, prefix="/templates", tags=["Templates"])
+router.include_router(theses_router, prefix="/theses", tags=["Theses"])

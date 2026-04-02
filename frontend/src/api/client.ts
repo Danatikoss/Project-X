@@ -4,7 +4,7 @@ import type {
   UploadResponse, Assembly, AssemblyListItem, AssembleRequest,
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
   AuthResponse, Project, BrandTemplate, GenerateSlideRequest, GenerateSlideResponse,
-  MediaFolder, MediaAsset, AssemblyTemplate,
+  MediaFolder, MediaAsset, AssemblyTemplate, ThesisQuestion, ThesesResult,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -374,6 +374,25 @@ export const mediaApi = {
 
   deleteAsset: async (id: number): Promise<void> => {
     await api.delete(`/media/assets/${id}`)
+  },
+}
+
+// ─── Theses ───────────────────────────────────────────────────────────────────
+
+export const thesesApi = {
+  get: async (assemblyId: number): Promise<ThesesResult> => {
+    const res = await api.get<ThesesResult>(`/theses/${assemblyId}`)
+    return res.data
+  },
+
+  analyze: async (assemblyId: number): Promise<{ questions: ThesisQuestion[] }> => {
+    const res = await api.post<{ questions: ThesisQuestion[] }>(`/theses/${assemblyId}/analyze`)
+    return res.data
+  },
+
+  generate: async (assemblyId: number, context?: Record<string, string>): Promise<{ theses: ThesesResult['theses'] }> => {
+    const res = await api.post<{ theses: ThesesResult['theses'] }>(`/theses/${assemblyId}/generate`, { context: context ?? {} })
+    return res.data
   },
 }
 

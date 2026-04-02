@@ -201,6 +201,25 @@ export interface MediaAsset {
   url: string
 }
 
+// ─── Theses (Talking Points) ─────────────────────────────────────────────────
+
+export interface ThesisQuestion {
+  id: string
+  text: string
+}
+
+export interface SlideTheses {
+  ru: string[]
+  kk: string[]
+  en: string[]
+}
+
+export interface ThesesResult {
+  theses: Record<string, SlideTheses>
+  context: Record<string, string>
+  updated_at: string | null
+}
+
 // ─── Assembly Templates ───────────────────────────────────────────────────────
 
 export interface AssemblyTemplate {

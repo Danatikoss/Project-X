@@ -13,6 +13,7 @@ const navItems = [
   { to: '/profile',        icon: User,             label: 'Профиль' },
 ]
 
+
 export function AppShell() {
   const location = useLocation()
   const isAssemblePage = location.pathname.startsWith('/assemble/')
