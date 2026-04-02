@@ -12,6 +12,7 @@ class AssembledPresentation(Base):
     title = Column(String, default="Без названия")
     prompt = Column(Text, nullable=False)
     slide_ids_json = Column(Text, default="[]")
+    overlays_json = Column(Text, default="{}")   # {"slide_id": [{id,asset_id,url,file_type,x,y,w,h}]}
     status = Column(String, default="draft")
     export_path = Column(String, nullable=True)
     share_token = Column(String, nullable=True, unique=True, index=True)
