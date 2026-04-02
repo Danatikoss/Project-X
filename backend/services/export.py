@@ -259,7 +259,12 @@ def _add_thumbnail_slide(dest_prs, slide_entry: SlideLibraryEntry):
 
 
 def export_to_pptx(db: Session, assembly_id: int) -> str:
-    """Export assembly as PPTX. Returns path to exported file."""
+    """Export assembly as PPTX.
+
+    Each slide is embedded as a full-page PNG image (from the stored thumbnail)
+    so the visual output always matches what the user sees on the site.
+    Media overlays are added as picture shapes on top.
+    """
     from pptx import Presentation
     from pptx.util import Inches
 
@@ -280,20 +285,11 @@ def export_to_pptx(db: Session, assembly_id: int) -> str:
     export_path = export_dir / f"{assembly_id}_{uuid.uuid4().hex[:8]}.pptx"
 
     dest_prs = Presentation()
+    # Standard widescreen 16:9
     dest_prs.slide_width = Inches(13.33)
     dest_prs.slide_height = Inches(7.5)
 
     for slide_entry in slides:
-        if slide_entry.xml_blob:
-            src = db.query(SourcePresentation).get(slide_entry.source_id)
-            if src and Path(src.file_path).exists():
-                ok = _clone_slide(dest_prs, src.file_path, slide_entry.slide_index)
-                if ok:
-                    # Add overlays onto the just-added last slide
-                    dest_slide = dest_prs.slides[-1]
-                    _add_overlays_pptx(dest_prs, dest_slide, str(slide_entry.id), overlays_map)
-                    continue
-            logger.warning(f"Slide {slide_entry.id}: source unavailable, using thumbnail")
         _add_thumbnail_slide(dest_prs, slide_entry)
         dest_slide = dest_prs.slides[-1]
         _add_overlays_pptx(dest_prs, dest_slide, str(slide_entry.id), overlays_map)
