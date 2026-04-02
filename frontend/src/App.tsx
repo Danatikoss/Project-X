@@ -14,6 +14,7 @@ import Media from './pages/Media'
 import TemplateEditor from './pages/TemplateEditor'
 import ThesesList from './pages/ThesesList'
 import Theses from './pages/Theses'
+import SharedAssembly from './pages/SharedAssembly'
 import Login from './pages/Login'
 import Register from './pages/Register'
 
@@ -46,6 +47,7 @@ export default function App() {
           {/* Публичные страницы */}
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          <Route path="/share/:token" element={<SharedAssembly />} />
 
           {/* Защищённые страницы */}
           <Route element={<PrivateRoute><AppShell /></PrivateRoute>}>

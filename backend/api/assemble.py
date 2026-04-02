@@ -2,13 +2,17 @@
 Assembly API routes.
 POST /api/assemble
 GET  /api/assemble
+GET  /api/assemble/public/{share_token}
 GET  /api/assemble/{id}
 PATCH /api/assemble/{id}
 POST /api/assemble/{id}/export
+POST /api/assemble/{id}/share
 POST /api/assemble/{id}/duplicate
+DELETE /api/assemble/{id}
 """
 import json
 import logging
+import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -39,11 +43,14 @@ def _assembly_to_response(assembly: AssembledPresentation, db: Session) -> Assem
     if slide_ids:
         slides_map = {
             s.id: s for s in db.query(SlideLibraryEntry)
-            .options(joinedload(SlideLibraryEntry.source))
+            .options(
+                joinedload(SlideLibraryEntry.source),
+                joinedload(SlideLibraryEntry.project),
+            )
             .filter(SlideLibraryEntry.id.in_(slide_ids))
             .all()
         }
-        slides_ordered = [slide_to_response(slides_map[sid]) for sid in slide_ids if sid in slides_map]
+        slides_ordered = [slide_to_response(slides_map[sid], db) for sid in slide_ids if sid in slides_map]
     else:
         slides_ordered = []
 
@@ -112,6 +119,15 @@ def create_from_template(
 @router.post("", response_model=AssemblyResponse, status_code=201)
 async def create_assembly(body: AssembleRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     assembly = await run_assembly(db, body.prompt, body.max_slides, user_id=user.id)
+    return _assembly_to_response(assembly, db)
+
+
+@router.get("/public/{share_token}", response_model=AssemblyResponse)
+def get_public_assembly(share_token: str, db: Session = Depends(get_db)):
+    """Return a shared assembly by its share token — no auth required."""
+    assembly = db.query(AssembledPresentation).filter_by(share_token=share_token).first()
+    if not assembly:
+        raise HTTPException(404, detail="Сборка не найдена или ссылка устарела")
     return _assembly_to_response(assembly, db)
 
 
@@ -227,6 +243,22 @@ def delete_assembly(assembly_id: int, db: Session = Depends(get_db), user: User 
             pass
     db.delete(assembly)
     db.commit()
+
+
+@router.post("/{assembly_id}/share")
+def share_assembly(assembly_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Generate (or return existing) share token for the assembly."""
+    assembly = db.query(AssembledPresentation).get(assembly_id)
+    if not assembly:
+        raise HTTPException(404, detail="Сборка не найдена")
+    _check_owner(assembly, user.id)
+
+    if not assembly.share_token:
+        assembly.share_token = secrets.token_urlsafe(16)
+        db.commit()
+        db.refresh(assembly)
+
+    return {"share_token": assembly.share_token}
 
 
 @router.post("/{assembly_id}/duplicate", response_model=AssemblyResponse, status_code=201)

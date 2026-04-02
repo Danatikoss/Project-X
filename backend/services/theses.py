@@ -249,7 +249,12 @@ async def generate_session(
         response_format={"type": "json_object"},
         max_tokens=4000,
     )
-    theses = json.loads(resp.choices[0].message.content or "{}")
+    raw = resp.choices[0].message.content or "{}"
+    try:
+        theses = json.loads(raw)
+    except json.JSONDecodeError as e:
+        logger.error(f"generate_session: invalid JSON from model: {e}\nRaw: {raw[:500]}")
+        raise ValueError("Модель вернула некорректный JSON. Попробуйте ещё раз.")
 
     session.theses_json = json.dumps(theses, ensure_ascii=False)
     session.context_json = json.dumps(context, ensure_ascii=False)

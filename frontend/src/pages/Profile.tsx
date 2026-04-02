@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, X, Check, LogOut, Layers, FileText,
-  Tag, Globe, Sparkles, Briefcase, ChevronDown,
+  Tag, Globe, Sparkles, Briefcase,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
@@ -11,7 +11,7 @@ import { SlideCard } from '../components/common/SlideCard'
 import { Spinner } from '../components/common/Spinner'
 import { useAuthStore } from '../store/auth'
 import { cn } from '../utils/cn'
-import type { Slide, UserProfile } from '../types'
+import type { Slide } from '../types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -186,7 +186,7 @@ export default function Profile() {
 
   const handleRemoveContactSlide = () => {
     setContactSlide(null)
-    updateMutation.mutate({ contact_slide_id: undefined })
+    updateMutation.mutate({ contact_slide_id: null })
   }
 
   if (isLoading) {

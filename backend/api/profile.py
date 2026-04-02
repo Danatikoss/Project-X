@@ -89,8 +89,8 @@ def update_profile(
         profile.company = body.company
     if body.position is not None:
         profile.position = body.position
-    if body.contact_slide_id is not None:
-        profile.contact_slide_id = body.contact_slide_id
+    if "contact_slide_id" in body.model_fields_set:
+        profile.contact_slide_id = body.contact_slide_id  # None clears it
     if body.preferred_tags is not None:
         profile.preferred_tags_json = json.dumps(body.preferred_tags, ensure_ascii=False)
     if body.default_language is not None:

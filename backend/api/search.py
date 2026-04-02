@@ -7,6 +7,8 @@ import logging
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from sqlalchemy.orm import joinedload
+
 from database import get_db
 from models.slide import SlideLibraryEntry
 from models.user import User
@@ -49,7 +51,22 @@ async def search(
             merged.append(slide)
 
     total = len(merged)
-    page_items = merged[offset:offset + limit]
+    page_ids = [s.id for s in merged[offset:offset + limit]]
+
+    # Re-fetch with eager loads to avoid N+1 queries in slide_to_response
+    if page_ids:
+        slides_map = {
+            s.id: s for s in db.query(SlideLibraryEntry)
+            .options(
+                joinedload(SlideLibraryEntry.source),
+                joinedload(SlideLibraryEntry.project),
+            )
+            .filter(SlideLibraryEntry.id.in_(page_ids))
+            .all()
+        }
+        page_items = [slides_map[sid] for sid in page_ids if sid in slides_map]
+    else:
+        page_items = []
 
     return SearchResponse(
         items=[slide_to_response(s, db) for s in page_items],
