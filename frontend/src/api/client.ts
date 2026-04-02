@@ -259,15 +259,17 @@ export const assemblyApi = {
       { format },
       { responseType: 'blob' }
     )
-    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const url = window.URL.createObjectURL(res.data as Blob)
     const contentDisposition = res.headers['content-disposition'] || ''
-    const match = contentDisposition.match(/filename="?([^"]+)"?/)
-    const filename = match ? match[1] : `presentation_${id}.${format}`
+    const match = contentDisposition.match(/filename[^;=\n]*=(['"]?)([^'";\n]*)\1/)
+    const filename = match?.[2]?.trim() || `presentation_${id}.${format}`
     const link = document.createElement('a')
     link.href = url
     link.download = filename
+    document.body.appendChild(link)
     link.click()
-    window.URL.revokeObjectURL(url)
+    document.body.removeChild(link)
+    setTimeout(() => window.URL.revokeObjectURL(url), 5000)
   },
 }
 
