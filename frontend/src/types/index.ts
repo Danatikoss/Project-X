@@ -172,15 +172,27 @@ export interface UserProfile {
   id: number
   name: string | null
   company: string | null
+  position: string | null
   contact_slide_id: number | null
   preferred_tags: string[]
+  default_language: 'ru' | 'kk' | 'en'
+  ai_style: 'official' | 'neutral' | 'casual'
 }
 
 export interface UserProfilePatchRequest {
   name?: string
   company?: string
+  position?: string
   contact_slide_id?: number | null
   preferred_tags?: string[]
+  default_language?: 'ru' | 'kk' | 'en'
+  ai_style?: 'official' | 'neutral' | 'casual'
+}
+
+export interface ProfileStats {
+  assemblies_count: number
+  slides_count: number
+  theses_count: number
 }
 
 // ─── Media Library ───────────────────────────────────────────────────────────

@@ -82,6 +82,9 @@ def migrate_db():
                 "CREATE UNIQUE INDEX IF NOT EXISTS ix_user_profiles_user_id "
                 "ON user_profiles(user_id) WHERE user_id IS NOT NULL"
             ))
+            _add_column_if_missing(conn, "user_profiles", "position", "TEXT")
+            _add_column_if_missing(conn, "user_profiles", "default_language", "TEXT DEFAULT 'ru'")
+            _add_column_if_missing(conn, "user_profiles", "ai_style", "TEXT DEFAULT 'official'")
         if "projects" in tables:
             _add_column_if_missing(conn, "projects", "owner_id", "INTEGER REFERENCES users(id)")
 

@@ -182,8 +182,11 @@ class UserProfileResponse(BaseModel):
     id: int
     name: Optional[str] = None
     company: Optional[str] = None
+    position: Optional[str] = None
     contact_slide_id: Optional[int] = None
     preferred_tags: list[str] = []
+    default_language: str = "ru"
+    ai_style: str = "official"
 
     class Config:
         from_attributes = True
@@ -192,5 +195,14 @@ class UserProfileResponse(BaseModel):
 class UserProfilePatchRequest(BaseModel):
     name: Optional[str] = None
     company: Optional[str] = None
+    position: Optional[str] = None
     contact_slide_id: Optional[int] = None
     preferred_tags: Optional[list[str]] = None
+    default_language: Optional[str] = None
+    ai_style: Optional[str] = None
+
+
+class ProfileStatsResponse(BaseModel):
+    assemblies_count: int
+    slides_count: int
+    theses_count: int

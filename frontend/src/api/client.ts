@@ -6,6 +6,7 @@ import type {
   AuthResponse, Project, BrandTemplate, GenerateSlideRequest, GenerateSlideResponse,
   MediaFolder, MediaAsset, AssemblyTemplate,
   ThesisQuestion, ThesesSession, ThesesSessionListItem,
+  ProfileStats,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -326,6 +327,11 @@ export const profileApi = {
 
   update: async (data: UserProfilePatchRequest): Promise<UserProfile> => {
     const res = await api.patch<UserProfile>('/profile', data)
+    return res.data
+  },
+
+  stats: async (): Promise<ProfileStats> => {
+    const res = await api.get<ProfileStats>('/profile/stats')
     return res.data
   },
 }

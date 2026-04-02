@@ -27,8 +27,11 @@ class UserProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, unique=True, index=True)
     name = Column(String, nullable=True)
     company = Column(String, nullable=True)
+    position = Column(String, nullable=True)          # должность / роль спикера
     contact_slide_id = Column(Integer, ForeignKey("slide_library_entries.id"), nullable=True)
     preferred_tags_json = Column(Text, default="[]")
+    default_language = Column(String, default="ru")   # "ru" | "kk" | "en"
+    ai_style = Column(String, default="official")     # "official" | "neutral" | "casual"
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
