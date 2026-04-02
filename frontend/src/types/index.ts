@@ -214,9 +214,34 @@ export interface SlideTheses {
   en: string[]
 }
 
-export interface ThesesResult {
+export interface SlideSnapshot {
+  id: number
+  title: string | null
+  summary: string | null
+  thumbnail_path: string | null
+  layout_type: string | null
+  tags: string[]
+}
+
+export interface ThesesSessionListItem {
+  id: number
+  title: string
+  assembly_id: number | null
+  slide_count: number
+  has_theses: boolean
+  thumbnail_paths: string[]
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface ThesesSession {
+  id: number
+  title: string
+  assembly_id: number | null
+  slides: SlideSnapshot[]
   theses: Record<string, SlideTheses>
   context: Record<string, string>
+  created_at: string | null
   updated_at: string | null
 }
 

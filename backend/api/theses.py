@@ -1,9 +1,12 @@
 """
-Theses API routes.
+Theses API — standalone talking-points generation.
 
-GET  /api/theses/{assembly_id}          — get saved theses (or 404)
-POST /api/theses/{assembly_id}/analyze  — analyze slides, return clarifying questions
-POST /api/theses/{assembly_id}/generate — generate theses (with optional context answers)
+GET  /api/theses                       — list user's theses sessions
+POST /api/theses                       — create session from assembly
+GET  /api/theses/:id                   — get session (slides + theses)
+DELETE /api/theses/:id                 — delete session
+POST /api/theses/:id/analyze           — analyze slides, return clarifying questions
+POST /api/theses/:id/generate          — generate theses (with optional context answers)
 """
 import logging
 from typing import Optional
@@ -13,75 +16,118 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models.assembly import AssembledPresentation
+from models.theses import ThesesSession
 from models.user import User
 from api.deps import get_current_user
-from services.theses import analyze_slides, generate_theses, get_saved_theses
+from services.theses import (
+    create_session, analyze_session, generate_session,
+    list_sessions, get_session,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class CreateSessionRequest(BaseModel):
+    assembly_id: int
 
 
 class GenerateRequest(BaseModel):
     context: Optional[dict] = None
 
 
-def _check_owner(assembly: AssembledPresentation, user_id: int):
-    if assembly.owner_id != user_id:
-        raise HTTPException(403, detail="Нет доступа к этой сборке")
+def _check_owner(session: ThesesSession, user_id: int):
+    if session.owner_id != user_id:
+        raise HTTPException(403, detail="Нет доступа к этой сессии")
 
 
-@router.get("/{assembly_id}")
-def get_theses(
-    assembly_id: int,
+# ── List & Create ─────────────────────────────────────────────────────────────
+
+@router.get("")
+def get_sessions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    assembly = db.query(AssembledPresentation).get(assembly_id)
-    if not assembly:
-        raise HTTPException(404, detail="Сборка не найдена")
-    _check_owner(assembly, user.id)
-
-    result = get_saved_theses(db, assembly_id)
-    if result is None:
-        raise HTTPException(404, detail="Тезисы ещё не сгенерированы")
-    return result
+    return list_sessions(db, user.id)
 
 
-@router.post("/{assembly_id}/analyze")
-async def analyze(
-    assembly_id: int,
+@router.post("", status_code=201)
+def new_session(
+    body: CreateSessionRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    assembly = db.query(AssembledPresentation).get(assembly_id)
-    if not assembly:
-        raise HTTPException(404, detail="Сборка не найдена")
-    _check_owner(assembly, user.id)
-
     try:
-        result = await analyze_slides(db, assembly_id)
-        return result
+        session = create_session(db, user.id, body.assembly_id)
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(403, detail=str(e))
+    return get_session(db, session.id)
+
+
+# ── Single Session ────────────────────────────────────────────────────────────
+
+@router.get("/{session_id}")
+def fetch_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    s = db.query(ThesesSession).get(session_id)
+    if not s:
+        raise HTTPException(404, detail="Сессия не найдена")
+    _check_owner(s, user.id)
+    return get_session(db, session_id)
+
+
+@router.delete("/{session_id}", status_code=204)
+def delete_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    s = db.query(ThesesSession).get(session_id)
+    if not s:
+        raise HTTPException(404, detail="Сессия не найдена")
+    _check_owner(s, user.id)
+    db.delete(s)
+    db.commit()
+
+
+# ── AI Actions ────────────────────────────────────────────────────────────────
+
+@router.post("/{session_id}/analyze")
+async def analyze(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    s = db.query(ThesesSession).get(session_id)
+    if not s:
+        raise HTTPException(404, detail="Сессия не найдена")
+    _check_owner(s, user.id)
+    try:
+        return await analyze_session(db, session_id)
     except Exception as e:
-        logger.exception(f"Analyze failed for assembly {assembly_id}: {e}")
+        logger.exception(f"Analyze failed for session {session_id}: {e}")
         raise HTTPException(500, detail=f"Ошибка анализа: {e}")
 
 
-@router.post("/{assembly_id}/generate")
+@router.post("/{session_id}/generate")
 async def generate(
-    assembly_id: int,
+    session_id: int,
     body: GenerateRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    assembly = db.query(AssembledPresentation).get(assembly_id)
-    if not assembly:
-        raise HTTPException(404, detail="Сборка не найдена")
-    _check_owner(assembly, user.id)
-
+    s = db.query(ThesesSession).get(session_id)
+    if not s:
+        raise HTTPException(404, detail="Сессия не найдена")
+    _check_owner(s, user.id)
     try:
-        theses = await generate_theses(db, assembly_id, context=body.context or {})
+        theses = await generate_session(db, session_id, context=body.context or {})
         return {"theses": theses}
     except Exception as e:
-        logger.exception(f"Generate theses failed for assembly {assembly_id}: {e}")
+        logger.exception(f"Generate theses failed for session {session_id}: {e}")
         raise HTTPException(500, detail=f"Ошибка генерации тезисов: {e}")

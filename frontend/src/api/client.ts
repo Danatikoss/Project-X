@@ -4,7 +4,8 @@ import type {
   UploadResponse, Assembly, AssemblyListItem, AssembleRequest,
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
   AuthResponse, Project, BrandTemplate, GenerateSlideRequest, GenerateSlideResponse,
-  MediaFolder, MediaAsset, AssemblyTemplate, ThesisQuestion, ThesesResult,
+  MediaFolder, MediaAsset, AssemblyTemplate,
+  ThesisQuestion, ThesesSession, ThesesSessionListItem,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -380,18 +381,32 @@ export const mediaApi = {
 // ─── Theses ───────────────────────────────────────────────────────────────────
 
 export const thesesApi = {
-  get: async (assemblyId: number): Promise<ThesesResult> => {
-    const res = await api.get<ThesesResult>(`/theses/${assemblyId}`)
+  list: async (): Promise<ThesesSessionListItem[]> => {
+    const res = await api.get<ThesesSessionListItem[]>('/theses')
     return res.data
   },
 
-  analyze: async (assemblyId: number): Promise<{ questions: ThesisQuestion[] }> => {
-    const res = await api.post<{ questions: ThesisQuestion[] }>(`/theses/${assemblyId}/analyze`)
+  create: async (assemblyId: number): Promise<ThesesSession> => {
+    const res = await api.post<ThesesSession>('/theses', { assembly_id: assemblyId })
     return res.data
   },
 
-  generate: async (assemblyId: number, context?: Record<string, string>): Promise<{ theses: ThesesResult['theses'] }> => {
-    const res = await api.post<{ theses: ThesesResult['theses'] }>(`/theses/${assemblyId}/generate`, { context: context ?? {} })
+  get: async (sessionId: number): Promise<ThesesSession> => {
+    const res = await api.get<ThesesSession>(`/theses/${sessionId}`)
+    return res.data
+  },
+
+  delete: async (sessionId: number): Promise<void> => {
+    await api.delete(`/theses/${sessionId}`)
+  },
+
+  analyze: async (sessionId: number): Promise<{ questions: ThesisQuestion[] }> => {
+    const res = await api.post<{ questions: ThesisQuestion[] }>(`/theses/${sessionId}/analyze`)
+    return res.data
+  },
+
+  generate: async (sessionId: number, context?: Record<string, string>): Promise<{ theses: ThesesSession['theses'] }> => {
+    const res = await api.post<{ theses: ThesesSession['theses'] }>(`/theses/${sessionId}/generate`, { context: context ?? {} })
     return res.data
   },
 }
