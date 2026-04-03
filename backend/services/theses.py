@@ -13,6 +13,8 @@ import base64
 import io
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -148,6 +150,132 @@ def create_session(db: Session, owner_id: int, assembly_id: int) -> ThesesSessio
         title=assembly.title,
         assembly_id=assembly_id,
         slide_snapshot_json=json.dumps(snapshot, ensure_ascii=False),
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def create_session_from_upload(
+    db: Session,
+    owner_id: int,
+    title: str,
+    file_bytes: bytes,
+    file_ext: str,
+) -> ThesesSession:
+    """
+    Create a ThesesSession by extracting slides from an uploaded PPTX or PDF file.
+    Thumbnails are saved to thumbnail_dir using the session id as a namespace.
+    """
+    from services.thumbnail import extract_pptx_slides, extract_pdf_slides, save_thumbnail
+
+    with tempfile.NamedTemporaryFile(suffix=f".{file_ext}", delete=False) as f:
+        f.write(file_bytes)
+        tmp_path = f.name
+
+    try:
+        if file_ext == "pptx":
+            slides_data = extract_pptx_slides(tmp_path)
+        else:
+            slides_data = extract_pdf_slides(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+    # Create session first to get a stable ID for thumbnail namespacing
+    session = ThesesSession(
+        owner_id=owner_id,
+        title=title,
+        assembly_id=None,
+        slide_snapshot_json="[]",
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    # Use a large offset so thumbnail dirs don't collide with real source IDs
+    thumb_source_id = 10_000_000 + session.id
+    snapshot = []
+    for i, slide in enumerate(slides_data):
+        thumb_path = save_thumbnail(slide.thumbnail_bytes, thumb_source_id, i, settings.thumbnail_dir)
+        snapshot.append({
+            "id": i + 1,
+            "title": slide.pptx_title or f"Слайд {i + 1}",
+            "summary": (slide.text or "")[:200],
+            "thumbnail_path": thumb_path,
+            "layout_type": None,
+            "tags": [],
+        })
+
+    session.slide_snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+    db.commit()
+    return session
+
+
+def create_session_from_docx(
+    db: Session,
+    owner_id: int,
+    title: str,
+    file_bytes: bytes,
+) -> ThesesSession:
+    """
+    Create a ThesesSession from a DOCX file containing pre-written theses.
+    Headings become slide titles; paragraphs under each heading become bullet theses.
+    The session is created with theses_json already populated (ru only) so the user
+    lands directly on the result page and can translate/regenerate as needed.
+    """
+    from docx import Document
+
+    doc = Document(io.BytesIO(file_bytes))
+
+    sections: list[dict] = []
+    current: dict | None = None
+
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        if para.style.name.startswith("Heading"):
+            if current:
+                sections.append(current)
+            current = {"title": text, "bullets": []}
+        else:
+            if current is None:
+                current = {"title": title, "bullets": []}
+            current["bullets"].append(text)
+
+    if current:
+        sections.append(current)
+
+    if not sections:
+        all_bullets = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        sections = [{"title": title, "bullets": all_bullets}]
+
+    snapshot = []
+    theses_dict: dict = {}
+
+    for i, section in enumerate(sections):
+        slide_id = i + 1
+        snapshot.append({
+            "id": slide_id,
+            "title": section["title"],
+            "summary": " ".join(section["bullets"][:2]),
+            "thumbnail_path": None,
+            "layout_type": "content",
+            "tags": [],
+        })
+        theses_dict[str(slide_id)] = {
+            "ru": section["bullets"],
+            "kk": [],
+            "en": [],
+        }
+
+    session = ThesesSession(
+        owner_id=owner_id,
+        title=title,
+        assembly_id=None,
+        slide_snapshot_json=json.dumps(snapshot, ensure_ascii=False),
+        theses_json=json.dumps(theses_dict, ensure_ascii=False),
     )
     db.add(session)
     db.commit()

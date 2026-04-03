@@ -397,6 +397,15 @@ export const thesesApi = {
     return res.data
   },
 
+  uploadFile: async (file: File): Promise<ThesesSession> => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await api.post<ThesesSession>('/theses/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  },
+
   get: async (sessionId: number): Promise<ThesesSession> => {
     const res = await api.get<ThesesSession>(`/theses/${sessionId}`)
     return res.data

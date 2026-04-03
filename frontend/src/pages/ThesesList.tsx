@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { FileText, Plus, Trash2, ChevronRight, Clock } from 'lucide-react'
+import { FileText, Plus, Trash2, ChevronRight, Clock, Upload, FileUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { assemblyApi, thesesApi } from '../api/client'
 import { Spinner } from '../components/common/Spinner'
+import { cn } from '../utils/cn'
 import type { ThesesSessionListItem } from '../types'
 
 function SessionCard({
@@ -76,50 +77,188 @@ function SessionCard({
   )
 }
 
-// ─── Create from Assembly Modal ───────────────────────────────────────────────
+// ─── Create Modal ─────────────────────────────────────────────────────────────
 
-function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (id: number) => void }) {
+type ModalTab = 'assembly' | 'upload'
+
+function CreateModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: (sessionId: number) => void
+}) {
+  const [tab, setTab] = useState<ModalTab>('assembly')
+  const [dragging, setDragging] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const { data: assemblies, isLoading } = useQuery({
     queryKey: ['assemblies'],
     queryFn: assemblyApi.list,
+    enabled: tab === 'assembly',
   })
 
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => thesesApi.uploadFile(file),
+    onSuccess: (session) => onCreated(session.id),
+    onError: () => {
+      toast.error('Не удалось обработать файл')
+      setUploading(false)
+    },
+  })
+
+  const handleFileSelect = (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    if (!['pptx', 'pdf', 'docx'].includes(ext ?? '')) {
+      toast.error('Допустимые форматы: PPTX, PDF, DOCX')
+      return
+    }
+    setSelectedFile(file)
+  }
+
+  const handleUpload = () => {
+    if (!selectedFile) return
+    setUploading(true)
+    uploadMutation.mutate(selectedFile)
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
         <div className="p-5 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-800">Выберите презентацию</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Тезисы будут созданы на основе слайдов выбранной сборки</p>
+          <h2 className="text-base font-bold text-gray-800">Создать тезисы</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Выберите источник для генерации тезисов</p>
         </div>
-        <div className="p-3 max-h-96 overflow-y-auto">
-          {isLoading && <div className="flex justify-center py-6"><Spinner /></div>}
-          {assemblies?.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">Нет собранных презентаций</p>
-          )}
-          {assemblies?.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => onCreate(a.id)}
-              className="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-violet-50 hover:text-violet-700 transition-colors group"
+
+        {/* Tabs */}
+        <div className="flex gap-1 p-3 pb-0">
+          <button
+            onClick={() => setTab('assembly')}
+            className={cn(
+              'flex-1 py-2 rounded-xl text-xs font-semibold transition-colors',
+              tab === 'assembly'
+                ? 'bg-violet-50 text-violet-700'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            )}
+          >
+            Из сборки
+          </button>
+          <button
+            onClick={() => setTab('upload')}
+            className={cn(
+              'flex-1 py-2 rounded-xl text-xs font-semibold transition-colors',
+              tab === 'upload'
+                ? 'bg-violet-50 text-violet-700'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            )}
+          >
+            Загрузить файл
+          </button>
+        </div>
+
+        {/* Tab: Assembly */}
+        {tab === 'assembly' && (
+          <div className="p-3 max-h-80 overflow-y-auto">
+            {isLoading && <div className="flex justify-center py-6"><Spinner /></div>}
+            {assemblies?.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-8">Нет собранных презентаций</p>
+            )}
+            {assemblies?.map((a) => (
+              <AssemblyPickerRow
+                key={a.id}
+                assembly={a}
+                onSelect={() => onCreated(-a.id)} // signal to parent to create from assembly
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Tab: Upload */}
+        {tab === 'upload' && (
+          <div className="p-4 flex flex-col gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pptx,.pdf,.docx"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) handleFileSelect(f)
+                e.target.value = ''
+              }}
+            />
+
+            {/* Drop zone */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragging(false)
+                const f = e.dataTransfer.files[0]
+                if (f) handleFileSelect(f)
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                'rounded-2xl border-2 border-dashed p-8 flex flex-col items-center gap-3 cursor-pointer transition-colors',
+                dragging ? 'border-violet-400 bg-violet-50' : 'border-gray-200 hover:border-violet-300 hover:bg-gray-50'
+              )}
             >
-              {/* Thumbnail */}
-              {a.thumbnail_urls[0] ? (
-                <div className="w-16 h-9 rounded-lg overflow-hidden shrink-0 bg-gray-100">
-                  <img src={a.thumbnail_urls[0]} alt="" className="w-full h-full object-cover" />
+              <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center">
+                <Upload className="w-6 h-6 text-violet-500" />
+              </div>
+              {selectedFile ? (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-800 truncate max-w-[260px]">{selectedFile.name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{(selectedFile.size / 1024 / 1024).toFixed(1)} МБ</p>
                 </div>
               ) : (
-                <div className="w-16 h-9 rounded-lg shrink-0 bg-gray-100 flex items-center justify-center">
-                  <FileText className="w-4 h-4 text-gray-300" />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700">Перетащите файл или нажмите</p>
+                  <p className="text-xs text-gray-400 mt-1">PPTX, PDF — для генерации тезисов</p>
+                  <p className="text-xs text-gray-400">DOCX — для импорта готовых тезисов</p>
                 </div>
               )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 group-hover:text-violet-700 truncate">{a.title}</p>
-                <p className="text-[11px] text-gray-400">{a.slide_count} слайдов</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-violet-400 shrink-0" />
-            </button>
-          ))}
-        </div>
+            </div>
+
+            {/* Format hints */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { ext: 'PPTX', label: 'Презентация', color: 'text-orange-500 bg-orange-50' },
+                { ext: 'PDF', label: 'Документ', color: 'text-red-500 bg-red-50' },
+                { ext: 'DOCX', label: 'Тезисы', color: 'text-blue-500 bg-blue-50' },
+              ].map(({ ext, label, color }) => (
+                <div key={ext} className={cn('rounded-xl px-3 py-2 text-center', color.split(' ')[1])}>
+                  <p className={cn('text-xs font-bold', color.split(' ')[0])}>{ext}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {selectedFile && (
+              <button
+                onClick={handleUpload}
+                disabled={uploading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-60"
+              >
+                {uploading
+                  ? <><Spinner size="sm" className="border-white border-t-transparent" /> Обрабатываем...</>
+                  : <><FileUp className="w-4 h-4" /> Создать тезисы</>
+                }
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="p-4 border-t border-gray-100">
           <button onClick={onClose} className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors">
             Отмена
@@ -127,6 +266,30 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (id
         </div>
       </div>
     </div>
+  )
+}
+
+function AssemblyPickerRow({ assembly, onSelect }: { assembly: { id: number; title: string; slide_count: number; thumbnail_urls: string[] }; onSelect: () => void }) {
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-violet-50 hover:text-violet-700 transition-colors group"
+    >
+      {assembly.thumbnail_urls[0] ? (
+        <div className="w-16 h-9 rounded-lg overflow-hidden shrink-0 bg-gray-100">
+          <img src={assembly.thumbnail_urls[0]} alt="" className="w-full h-full object-cover" />
+        </div>
+      ) : (
+        <div className="w-16 h-9 rounded-lg shrink-0 bg-gray-100 flex items-center justify-center">
+          <FileText className="w-4 h-4 text-gray-300" />
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-800 group-hover:text-violet-700 truncate">{assembly.title}</p>
+        <p className="text-[11px] text-gray-400">{assembly.slide_count} слайдов</p>
+      </div>
+      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-violet-400 shrink-0" />
+    </button>
   )
 }
 
@@ -141,7 +304,7 @@ export default function ThesesList() {
     queryFn: thesesApi.list,
   })
 
-  const { mutate: createSession, isPending: creating } = useMutation({
+  const { mutate: createFromAssembly, isPending: creating } = useMutation({
     mutationFn: (assemblyId: number) => thesesApi.create(assemblyId),
     onSuccess: (session) => {
       queryClient.invalidateQueries({ queryKey: ['theses'] })
@@ -160,6 +323,18 @@ export default function ThesesList() {
   })
 
   const [showModal, setShowModal] = useState(false)
+
+  const handleCreated = (id: number) => {
+    setShowModal(false)
+    if (id < 0) {
+      // negative id signals "create from assembly", abs value is assembly_id
+      createFromAssembly(-id)
+    } else {
+      // uploaded file → session id returned directly
+      queryClient.invalidateQueries({ queryKey: ['theses'] })
+      navigate(`/theses/${id}`)
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-8">
@@ -194,7 +369,7 @@ export default function ThesesList() {
           </div>
           <div className="text-center">
             <p className="font-medium text-gray-600">Тезисов пока нет</p>
-            <p className="text-sm mt-1">Выберите презентацию и создайте первые тезисы</p>
+            <p className="text-sm mt-1">Выберите презентацию или загрузите файл</p>
           </div>
           <button
             onClick={() => setShowModal(true)}
@@ -219,10 +394,7 @@ export default function ThesesList() {
       {showModal && (
         <CreateModal
           onClose={() => setShowModal(false)}
-          onCreate={(id) => {
-            setShowModal(false)
-            createSession(id)
-          }}
+          onCreated={handleCreated}
         />
       )}
     </div>
