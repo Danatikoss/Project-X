@@ -441,8 +441,7 @@ export interface PlanResponse {
 }
 
 export interface RenderResponse {
-  download_url: string
-  filename: string
+  assembly_id: number
 }
 
 export const presentationsApi = {
@@ -471,15 +470,6 @@ export const presentationsApi = {
       brand_template_id: params.brandTemplateId ?? null,
     })
     return res.data
-  },
-
-  download: (downloadUrl: string, filename: string) => {
-    const link = document.createElement('a')
-    link.href = downloadUrl
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
   },
 }
 

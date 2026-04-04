@@ -178,21 +178,26 @@ async def plan_presentation(content_text: str, title: str = "", language_hint: s
     return blueprints
 
 
-# ─── Multi-slide PPTX rendering ───────────────────────────────────────────────
+# ─── Assembly creation from plan ──────────────────────────────────────────────
 
-async def render_presentation(
+async def create_assembly_from_plan(
     blueprints: list[dict],
+    title: str,
     brand_template_id: int | None,
+    user_id: int,
     db: Session,
-) -> str:
+) -> int:
     """
-    Render a list of blueprints into a single multi-slide PPTX file.
-    Returns the absolute file path of the saved PPTX.
+    Render each blueprint → SlideLibraryEntry (with thumbnail) → AssembledPresentation.
+    Returns the assembly ID.
     """
-    from services.slide_generator import BrandColors, render_slide_pptx, _extract_brand_colors
+    from services.slide_generator import (
+        BrandColors, _extract_brand_colors, save_slide_from_blueprint,
+    )
     from models.brand import BrandTemplate
+    from models.assembly import AssembledPresentation
 
-    # Load brand
+    # Load brand colors once for all slides
     colors: BrandColors = BrandColors()
     template_pptx_path: str | None = None
 
@@ -207,90 +212,28 @@ async def render_presentation(
             elif template_pptx_path:
                 colors = _extract_brand_colors(template_pptx_path)
 
-    # Build presentation by rendering each blueprint as a single-slide Prs
-    # and copying the slide element into a master Prs.
-    if template_pptx_path:
-        master_prs = Presentation(template_pptx_path)
-        # Remove pre-existing slides
-        sld_id_lst = master_prs.slides._sldIdLst
-        for sld_id in list(sld_id_lst):
-            sld_id_lst.remove(sld_id)
-    else:
-        from pptx.util import Inches as _I
-        master_prs = Presentation()
-        master_prs.slide_width  = Inches(13.333)
-        master_prs.slide_height = Inches(7.5)
+    # Render each slide and save to library
+    slide_ids: list[int] = []
+    for i, bp in enumerate(blueprints):
+        entry = await save_slide_from_blueprint(
+            db=db,
+            blueprint=bp,
+            colors=colors,
+            template_pptx_path=template_pptx_path,
+            user_id=user_id,
+            slide_index=i,
+        )
+        slide_ids.append(entry.id)
 
-    for bp in blueprints:
-        single = render_slide_pptx(bp, colors, template_pptx_path)
-        if not single.slides:
-            continue
-
-        # Add a blank slide to master, then replace its XML with the rendered one
-        try:
-            blank_layout = master_prs.slide_layouts[6]
-        except IndexError:
-            blank_layout = master_prs.slide_layouts[0]
-
-        new_slide = master_prs.slides.add_slide(blank_layout)
-
-        # Remove placeholder shapes
-        for shape in list(new_slide.shapes):
-            ph = getattr(shape, "placeholder_format", None)
-            if ph is not None:
-                sp = shape._element
-                sp.getparent().remove(sp)
-
-        # Copy all shape elements from rendered slide
-        src_slide = single.slides[0]
-        for elem in list(src_slide.shapes._spTree):
-            new_slide.shapes._spTree.append(elem)
-
-        # Copy background
-        src_bg = src_slide.background.element
-        dst_bg = new_slide.background.element
-        from lxml import etree
-        for child in list(dst_bg):
-            dst_bg.remove(child)
-        for child in src_bg:
-            dst_bg.append(child.__copy__() if hasattr(child, '__copy__') else child)
-
-    # Save
-    gen_dir = Path(settings.upload_dir) / "generated"
-    gen_dir.mkdir(parents=True, exist_ok=True)
-    out_path = str(gen_dir / f"pres_{uuid.uuid4()}.pptx")
-    master_prs.save(out_path)
-    return out_path
-
-
-async def plan_and_render(
-    file_bytes: bytes | None,
-    file_ext: str | None,
-    text_prompt: str | None,
-    title: str,
-    brand_template_id: int | None,
-    db: Session,
-    language_hint: str = "",
-) -> tuple[list[dict], str]:
-    """
-    Full pipeline:
-      extract text → plan blueprints → render PPTX
-    Returns (blueprints, pptx_path).
-    """
-    # 1. Get content text
-    if file_bytes and file_ext:
-        content = extract_text(file_bytes, file_ext)
-        if text_prompt:
-            content = f"Additional instructions: {text_prompt}\n\n{content}"
-    elif text_prompt:
-        content = text_prompt
-    else:
-        raise ValueError("Provide either a file or a text prompt")
-
-    # 2. Plan
-    blueprints = await plan_presentation(content, title=title, language_hint=language_hint)
-
-    # 3. Render
-    pptx_path = await render_presentation(blueprints, brand_template_id, db)
-
-    return blueprints, pptx_path
+    # Create assembly
+    assembly = AssembledPresentation(
+        owner_id=user_id,
+        title=title,
+        prompt="(AI-генерация)",
+        slide_ids_json=json.dumps(slide_ids),
+        status="draft",
+    )
+    db.add(assembly)
+    db.commit()
+    db.refresh(assembly)
+    return assembly.id

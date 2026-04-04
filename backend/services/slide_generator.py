@@ -884,6 +884,101 @@ async def generate_slide(
     return entry
 
 
+async def save_slide_from_blueprint(
+    db: Session,
+    blueprint: dict,
+    colors: "BrandColors",
+    template_pptx_path: str | None,
+    user_id: int | None,
+    slide_index: int = 0,
+) -> "SlideLibraryEntry":
+    """
+    Render a pre-made blueprint → save as SlideLibraryEntry with thumbnail.
+    Skips AI generation (blueprint already provided).
+    """
+    blueprint.setdefault("layout", "title_content")
+    blueprint.setdefault("title", "")
+    blueprint.setdefault("content", {})
+
+    title = (blueprint.get("title") or "")[:80]
+
+    # 1. Render PPTX
+    prs = render_slide_pptx(blueprint, colors, template_pptx_path)
+
+    # 2. Save PPTX
+    gen_dir = Path(settings.upload_dir) / "generated"
+    gen_dir.mkdir(parents=True, exist_ok=True)
+    pptx_path = str(gen_dir / f"gen_{uuid.uuid4()}.pptx")
+    prs.save(pptx_path)
+
+    # 3. SourcePresentation record
+    source = SourcePresentation(
+        owner_id=user_id,
+        filename=f"[AI] {title}.pptx",
+        file_path=pptx_path,
+        file_type="pptx",
+        slide_count=1,
+        status="done",
+    )
+    db.add(source)
+    db.flush()
+
+    # 4. Thumbnail
+    thumb_dir = Path(settings.thumbnail_dir) / str(source.id)
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    thumb_abs = _render_thumbnail(pptx_path, str(thumb_dir))
+
+    if not thumb_abs:
+        from services.thumbnail import _make_placeholder_thumbnail
+        data = _make_placeholder_thumbnail(title, 0)
+        thumb_abs = str(thumb_dir / "0.png")
+        Path(thumb_abs).write_bytes(data)
+
+    thumbnail_path = f"{source.id}/0.png"
+
+    # 5. XML blob
+    xml_blob: str | None = None
+    try:
+        from lxml import etree
+        prs2 = Presentation(pptx_path)
+        if prs2.slides:
+            xml_blob = etree.tostring(prs2.slides[0]._element, encoding="unicode")
+    except Exception:
+        pass
+
+    # 6. Embedding
+    summary   = _blueprint_to_summary(blueprint)
+    tags      = _blueprint_to_tags(blueprint)
+    embedding: list[float] | None = None
+    try:
+        from services.embedding import build_slide_embed_text
+        embed_text = build_slide_embed_text(title, summary, tags)
+        embedding  = await embed_single(embed_text)
+    except Exception as e:
+        logger.warning(f"Embedding failed: {e}")
+
+    # 7. Save SlideLibraryEntry
+    entry = SlideLibraryEntry(
+        source_id      = source.id,
+        slide_index    = slide_index,
+        thumbnail_path = thumbnail_path,
+        xml_blob       = xml_blob,
+        title          = title,
+        summary        = summary,
+        tags_json      = json.dumps(tags, ensure_ascii=False),
+        layout_type    = blueprint.get("layout", "title_content"),
+        language       = _detect_language(title),
+        embedding_json = json.dumps(embedding) if embedding else None,
+        has_media      = False,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    db.refresh(source)
+    entry.source = source
+    return entry
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _blueprint_to_summary(bp: dict) -> str:

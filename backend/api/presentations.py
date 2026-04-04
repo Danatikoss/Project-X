@@ -2,22 +2,19 @@
 Presentations API — AI-powered full deck generation.
 
 POST /api/presentations/plan    — upload file or text → get slide blueprints (plan)
-POST /api/presentations/render  — submit plan → download PPTX
+POST /api/presentations/render  — submit plan → save to library + create assembly
 """
 import logging
-import os
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models.user import User
 from api.deps import get_current_user
-from services.presentation_planner import plan_presentation, render_presentation, extract_text, plan_and_render
+from services.presentation_planner import plan_presentation, create_assembly_from_plan, extract_text
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,10 +34,7 @@ async def plan_from_file(
     db: Session                 = Depends(get_db),
     user: User                  = Depends(get_current_user),
 ):
-    """
-    Analyse uploaded file (or plain text) and return a slide plan as JSON.
-    The plan is an array of blueprint objects — one per slide.
-    """
+    """Analyse uploaded file (or plain text) and return a slide plan as JSON."""
     file_bytes: bytes | None = None
     file_ext:   str   | None = None
 
@@ -58,7 +52,6 @@ async def plan_from_file(
         raise HTTPException(400, detail="Загрузите файл или введите текст")
 
     try:
-        content = ""
         if file_bytes and file_ext:
             content = extract_text(file_bytes, file_ext)
             if text_prompt:
@@ -74,7 +67,7 @@ async def plan_from_file(
         raise HTTPException(500, detail=f"Ошибка планирования: {e}")
 
 
-# ── Render ─────────────────────────────────────────────────────────────────────
+# ── Render → Assembly ──────────────────────────────────────────────────────────
 
 class RenderRequest(BaseModel):
     title: str
@@ -85,31 +78,26 @@ class RenderRequest(BaseModel):
 @router.post("/render")
 async def render_plan(
     body: RenderRequest,
-    db: Session  = Depends(get_db),
-    user: User   = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    user: User  = Depends(get_current_user),
 ):
     """
-    Render a slide plan (array of blueprints) into a PPTX file.
-    Returns a JSON with a download URL.
+    Render each blueprint → SlideLibraryEntry with thumbnail → AssembledPresentation.
+    Returns {assembly_id} so the frontend can redirect to /assemble/:id.
     """
     if not body.plan:
         raise HTTPException(400, detail="План слайдов пустой")
 
     try:
-        pptx_path = await render_presentation(body.plan, body.brand_template_id, db)
+        assembly_id = await create_assembly_from_plan(
+            blueprints=body.plan,
+            title=body.title,
+            brand_template_id=body.brand_template_id,
+            user_id=user.id,
+            db=db,
+        )
     except Exception as e:
         logger.exception(f"render_plan failed: {e}")
         raise HTTPException(500, detail=f"Ошибка рендеринга: {e}")
 
-    # Expose via /exports static mount
-    from config import settings
-    export_dir = Path(settings.export_dir)
-    export_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = f"{body.title[:40].replace(' ', '_')}.pptx"
-    export_path = export_dir / filename
-
-    import shutil
-    shutil.copy2(pptx_path, str(export_path))
-
-    return {"download_url": f"/exports/{filename}", "filename": filename}
+    return {"assembly_id": assembly_id}

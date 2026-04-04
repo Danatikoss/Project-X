@@ -2,10 +2,10 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
-  Sparkles, Upload, FileText, ChevronRight, Download,
+  Sparkles, Upload, FileText, ChevronRight,
   ArrowLeft, BarChart2, PieChart, Grid, Zap, ArrowRight,
   Quote, LayoutList, Layers, Star, RefreshCw, Wand2,
-  CheckCircle2, AlertCircle,
+  AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { presentationsApi, brandApi } from '../api/client'
@@ -159,7 +159,7 @@ function StepDot({ n, active, done }: { n: number; active: boolean; done: boolea
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-type Step = 'input' | 'plan' | 'done'
+type Step = 'input' | 'plan'
 
 const LANG_OPTIONS = [
   { value: '',   label: 'Авто' },
@@ -180,12 +180,10 @@ export default function PresentationGenerator() {
   const [brandId, setBrandId]         = useState<number | null>(null)
 
   // Plan state
-  const [plan, setPlan]               = useState<SlideBlueprint[]>([])
-  const [planTitle, setPlanTitle]     = useState('')
-  const [downloadUrl, setDownloadUrl] = useState('')
-  const [filename, setFilename]       = useState('')
+  const [plan, setPlan]           = useState<SlideBlueprint[]>([])
+  const [planTitle, setPlanTitle] = useState('')
 
-  const [step, setStep]               = useState<Step>('input')
+  const [step, setStep]           = useState<Step>('input')
 
   // Fetch brand templates
   const { data: templates = [] } = useQuery<BrandTemplate[]>({
@@ -204,7 +202,7 @@ export default function PresentationGenerator() {
     onError: (e: Error) => toast.error(`Ошибка: ${e.message}`),
   })
 
-  // Render mutation
+  // Render mutation — сохраняет слайды в библиотеку и создаёт сборку
   const renderMutation = useMutation({
     mutationFn: () => presentationsApi.render({
       title: planTitle,
@@ -212,9 +210,7 @@ export default function PresentationGenerator() {
       brandTemplateId: brandId ?? undefined,
     }),
     onSuccess: (data) => {
-      setDownloadUrl(data.download_url)
-      setFilename(data.filename)
-      setStep('done')
+      navigate(`/assemble/${data.assembly_id}`)
     },
     onError: (e: Error) => toast.error(`Ошибка рендеринга: ${e.message}`),
   })
@@ -257,18 +253,15 @@ export default function PresentationGenerator() {
 
         {/* Step indicator */}
         <div className="flex items-center gap-3 mb-8">
-          {(['input', 'plan', 'done'] as Step[]).map((s, i) => (
+          {(['input', 'plan'] as Step[]).map((s, i) => (
             <div key={s} className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <StepDot n={i + 1} active={step === s} done={
-                  (step === 'plan' && s === 'input') ||
-                  (step === 'done' && (s === 'input' || s === 'plan'))
-                } />
+                <StepDot n={i + 1} active={step === s} done={step === 'plan' && s === 'input'} />
                 <span className={cn('text-xs font-medium', step === s ? 'text-violet-700' : 'text-gray-400')}>
-                  {s === 'input' ? 'Источник' : s === 'plan' ? 'План слайдов' : 'Готово'}
+                  {s === 'input' ? 'Источник' : 'План слайдов'}
                 </span>
               </div>
-              {i < 2 && <div className="w-8 h-px bg-gray-200" />}
+              {i < 1 && <div className="w-8 h-px bg-gray-200" />}
             </div>
           ))}
         </div>
@@ -444,7 +437,7 @@ export default function PresentationGenerator() {
             {/* Action buttons */}
             <div className="flex gap-3 pt-2">
               <button
-                onClick={() => setStep('input')}
+                onClick={() => { setStep('input'); setPlan([]) }}
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-2 transition-all"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -465,55 +458,6 @@ export default function PresentationGenerator() {
           </div>
         )}
 
-        {/* ── Step 3: Done ── */}
-        {step === 'done' && (
-          <div className="space-y-4">
-            <div className="bg-white border border-gray-100 rounded-2xl p-8 shadow-sm text-center">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="w-8 h-8 text-emerald-600" />
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-1">{planTitle}</h2>
-              <p className="text-sm text-gray-500 mb-6">{plan.length} слайдов готово</p>
-
-              <div className="flex flex-col gap-3">
-                <a
-                  href={downloadUrl}
-                  download={filename}
-                  className="py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-200"
-                >
-                  <Download className="w-4 h-4" />
-                  Скачать PPTX
-                </a>
-                <button
-                  onClick={() => {
-                    setStep('input')
-                    setFile(null)
-                    setTextPrompt('')
-                    setPlan([])
-                    setDownloadUrl('')
-                  }}
-                  className="py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-2 transition-all"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Создать новую
-                </button>
-              </div>
-            </div>
-
-            {/* Layout summary */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Использованные layouts</p>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(layoutCounts).map(([layout, count]) => (
-                  <span key={layout} className="inline-flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-100 rounded-xl px-3 py-1.5">
-                    <LayoutBadge layout={layout} />
-                    <span className="text-gray-400">×{count}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
