@@ -5,7 +5,7 @@ import {
   Sparkles, Upload, FileText, ChevronRight,
   ArrowLeft, BarChart2, PieChart, Grid, Zap, ArrowRight,
   Quote, LayoutList, Layers, Star, RefreshCw, Wand2,
-  AlertCircle,
+  AlertCircle, CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { presentationsApi, brandApi } from '../api/client'
