@@ -137,6 +137,7 @@ export interface AuthUser {
   id: number
   email: string
   name: string | null
+  is_admin?: boolean
 }
 
 export interface AuthResponse {
@@ -154,6 +155,34 @@ export interface BrandTemplate {
   is_default: boolean
   colors: Record<string, string>
   created_at: string
+  // Strict Brand Guidelines
+  background_image_url: string | null
+  font_family: string
+  title_font_color: string
+  title_font_size: number
+  body_font_color: string
+  body_font_size: number
+  shape_color: string
+  shape_opacity: number
+}
+
+export interface BrandGuidelinesUpdate {
+  font_family?: string
+  title_font_color?: string
+  title_font_size?: number
+  body_font_color?: string
+  body_font_size?: number
+  shape_color?: string
+  shape_opacity?: number
+  clear_background_image?: boolean
+}
+
+export interface AdminUser {
+  id: number
+  email: string
+  name: string | null
+  is_admin: boolean
+  is_active: boolean
 }
 
 export interface GenerateSlideRequest {

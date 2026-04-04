@@ -50,6 +50,7 @@ class UserOut(BaseModel):
     id: int
     email: str
     name: str | None
+    is_admin: bool = False
 
 
 TokenResponse.model_rebuild()
@@ -81,7 +82,8 @@ def _token_response(user: User) -> TokenResponse:
     return TokenResponse(
         access_token=_make_access_token(user.id),
         refresh_token=_make_refresh_token(user.id),
-        user=UserOut(id=user.id, email=user.email, name=user.name),
+        user=UserOut(id=user.id, email=user.email, name=user.name,
+                     is_admin=bool(user.is_admin)),
     )
 
 
@@ -138,4 +140,5 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
-    return UserOut(id=user.id, email=user.email, name=user.name)
+    return UserOut(id=user.id, email=user.email, name=user.name,
+                   is_admin=bool(user.is_admin))

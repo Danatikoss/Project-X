@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Upload, Trash2, Star, StarOff, Palette } from 'lucide-react'
+import { Upload, Trash2, Star, StarOff, Palette, ShieldCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { brandApi } from '../api/client'
+import { useAuthStore } from '../store/auth'
 import { Spinner } from '../components/common/Spinner'
 import { cn } from '../utils/cn'
 import type { BrandTemplate } from '../types'
@@ -104,6 +106,8 @@ function TemplateCard({ tmpl, onDelete, onSetDefault }: {
 
 export default function Brand() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [dragOver, setDragOver] = useState(false)
@@ -159,12 +163,21 @@ export default function Brand() {
         <div className="w-12 h-12 rounded-2xl bg-gradient-brand flex items-center justify-center shadow-md">
           <Palette className="w-6 h-6 text-white" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-slate-900">Бренд-шаблоны</h1>
           <p className="text-sm text-slate-500">
             Загружайте PPTX-шаблоны — сгенерированные слайды будут точно следовать вашему бренду
           </p>
         </div>
+        {user?.is_admin && (
+          <button
+            onClick={() => navigate('/brand/guidelines')}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Brand Guidelines
+          </button>
+        )}
       </div>
 
       {/* Upload card */}

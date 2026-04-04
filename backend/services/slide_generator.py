@@ -16,7 +16,7 @@ import os
 import subprocess
 import tempfile
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -53,8 +53,18 @@ class BrandColors:
     text_muted: str = "64748B"
     accent_light: str = "EFF6FF"
     divider: str = "E2E8F0"
+    # ── Strict Brand Guidelines ──────────────────────────────────────────────
+    font_family: str = "Montserrat"
+    title_font_color: str = "FFFFFF"    # color for title text in header
+    title_font_size: int = 30           # pt
+    body_font_color: str = "1E293B"     # color for body/bullet text
+    body_font_size: int = 18            # pt
+    shape_color: str = "1E3A8A"         # color for decorative shapes
+    shape_opacity: int = 100            # 0-100
+    background_image_path: str | None = None  # filesystem path to bg image
 
     def _rgb(self, h: str) -> RGBColor:
+        h = h.lstrip("#")
         return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
     @property
@@ -66,13 +76,17 @@ class BrandColors:
     @property
     def text_rgb(self): return self._rgb(self.text)
     @property
-    def text_body_rgb(self): return self._rgb(self.text_body)
+    def text_body_rgb(self): return self._rgb(self.body_font_color)
     @property
     def text_muted_rgb(self): return self._rgb(self.text_muted)
     @property
     def accent_light_rgb(self): return self._rgb(self.accent_light)
     @property
     def divider_rgb(self): return self._rgb(self.divider)
+    @property
+    def shape_rgb(self): return self._rgb(self.shape_color)
+    @property
+    def title_color_rgb(self): return self._rgb(self.title_font_color)
 
 
 def _extract_brand_colors(pptx_path: str) -> BrandColors:
@@ -194,7 +208,7 @@ async def generate_blueprint(prompt: str, context: str = "") -> dict:
 
 # ─── python-pptx helpers ─────────────────────────────────────────────────────
 
-_FONT = "Montserrat"
+_FONT = "Montserrat"  # fallback; actual font comes from BrandColors.font_family
 
 
 def _set_bg(slide, color: RGBColor):
@@ -203,8 +217,39 @@ def _set_bg(slide, color: RGBColor):
     fill.fore_color.rgb = color
 
 
+def _set_bg_image(slide, image_path: str):
+    """Add image as slide background (covers full slide, z-order: bottom)."""
+    try:
+        pic = slide.shapes.add_picture(image_path, 0, 0, W, H)
+        # Move the picture behind all other shapes
+        spTree = slide.shapes._spTree
+        spTree.remove(pic._element)
+        spTree.insert(2, pic._element)  # 0=nvGrpSpPr, 1=grpSpPr, 2=first shape
+    except Exception as e:
+        logger.warning(f"Background image failed: {e}")
+
+
+def _apply_alpha(shape, opacity: int):
+    """Apply opacity (0-100) to a shape's solid fill via XML."""
+    if opacity >= 100:
+        return
+    try:
+        from pptx.oxml.ns import qn
+        from lxml import etree
+        solid = shape.fill._xPr.find(qn("a:solidFill"))
+        if solid is None:
+            return
+        for clr_node in list(solid):
+            for a in clr_node.findall(qn("a:alpha")):
+                clr_node.remove(a)
+            alpha_el = etree.SubElement(clr_node, qn("a:alpha"))
+            alpha_el.set("val", str(int(opacity * 1000)))  # 100000 = fully opaque
+    except Exception:
+        pass
+
+
 def _add_text(slide, text: str, left, top, width, height, *,
-               bold=False, italic=False, size=18,
+               bold=False, italic=False, size=18, font_name: str = _FONT,
                color: RGBColor = None, align=PP_ALIGN.LEFT, word_wrap=True):
     txBox = slide.shapes.add_textbox(left, top, width, height)
     tf = txBox.text_frame
@@ -216,14 +261,15 @@ def _add_text(slide, text: str, left, top, width, height, *,
     run.font.bold = bold
     run.font.italic = italic
     run.font.size = Pt(size)
-    run.font.name = _FONT
+    run.font.name = font_name
     if color:
         run.font.color.rgb = color
     return txBox
 
 
 def _add_bullets(slide, items: list[str], left, top, width, height, *,
-                  size=16, color: RGBColor = None, accent: RGBColor = None):
+                  size=16, color: RGBColor = None, accent: RGBColor = None,
+                  font_name: str = _FONT):
     txBox = slide.shapes.add_textbox(left, top, width, height)
     tf = txBox.text_frame
     tf.word_wrap = True
@@ -233,18 +279,19 @@ def _add_bullets(slide, items: list[str], left, top, width, height, *,
         run = p.add_run()
         run.text = f"  \u2013  {item}"
         run.font.size = Pt(size)
-        run.font.name = _FONT
+        run.font.name = font_name
         if color:
             run.font.color.rgb = color
     return txBox
 
 
 def _add_rect(slide, left, top, width, height, *,
-               fill: RGBColor = None, line: RGBColor = None):
+               fill: RGBColor = None, line: RGBColor = None, opacity: int = 100):
     shape = slide.shapes.add_shape(1, left, top, width, height)
     if fill:
         shape.fill.solid()
         shape.fill.fore_color.rgb = fill
+        _apply_alpha(shape, opacity)
     else:
         shape.fill.background()
     if line:
@@ -254,22 +301,25 @@ def _add_rect(slide, left, top, width, height, *,
     return shape
 
 
-def _add_oval(slide, left, top, width, height, *, fill: RGBColor = None):
+def _add_oval(slide, left, top, width, height, *, fill: RGBColor = None, opacity: int = 100):
     shape = slide.shapes.add_shape(9, left, top, width, height)
     if fill:
         shape.fill.solid()
         shape.fill.fore_color.rgb = fill
+        _apply_alpha(shape, opacity)
     else:
         shape.fill.background()
     shape.line.fill.background()
     return shape
 
 
-def _add_circle_label(slide, cx, cy, r, fill: RGBColor, text: str, size: int = 16):
+def _add_circle_label(slide, cx, cy, r, fill: RGBColor, text: str, size: int = 16,
+                       font_name: str = _FONT, opacity: int = 100):
     """Filled circle with vertically & horizontally centred text (icon replacement)."""
     shape = slide.shapes.add_shape(9, cx - r, cy - r, r * 2, r * 2)
     shape.fill.solid()
     shape.fill.fore_color.rgb = fill
+    _apply_alpha(shape, opacity)
     shape.line.fill.background()
     tf = shape.text_frame
     tf.word_wrap = False
@@ -283,19 +333,22 @@ def _add_circle_label(slide, cx, cy, r, fill: RGBColor, text: str, size: int = 1
     run.text = text
     run.font.bold = True
     run.font.size = Pt(size)
-    run.font.name = _FONT
+    run.font.name = font_name
     run.font.color.rgb = RGBColor(255, 255, 255)
     return shape
 
 
 def _header(slide, title: str, c: BrandColors, h: float = 1.45):
     """Full-width primary header bar with white title — Gamma style."""
-    _add_rect(slide, Inches(0), Inches(0), W, Inches(h), fill=c.primary_rgb)
+    _add_rect(slide, Inches(0), Inches(0), W, Inches(h),
+              fill=c.shape_rgb, opacity=c.shape_opacity)
     # Thin secondary accent at bottom of header
-    _add_rect(slide, Inches(0), Inches(h), W, Inches(0.055), fill=c.secondary_rgb)
+    _add_rect(slide, Inches(0), Inches(h), W, Inches(0.055),
+              fill=c.secondary_rgb, opacity=c.shape_opacity)
     _add_text(slide, title,
               Inches(0.5), Inches(0), W - Inches(0.6), Inches(h),
-              bold=True, size=30, color=RGBColor(255, 255, 255))
+              bold=True, size=c.title_font_size, color=c.title_color_rgb,
+              font_name=c.font_family)
     return h
 
 
@@ -310,10 +363,10 @@ def _render_title_content(slide, bp: dict, c: BrandColors):
 
     if items:
         _add_bullets(slide, items, Inches(0.55), content_top, W - Inches(0.75), H - content_top - Inches(0.2),
-                     size=18, color=c.text_body_rgb)
+                     size=c.body_font_size, color=c.text_body_rgb, font_name=c.font_family)
     elif body_txt:
         _add_text(slide, body_txt, Inches(0.55), content_top, W - Inches(0.75), H - content_top - Inches(0.2),
-                  size=18, color=c.text_body_rgb)
+                  size=c.body_font_size, color=c.text_body_rgb, font_name=c.font_family)
 
 
 def _render_two_column(slide, bp: dict, c: BrandColors):
@@ -328,21 +381,22 @@ def _render_two_column(slide, bp: dict, c: BrandColors):
     rx = Inches(0.35) + col_w + Inches(0.3)
 
     # Vertical divider
-    _add_rect(slide, W / 2 - Inches(0.025), col_top, Inches(0.05), col_h, fill=c.divider_rgb)
+    _add_rect(slide, W / 2 - Inches(0.025), col_top, Inches(0.05), col_h,
+              fill=c.divider_rgb, opacity=c.shape_opacity)
 
     if lc.get("heading"):
         _add_text(slide, lc["heading"], lx, col_top, col_w, Inches(0.6),
-                  bold=True, size=16, color=c.primary_rgb)
+                  bold=True, size=16, color=c.shape_rgb, font_name=c.font_family)
     if lc.get("items"):
         _add_bullets(slide, lc["items"], lx, col_top + Inches(0.65), col_w, col_h - Inches(0.7),
-                     size=15, color=c.text_body_rgb)
+                     size=c.body_font_size - 3, color=c.text_body_rgb, font_name=c.font_family)
 
     if rc.get("heading"):
         _add_text(slide, rc["heading"], rx, col_top, col_w, Inches(0.6),
-                  bold=True, size=16, color=c.primary_rgb)
+                  bold=True, size=16, color=c.shape_rgb, font_name=c.font_family)
     if rc.get("items"):
         _add_bullets(slide, rc["items"], rx, col_top + Inches(0.65), col_w, col_h - Inches(0.7),
-                     size=15, color=c.text_body_rgb)
+                     size=c.body_font_size - 3, color=c.text_body_rgb, font_name=c.font_family)
 
 
 def _render_big_stat(slide, bp: dict, c: BrandColors):
@@ -352,70 +406,81 @@ def _render_big_stat(slide, bp: dict, c: BrandColors):
     # Huge value
     _add_text(slide, content.get("value", ""),
               Inches(0.5), Inches(hh + 0.05), Inches(7), Inches(3.5),
-              bold=True, size=100, color=c.primary_rgb, word_wrap=False)
+              bold=True, size=100, color=c.shape_rgb, word_wrap=False, font_name=c.font_family)
     # Label under value
     _add_text(slide, content.get("label", ""),
               Inches(0.5), Inches(hh + 3.6), Inches(6), Inches(0.75),
-              size=22, color=c.text_muted_rgb)
+              size=22, color=c.text_muted_rgb, font_name=c.font_family)
 
     ctx = content.get("context", [])
     if ctx:
-        _add_rect(slide, Inches(7.6), Inches(hh + 0.15), Inches(0.05), H - Inches(hh + 0.35), fill=c.divider_rgb)
+        _add_rect(slide, Inches(7.6), Inches(hh + 0.15), Inches(0.05), H - Inches(hh + 0.35),
+                  fill=c.divider_rgb, opacity=c.shape_opacity)
         _add_bullets(slide, ctx, Inches(7.85), Inches(hh + 0.4), Inches(5.1), H - Inches(hh + 0.6),
-                     size=17, color=c.text_body_rgb)
+                     size=c.body_font_size - 1, color=c.text_body_rgb, font_name=c.font_family)
 
 
 def _render_section_divider(slide, bp: dict, c: BrandColors):
-    _set_bg(slide, c.primary_rgb)
+    _set_bg(slide, c.shape_rgb)
 
     # Decorative large circle (upper-right, partially off-screen — lighter shade)
     r_big = Inches(4.0)
-    pr, pg, pb = c.primary_rgb[0], c.primary_rgb[1], c.primary_rgb[2]
+    pr, pg, pb = c.shape_rgb[0], c.shape_rgb[1], c.shape_rgb[2]
     _add_oval(slide, W - r_big * 0.8, -r_big * 0.6, r_big * 2, r_big * 2,
-              fill=RGBColor(min(255, pr + 28), min(255, pg + 28), min(255, pb + 38)))
+              fill=RGBColor(min(255, pr + 28), min(255, pg + 28), min(255, pb + 38)),
+              opacity=c.shape_opacity)
 
     # Thin accent bar at top
-    _add_rect(slide, Inches(0), Inches(0), W, Inches(0.12), fill=c.secondary_rgb)
+    _add_rect(slide, Inches(0), Inches(0), W, Inches(0.12),
+              fill=c.secondary_rgb, opacity=c.shape_opacity)
 
     # Title — bold, white, left-aligned (Gamma style)
     _add_text(slide, bp.get("title", ""),
               Inches(0.75), Inches(1.6), W - Inches(5.0), Inches(3.2),
-              bold=True, size=52, color=RGBColor(255, 255, 255))
+              bold=True, size=c.title_font_size + 22, color=c.title_color_rgb,
+              font_name=c.font_family)
 
     subtitle = bp.get("content", {}).get("subtitle", "")
     if subtitle:
-        _add_rect(slide, Inches(0.75), Inches(5.0), Inches(1.8), Inches(0.06), fill=c.secondary_rgb)
+        _add_rect(slide, Inches(0.75), Inches(5.0), Inches(1.8), Inches(0.06),
+                  fill=c.secondary_rgb, opacity=c.shape_opacity)
         _add_text(slide, subtitle,
                   Inches(0.75), Inches(5.15), W - Inches(5.5), Inches(1.2),
-                  size=22, color=RGBColor(210, 225, 255))
+                  size=c.body_font_size + 4, color=RGBColor(210, 225, 255),
+                  font_name=c.font_family)
 
     # Thin accent bar at bottom
-    _add_rect(slide, Inches(0), H - Inches(0.12), W, Inches(0.12), fill=c.secondary_rgb)
+    _add_rect(slide, Inches(0), H - Inches(0.12), W, Inches(0.12),
+              fill=c.secondary_rgb, opacity=c.shape_opacity)
 
 
 def _render_quote(slide, bp: dict, c: BrandColors):
     content = bp.get("content", {})
-    _set_bg(slide, c.primary_rgb)
+    _set_bg(slide, c.shape_rgb)
 
     # Decorative circle accent (slightly lighter shade)
-    pr, pg, pb = c.primary_rgb[0], c.primary_rgb[1], c.primary_rgb[2]
+    pr, pg, pb = c.shape_rgb[0], c.shape_rgb[1], c.shape_rgb[2]
     _add_oval(slide, W - Inches(3.5), H - Inches(3.5), Inches(5), Inches(5),
-              fill=RGBColor(min(255, pr + 22), min(255, pg + 22), min(255, pb + 32)))
+              fill=RGBColor(min(255, pr + 22), min(255, pg + 22), min(255, pb + 32)),
+              opacity=c.shape_opacity)
 
     # Large opening quote mark
     _add_text(slide, "\u201C",
               Inches(0.5), Inches(0.0), Inches(3), Inches(3),
-              bold=True, size=130, color=RGBColor(255, 255, 255), word_wrap=False)
+              bold=True, size=130, color=c.title_color_rgb, word_wrap=False,
+              font_name=c.font_family)
 
     _add_text(slide, content.get("quote", ""),
               Inches(0.85), Inches(1.3), W - Inches(1.8), Inches(4.0),
-              size=26, color=RGBColor(255, 255, 255))
+              size=c.body_font_size + 8, color=c.title_color_rgb, font_name=c.font_family)
 
     if content.get("attribution"):
-        _add_rect(slide, Inches(0.85), Inches(5.45), Inches(2.0), Inches(0.06), fill=c.secondary_rgb)
+        _add_rect(slide, Inches(0.85), Inches(5.45), Inches(2.0), Inches(0.06),
+                  fill=c.secondary_rgb, opacity=c.shape_opacity)
         _add_text(slide, f"\u2014 {content['attribution']}",
                   Inches(0.85), Inches(5.6), W - Inches(1.8), Inches(0.8),
-                  size=16, italic=True, color=RGBColor(200, 220, 255))
+                  size=16, italic=True, color=RGBColor(200, 220, 255),
+                  font_name=c.font_family)
 
 
 def _render_comparison(slide, bp: dict, c: BrandColors):
@@ -431,23 +496,29 @@ def _render_comparison(slide, bp: dict, c: BrandColors):
 
     # Left panel
     _add_rect(slide, lx, panel_top, pw, ph, fill=c.accent_light_rgb)
-    _add_rect(slide, lx, panel_top, pw, Inches(0.52), fill=c.primary_rgb)
+    _add_rect(slide, lx, panel_top, pw, Inches(0.52),
+              fill=c.shape_rgb, opacity=c.shape_opacity)
     _add_text(slide, lc.get("label", ""),
               lx + Inches(0.15), panel_top + Inches(0.06), pw - Inches(0.3), Inches(0.44),
-              bold=True, size=16, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
+              bold=True, size=16, color=c.title_color_rgb, align=PP_ALIGN.CENTER,
+              font_name=c.font_family)
     if lc.get("items"):
         _add_bullets(slide, lc["items"], lx + Inches(0.2), panel_top + Inches(0.65),
-                     pw - Inches(0.35), ph - Inches(0.8), size=14, color=c.text_body_rgb)
+                     pw - Inches(0.35), ph - Inches(0.8), size=c.body_font_size - 4,
+                     color=c.text_body_rgb, font_name=c.font_family)
 
     # Right panel
     _add_rect(slide, rx, panel_top, pw, ph, fill=RGBColor(240, 253, 244))
-    _add_rect(slide, rx, panel_top, pw, Inches(0.52), fill=c.secondary_rgb)
+    _add_rect(slide, rx, panel_top, pw, Inches(0.52),
+              fill=c.secondary_rgb, opacity=c.shape_opacity)
     _add_text(slide, rc.get("label", ""),
               rx + Inches(0.15), panel_top + Inches(0.06), pw - Inches(0.3), Inches(0.44),
-              bold=True, size=16, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
+              bold=True, size=16, color=c.title_color_rgb, align=PP_ALIGN.CENTER,
+              font_name=c.font_family)
     if rc.get("items"):
         _add_bullets(slide, rc["items"], rx + Inches(0.2), panel_top + Inches(0.65),
-                     pw - Inches(0.35), ph - Inches(0.8), size=14, color=c.text_body_rgb)
+                     pw - Inches(0.35), ph - Inches(0.8), size=c.body_font_size - 4,
+                     color=c.text_body_rgb, font_name=c.font_family)
 
 
 def _render_timeline(slide, bp: dict, c: BrandColors):
@@ -465,24 +536,27 @@ def _render_timeline(slide, bp: dict, c: BrandColors):
     step_w = (x1 - x0) / n
 
     # Horizontal axis line
-    _add_rect(slide, x0, line_y - Inches(0.03), x1 - x0, Inches(0.07), fill=c.primary_rgb)
+    _add_rect(slide, x0, line_y - Inches(0.03), x1 - x0, Inches(0.07),
+              fill=c.shape_rgb, opacity=c.shape_opacity)
 
     for i, step in enumerate(steps):
         cx = x0 + step_w * i + step_w / 2
         r  = Inches(0.28)
 
         # Circle dot on axis
-        _add_circle_label(slide, cx, line_y, r, c.primary_rgb, str(i + 1), size=13)
+        _add_circle_label(slide, cx, line_y, r, c.shape_rgb, str(i + 1), size=13,
+                          font_name=c.font_family, opacity=c.shape_opacity)
 
         # Label above
         _add_text(slide, step.get("label", ""),
                   cx - step_w / 2 + Inches(0.05), Inches(hh + 0.1), step_w - Inches(0.1), Inches(0.7),
-                  bold=True, size=13, color=c.primary_rgb, align=PP_ALIGN.CENTER)
+                  bold=True, size=13, color=c.shape_rgb, align=PP_ALIGN.CENTER, font_name=c.font_family)
 
         # Event below
         _add_text(slide, step.get("event", ""),
                   cx - step_w / 2 + Inches(0.05), line_y + Inches(0.55), step_w - Inches(0.1), Inches(2.5),
-                  size=12, color=c.text_body_rgb, align=PP_ALIGN.CENTER, word_wrap=True)
+                  size=12, color=c.text_body_rgb, align=PP_ALIGN.CENTER, word_wrap=True,
+                  font_name=c.font_family)
 
 
 # ─── New visual layout renderers ──────────────────────────────────────────────
@@ -509,7 +583,7 @@ def _render_icon_grid(slide, bp: dict, c: BrandColors):
 
     # Icon circle palette — rotate through accent shades
     icon_colors = [
-        c.primary_rgb, c.secondary_rgb,
+        c.shape_rgb, c.secondary_rgb,
         RGBColor(99, 102, 241), RGBColor(20, 184, 166),
     ]
 
@@ -521,26 +595,28 @@ def _render_icon_grid(slide, bp: dict, c: BrandColors):
 
         # Card background (white) + top colored border
         _add_rect(slide, cx, cy, card_w, card_h, fill=RGBColor(255, 255, 255))
-        _add_rect(slide, cx, cy, card_w, Inches(0.065), fill=icon_colors[i % len(icon_colors)])
+        _add_rect(slide, cx, cy, card_w, Inches(0.065),
+                  fill=icon_colors[i % len(icon_colors)], opacity=c.shape_opacity)
 
         # Icon circle
         r_icon = Inches(0.32)
         icon_cx = cx + r_icon + Inches(0.18)
         icon_cy = cy + r_icon + Inches(0.2)
         _add_circle_label(slide, icon_cx, icon_cy, r_icon,
-                          icon_colors[i % len(icon_colors)], str(i + 1), size=15)
+                          icon_colors[i % len(icon_colors)], str(i + 1), size=15,
+                          font_name=c.font_family, opacity=c.shape_opacity)
 
         # Heading — to the right of icon
         _add_text(slide, card.get("heading", ""),
                   cx + r_icon * 2 + Inches(0.35), cy + Inches(0.15),
                   card_w - r_icon * 2 - Inches(0.45), Inches(0.65),
-                  bold=True, size=14, color=c.text_rgb)
+                  bold=True, size=14, color=c.text_rgb, font_name=c.font_family)
 
         # Body text
         _add_text(slide, card.get("text", ""),
                   cx + Inches(0.15), cy + r_icon * 2 + Inches(0.35),
                   card_w - Inches(0.3), card_h - r_icon * 2 - Inches(0.5),
-                  size=12, color=c.text_muted_rgb)
+                  size=12, color=c.text_muted_rgb, font_name=c.font_family)
 
 
 def _render_key_message(slide, bp: dict, c: BrandColors):
@@ -553,27 +629,31 @@ def _render_key_message(slide, bp: dict, c: BrandColors):
     _set_bg(slide, RGBColor(255, 255, 255))
 
     # Thin accent bar at top
-    _add_rect(slide, Inches(0), Inches(0), W, Inches(0.12), fill=c.primary_rgb)
+    _add_rect(slide, Inches(0), Inches(0), W, Inches(0.12),
+              fill=c.shape_rgb, opacity=c.shape_opacity)
     # Thin accent bar at bottom
-    _add_rect(slide, Inches(0), H - Inches(0.12), W, Inches(0.12), fill=c.secondary_rgb)
+    _add_rect(slide, Inches(0), H - Inches(0.12), W, Inches(0.12),
+              fill=c.secondary_rgb, opacity=c.shape_opacity)
 
     # Small eyebrow label
     if label and label != message:
         _add_text(slide, label.upper(),
                   Inches(0.7), Inches(0.35), W - Inches(1.0), Inches(0.55),
-                  size=11, color=c.text_muted_rgb)
+                  size=11, color=c.text_muted_rgb, font_name=c.font_family)
 
     # Huge message
     _add_text(slide, message,
               Inches(0.7), Inches(1.0), W - Inches(1.1), Inches(4.5),
-              bold=True, size=44, color=c.primary_rgb)
+              bold=True, size=44, color=c.shape_rgb, font_name=c.font_family)
 
     # Subtext
     if subtext:
-        _add_rect(slide, Inches(0.7), Inches(5.7), Inches(1.8), Inches(0.06), fill=c.secondary_rgb)
+        _add_rect(slide, Inches(0.7), Inches(5.7), Inches(1.8), Inches(0.06),
+                  fill=c.secondary_rgb, opacity=c.shape_opacity)
         _add_text(slide, subtext,
                   Inches(0.7), Inches(5.85), W - Inches(1.1), Inches(0.9),
-                  size=16, color=c.text_muted_rgb, italic=True)
+                  size=c.body_font_size - 2, color=c.text_muted_rgb, italic=True,
+                  font_name=c.font_family)
 
 
 def _render_process_flow(slide, bp: dict, c: BrandColors):
@@ -594,36 +674,38 @@ def _render_process_flow(slide, bp: dict, c: BrandColors):
 
     # Connecting line
     _add_rect(slide, x0 + r, circle_y - Inches(0.03), x1 - x0 - r * 2, Inches(0.06),
-              fill=c.divider_rgb)
+              fill=c.divider_rgb, opacity=c.shape_opacity)
 
     # Step number accent colors
-    step_colors = [c.primary_rgb, c.secondary_rgb,
-                   RGBColor(99, 102, 241), RGBColor(20, 184, 166), c.primary_rgb]
+    step_colors = [c.shape_rgb, c.secondary_rgb,
+                   RGBColor(99, 102, 241), RGBColor(20, 184, 166), c.shape_rgb]
 
     for i, step in enumerate(steps):
         cx = x0 + step_w * i + step_w / 2
 
         # Numbered circle
-        _add_circle_label(slide, cx, circle_y, r, step_colors[i % len(step_colors)], str(i + 1), size=17)
+        _add_circle_label(slide, cx, circle_y, r, step_colors[i % len(step_colors)], str(i + 1), size=17,
+                          font_name=c.font_family, opacity=c.shape_opacity)
 
         # Label below circle
         _add_text(slide, step.get("label", ""),
                   cx - step_w / 2 + Inches(0.05), circle_y + r + Inches(0.18),
                   step_w - Inches(0.1), Inches(0.65),
-                  bold=True, size=13, color=c.text_rgb, align=PP_ALIGN.CENTER)
+                  bold=True, size=13, color=c.text_rgb, align=PP_ALIGN.CENTER, font_name=c.font_family)
 
         # Description
         _add_text(slide, step.get("desc", ""),
                   cx - step_w / 2 + Inches(0.05), circle_y + r + Inches(0.9),
                   step_w - Inches(0.1), Inches(2.2),
-                  size=12, color=c.text_muted_rgb, align=PP_ALIGN.CENTER, word_wrap=True)
+                  size=12, color=c.text_muted_rgb, align=PP_ALIGN.CENTER, word_wrap=True,
+                  font_name=c.font_family)
 
         # Arrow connector (except last)
         if i < n - 1:
             _add_text(slide, "›",
                       cx + step_w / 2 - Inches(0.15), circle_y - Inches(0.25),
                       Inches(0.35), Inches(0.9),
-                      size=26, color=c.secondary_rgb, align=PP_ALIGN.CENTER)
+                      size=26, color=c.secondary_rgb, align=PP_ALIGN.CENTER, font_name=c.font_family)
 
 
 def _render_chart_bar(slide, bp: dict, c: BrandColors):
@@ -760,9 +842,10 @@ def render_slide_pptx(blueprint: dict, colors: BrandColors,
             sp.getparent().remove(sp)
 
     layout = blueprint.get("layout", "title_content")
-    # Only force white background when no template is provided.
-    # When using a template, the background image/color comes from the slide master.
-    if layout != "section_divider" and not template_pptx_path:
+    # Background: image takes priority, then solid color from master, then white
+    if colors.background_image_path and os.path.exists(colors.background_image_path):
+        _set_bg_image(slide, colors.background_image_path)
+    elif layout != "section_divider" and layout != "quote" and not template_pptx_path:
         _set_bg(slide, RGBColor(255, 255, 255))
 
     renderer = _RENDERERS.get(layout, _render_title_content)
@@ -835,9 +918,28 @@ async def generate_slide(
                 stored = json.loads(tmpl.colors_json or "{}")
                 if stored:
                     colors = BrandColors(**{k: v for k, v in stored.items()
-                                           if hasattr(BrandColors, k)})
+                                           if k in BrandColors.__dataclass_fields__})
                 else:
                     colors = _extract_brand_colors(template_pptx_path)
+
+            # Apply strict brand guidelines (override extracted colors)
+            if tmpl.font_family:
+                colors.font_family = tmpl.font_family
+            if tmpl.title_font_color:
+                colors.title_font_color = tmpl.title_font_color
+            if tmpl.title_font_size:
+                colors.title_font_size = tmpl.title_font_size
+            if tmpl.body_font_color:
+                colors.body_font_color = tmpl.body_font_color
+            if tmpl.body_font_size:
+                colors.body_font_size = tmpl.body_font_size
+            if tmpl.shape_color:
+                colors.shape_color = tmpl.shape_color
+                colors.primary = tmpl.shape_color  # sync primary for charts/legends
+            if tmpl.shape_opacity is not None:
+                colors.shape_opacity = tmpl.shape_opacity
+            if tmpl.background_image_path and os.path.exists(tmpl.background_image_path):
+                colors.background_image_path = tmpl.background_image_path
 
     # 2. Generate blueprint
     blueprint = await generate_blueprint(prompt, context)

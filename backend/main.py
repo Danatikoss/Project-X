@@ -95,6 +95,10 @@ media_dir = Path(settings.upload_dir) / "media"
 media_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media-files", StaticFiles(directory=str(media_dir)), name="media-files")
 
+brand_bg_dir = Path(settings.upload_dir) / "brand_backgrounds"
+brand_bg_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/brand-backgrounds", StaticFiles(directory=str(brand_bg_dir)), name="brand-backgrounds")
+
 
 @app.get("/health")
 def health():

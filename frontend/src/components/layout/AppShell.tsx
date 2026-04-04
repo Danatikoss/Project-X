@@ -1,10 +1,10 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film, FileText, Wand2 } from 'lucide-react'
+import { LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film, FileText, Wand2, ShieldCheck } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { IndexingBell } from './IndexingBell'
 import { useAuthStore } from '../../store/auth'
 
-const navItems = [
+const BASE_NAV = [
   { to: '/dashboard',      icon: LayoutDashboard, label: 'Главная' },
   { to: '/generate',       icon: Wand2,           label: 'Генератор' },
   { to: '/library',        icon: BookImage,        label: 'Библиотека' },
@@ -13,6 +13,10 @@ const navItems = [
   { to: '/media',          icon: Film,             label: 'Медиа' },
   { to: '/brand',          icon: Palette,          label: 'Бренд' },
   { to: '/profile',        icon: User,             label: 'Профиль' },
+]
+
+const ADMIN_NAV = [
+  { to: '/brand/guidelines', icon: ShieldCheck, label: 'Гайдлайны' },
 ]
 
 
@@ -24,6 +28,11 @@ export function AppShell() {
   const initials = user?.name
     ? user.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
     : user?.email?.[0]?.toUpperCase() ?? '?'
+
+  const navItems = [
+    ...BASE_NAV,
+    ...(user?.is_admin ? ADMIN_NAV : []),
+  ]
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">

@@ -73,7 +73,19 @@
       "Bash(__NEW_LINE_f11bf5b919f0abfc__ python3:*)",
       "WebFetch(domain:plusai.com)",
       "Skill(update-config)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ffmpeg -version)",
+      "Bash(tree -L 3 -d /Users/danatikoss/Desktop/project2 --ignore node_modules)",
+      "Bash(find:*)",
+      "Bash(git reset:*)",
+      "Bash(pip3 install:*)",
+      "Bash(xargs cat:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(~/Desktop/project2/backend/venv/bin/python -c \"import sys; print\\(sys.path\\)\")",
+      "Bash(lsof -i :8000 -sTCP:LISTEN)",
+      "Bash(kill -HUP 9412)",
+      "Bash(xargs kill:*)"
     ]
   }
 }

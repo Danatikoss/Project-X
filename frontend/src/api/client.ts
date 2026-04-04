@@ -3,10 +3,10 @@ import type {
   Slide, SlideListResponse, SlidePatchRequest, SourcePresentation,
   UploadResponse, Assembly, AssemblyListItem, AssembleRequest,
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
-  AuthResponse, Project, BrandTemplate, GenerateSlideRequest, GenerateSlideResponse,
+  AuthResponse, Project, BrandTemplate, BrandGuidelinesUpdate, GenerateSlideRequest, GenerateSlideResponse,
   MediaFolder, MediaAsset, AssemblyTemplate,
   ThesisQuestion, ThesesSession, ThesesSessionListItem,
-  ProfileStats,
+  ProfileStats, AdminUser,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -304,6 +304,44 @@ export const brandApi = {
 
   generateSlide: async (req: GenerateSlideRequest): Promise<GenerateSlideResponse> => {
     const res = await api.post<GenerateSlideResponse>('/brand/generate', req)
+    return res.data
+  },
+
+  updateGuidelines: async (templateId: number, data: BrandGuidelinesUpdate): Promise<BrandTemplate> => {
+    const res = await api.patch<BrandTemplate>(`/brand/templates/${templateId}/guidelines`, data)
+    return res.data
+  },
+
+  uploadBackground: async (templateId: number, file: File): Promise<BrandTemplate> => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await api.post<BrandTemplate>(`/brand/templates/${templateId}/guidelines/bg`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  },
+
+  removeBackground: async (templateId: number): Promise<BrandTemplate> => {
+    const res = await api.delete<BrandTemplate>(`/brand/templates/${templateId}/guidelines/bg`)
+    return res.data
+  },
+}
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+export const adminApi = {
+  bootstrap: async (): Promise<AdminUser> => {
+    const res = await api.post<AdminUser>('/admin/bootstrap')
+    return res.data
+  },
+
+  listUsers: async (): Promise<AdminUser[]> => {
+    const res = await api.get<AdminUser[]>('/admin/users')
+    return res.data
+  },
+
+  toggleAdmin: async (userId: number, is_admin: boolean): Promise<AdminUser> => {
+    const res = await api.patch<AdminUser>(`/admin/users/${userId}`, { is_admin })
     return res.data
   },
 }

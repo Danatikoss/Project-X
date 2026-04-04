@@ -10,6 +10,7 @@ from api.media import router as media_router
 from api.templates import router as templates_router
 from api.theses import router as theses_router
 from api.presentations import router as presentations_router
+from api.admin import router as admin_router
 
 router = APIRouter()
 
@@ -24,3 +25,4 @@ router.include_router(media_router, prefix="/media", tags=["Media"])
 router.include_router(templates_router, prefix="/templates", tags=["Templates"])
 router.include_router(theses_router, prefix="/theses", tags=["Theses"])
 router.include_router(presentations_router, prefix="/presentations", tags=["Presentations"])
+router.include_router(admin_router, prefix="/admin", tags=["Admin"])

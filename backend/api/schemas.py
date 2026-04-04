@@ -161,9 +161,29 @@ class BrandTemplateResponse(BaseModel):
     is_default: bool
     colors: dict = {}
     created_at: datetime
+    # Strict Brand Guidelines fields
+    background_image_url: Optional[str] = None
+    font_family: str = "Montserrat"
+    title_font_color: str = "FFFFFF"
+    title_font_size: int = 30
+    body_font_color: str = "1E293B"
+    body_font_size: int = 18
+    shape_color: str = "1E3A8A"
+    shape_opacity: int = 100
 
     class Config:
         from_attributes = True
+
+
+class BrandGuidelinesUpdate(BaseModel):
+    font_family: Optional[str] = None
+    title_font_color: Optional[str] = None
+    title_font_size: Optional[int] = None
+    body_font_color: Optional[str] = None
+    body_font_size: Optional[int] = None
+    shape_color: Optional[str] = None
+    shape_opacity: Optional[int] = None
+    clear_background_image: bool = False
 
 
 class GenerateSlideRequest(BaseModel):

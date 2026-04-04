@@ -87,6 +87,17 @@ def migrate_db():
             _add_column_if_missing(conn, "user_profiles", "ai_style", "TEXT DEFAULT 'official'")
         if "projects" in tables:
             _add_column_if_missing(conn, "projects", "owner_id", "INTEGER REFERENCES users(id)")
+        if "users" in tables:
+            _add_column_if_missing(conn, "users", "is_admin", "BOOLEAN DEFAULT 0")
+        if "brand_templates" in tables:
+            _add_column_if_missing(conn, "brand_templates", "background_image_path", "TEXT")
+            _add_column_if_missing(conn, "brand_templates", "font_family", "TEXT DEFAULT 'Montserrat'")
+            _add_column_if_missing(conn, "brand_templates", "title_font_color", "TEXT DEFAULT 'FFFFFF'")
+            _add_column_if_missing(conn, "brand_templates", "title_font_size", "INTEGER DEFAULT 30")
+            _add_column_if_missing(conn, "brand_templates", "body_font_color", "TEXT DEFAULT '1E293B'")
+            _add_column_if_missing(conn, "brand_templates", "body_font_size", "INTEGER DEFAULT 18")
+            _add_column_if_missing(conn, "brand_templates", "shape_color", "TEXT DEFAULT '1E3A8A'")
+            _add_column_if_missing(conn, "brand_templates", "shape_opacity", "INTEGER DEFAULT 100")
 
 
 def create_tables():

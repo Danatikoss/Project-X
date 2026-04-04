@@ -31,6 +31,14 @@ def get_current_user(
     return user
 
 
+def get_admin_user(user: User = Depends(get_current_user)) -> User:
+    """Raises 403 if the current user is not an admin."""
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Требуются права администратора")
+    return user
+
+
 def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: Session = Depends(get_db),
