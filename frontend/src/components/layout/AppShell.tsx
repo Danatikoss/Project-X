@@ -1,11 +1,12 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film, FileText } from 'lucide-react'
+import { LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film, FileText, Wand2 } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { IndexingBell } from './IndexingBell'
 import { useAuthStore } from '../../store/auth'
 
 const navItems = [
   { to: '/dashboard',      icon: LayoutDashboard, label: 'Главная' },
+  { to: '/generate',       icon: Wand2,           label: 'Генератор' },
   { to: '/library',        icon: BookImage,        label: 'Библиотека' },
   { to: '/library/upload', icon: Upload,           label: 'Загрузить' },
   { to: '/theses',         icon: FileText,         label: 'Тезисы' },

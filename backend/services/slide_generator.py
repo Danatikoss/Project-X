@@ -22,7 +22,9 @@ from pathlib import Path
 import fitz  # PyMuPDF
 from openai import AsyncOpenAI
 from pptx import Presentation
+from pptx.chart.data import ChartData
 from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 from sqlalchemy.orm import Session
@@ -111,32 +113,53 @@ def _extract_brand_colors(pptx_path: str) -> BrandColors:
 
 # ─── Claude Opus blueprint generation ────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You are an expert presentation designer. Given a topic, generate a perfectly structured slide blueprint.
+_SYSTEM_PROMPT = """You are an expert presentation designer creating visually rich slides like Gamma and Beautiful.ai.
 
-Choose the most appropriate layout:
-- title_content  — title + bullet points or body text  (most common)
-- two_column     — title + two side-by-side columns with bullets
-- big_stat       — large emphasized metric + label + supporting bullets
-- section_divider — full-color section title slide
-- quote          — large pull quote + attribution
-- comparison     — two-panel side-by-side (before/after, option A vs B)
-- timeline       — sequential steps or milestones (max 5)
+CRITICAL ANTI-TEXT-WALL RULES (no exceptions):
+1. NEVER use title_content with more than 5 bullet points
+2. title_content is the LAST RESORT — use visual layouts whenever possible
+3. If content has 3-4 concepts/features/benefits → use icon_grid
+4. If content has a key insight or strong statement → use key_message
+5. If content has a process or sequential steps → use process_flow
+6. If content has 3+ numbers/metrics → use chart_bar or chart_pie
+7. Split any content that would produce >5 bullets into multiple slides
+
+Available layouts and when to use them:
+- icon_grid      — 3-4 concepts/features/benefits with emoji icons (PREFERRED over bullet lists)
+- key_message    — one powerful statement that dominates the slide (for key insights)
+- process_flow   — sequential steps (3-5) with emoji and descriptions
+- chart_bar      — bar/column chart when you have 3+ comparable numeric values
+- chart_pie      — pie chart for proportions/shares that sum to 100%
+- big_stat       — one large dramatic number + label + 2-3 context bullets
+- two_column     — two related topics side by side with bullet lists
+- comparison     — explicit A vs B or before/after panels
+- timeline       — milestones or historical sequence (max 5 points)
+- quote          — powerful quote or testimonial with attribution
+- section_divider — full-color section divider (for transitions between topics)
+- title_content  — ONLY if none of the above fits AND max 5 short bullets
 
 Respond with ONLY valid JSON (no markdown, no commentary):
 
-title_content:    {"layout":"title_content","title":"...","content":{"type":"bullets","items":["...","..."]},"speaker_notes":"..."}
-two_column:       {"layout":"two_column","title":"...","content":{"left":{"heading":"...","items":["..."]},"right":{"heading":"...","items":["..."]}},"speaker_notes":"..."}
-big_stat:         {"layout":"big_stat","title":"...","content":{"value":"...","label":"...","context":["...","..."]},"speaker_notes":"..."}
-section_divider:  {"layout":"section_divider","title":"...","content":{"subtitle":"..."},"speaker_notes":"..."}
-quote:            {"layout":"quote","title":"...","content":{"quote":"...","attribution":"..."},"speaker_notes":"..."}
-comparison:       {"layout":"comparison","title":"...","content":{"left":{"label":"...","items":["..."]},"right":{"label":"...","items":["..."]}},"speaker_notes":"..."}
-timeline:         {"layout":"timeline","title":"...","content":{"steps":[{"label":"...","event":"..."}]},"speaker_notes":"..."}
+icon_grid:       {"layout":"icon_grid","title":"...","content":{"cards":[{"emoji":"🚀","heading":"...","text":"..."},{"emoji":"💡","heading":"...","text":"..."},{"emoji":"📊","heading":"...","text":"..."},{"emoji":"🎯","heading":"...","text":"..."}]},"speaker_notes":"..."}
+key_message:     {"layout":"key_message","title":"...","content":{"message":"One powerful statement — max 15 words","subtext":"Optional supporting detail or source"},"speaker_notes":"..."}
+process_flow:    {"layout":"process_flow","title":"...","content":{"steps":[{"emoji":"📋","label":"Step name","desc":"Short desc"},{"emoji":"🔍","label":"...","desc":"..."},{"emoji":"✅","label":"...","desc":"..."}]},"speaker_notes":"..."}
+chart_bar:       {"layout":"chart_bar","title":"...","content":{"categories":["A","B","C","D"],"series":[{"name":"Metric","values":[10,20,15,30]}]},"speaker_notes":"..."}
+chart_pie:       {"layout":"chart_pie","title":"...","content":{"slices":[{"label":"Category A","value":45},{"label":"Category B","value":30},{"label":"Category C","value":25}]},"speaker_notes":"..."}
+title_content:   {"layout":"title_content","title":"...","content":{"type":"bullets","items":["...","..."]},"speaker_notes":"..."}
+two_column:      {"layout":"two_column","title":"...","content":{"left":{"heading":"...","items":["..."]},"right":{"heading":"...","items":["..."]}},"speaker_notes":"..."}
+big_stat:        {"layout":"big_stat","title":"...","content":{"value":"...","label":"...","context":["...","..."]},"speaker_notes":"..."}
+section_divider: {"layout":"section_divider","title":"...","content":{"subtitle":"..."},"speaker_notes":"..."}
+quote:           {"layout":"quote","title":"...","content":{"quote":"...","attribution":"..."},"speaker_notes":"..."}
+comparison:      {"layout":"comparison","title":"...","content":{"left":{"label":"...","items":["..."]},"right":{"label":"...","items":["..."]}},"speaker_notes":"..."}
+timeline:        {"layout":"timeline","title":"...","content":{"steps":[{"label":"...","event":"..."}]},"speaker_notes":"..."}
 
 Rules:
 - Title: max 60 chars, punchy
-- Bullets/items: max 6 per column, each max 100 chars
+- icon_grid cards: 3 or 4 cards; heading max 30 chars; text max 80 chars; use relevant emoji
+- key_message: message max 15 words — make it impactful
+- process_flow: 3-5 steps; label max 25 chars; desc max 60 chars
+- chart_bar/pie: use real numbers from context when available
 - Match the language of the user's prompt
-- big_stat: use real numbers if given, otherwise write a realistic placeholder
 - speaker_notes: one sentence of presenter guidance"""
 
 
@@ -420,6 +443,246 @@ def _render_timeline(slide, bp: dict, c: BrandColors):
                   size=13, color=c.text_body_rgb, align=PP_ALIGN.CENTER, word_wrap=True)
 
 
+# ─── New visual layout renderers ──────────────────────────────────────────────
+
+def _render_icon_grid(slide, bp: dict, c: BrandColors):
+    """3 or 4 cards, each with emoji + heading + short text."""
+    cards = bp.get("content", {}).get("cards", [])[:4]
+    if not cards:
+        _render_title_content(slide, bp, c)
+        return
+
+    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
+    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
+    _add_text(slide, bp.get("title",""),
+              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
+              bold=True, size=26, color=c.text_rgb)
+    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+
+    n       = len(cards)
+    cols    = 2 if n > 2 else n
+    rows    = (n + cols - 1) // cols
+    pad     = Inches(0.25)
+    x0      = Inches(0.32)
+    y0      = Inches(1.45)
+    avail_w = W - x0 - Inches(0.14)
+    avail_h = H - y0 - Inches(0.15)
+    card_w  = (avail_w - pad * (cols - 1)) / cols
+    card_h  = (avail_h - pad * (rows - 1)) / rows
+
+    for i, card in enumerate(cards):
+        row = i // cols
+        col = i % cols
+        cx = x0 + col * (card_w + pad)
+        cy = y0 + row * (card_h + pad)
+
+        # Card background
+        _add_rect(slide, cx, cy, card_w, card_h, fill=RGBColor(248, 250, 252))
+        # Left accent strip
+        _add_rect(slide, cx, cy, Inches(0.06), card_h, fill=c.secondary_rgb)
+
+        # Emoji
+        emoji = card.get("emoji", "●")
+        _add_text(slide, emoji,
+                  cx + Inches(0.12), cy + Inches(0.1), Inches(0.65), Inches(0.65),
+                  size=28, word_wrap=False)
+
+        # Heading
+        _add_text(slide, card.get("heading", ""),
+                  cx + Inches(0.8), cy + Inches(0.1), card_w - Inches(0.9), Inches(0.55),
+                  bold=True, size=15, color=c.text_rgb)
+
+        # Body text
+        _add_text(slide, card.get("text", ""),
+                  cx + Inches(0.12), cy + Inches(0.72), card_w - Inches(0.2), card_h - Inches(0.82),
+                  size=13, color=c.text_muted_rgb)
+
+
+def _render_key_message(slide, bp: dict, c: BrandColors):
+    """One powerful statement dominates the slide."""
+    content = bp.get("content", {})
+    message = content.get("message", bp.get("title", ""))
+    subtext = content.get("subtext", "")
+    label   = bp.get("title", "")
+
+    _set_bg(slide, RGBColor(248, 250, 252))
+    _add_rect(slide, Inches(0), Inches(0),      Inches(0.18), H,            fill=c.primary_rgb)
+    _add_rect(slide, Inches(0), H-Inches(0.18), W,            Inches(0.18), fill=c.secondary_rgb)
+
+    # Small label at top
+    if label and label != message:
+        _add_text(slide, label.upper(),
+                  Inches(0.45), Inches(0.28), W-Inches(0.6), Inches(0.5),
+                  size=11, color=c.text_muted_rgb, word_wrap=False)
+
+    # The big message
+    _add_text(slide, message,
+              Inches(0.45), Inches(0.9), W-Inches(0.65), Inches(4.8),
+              bold=True, size=40, color=c.text_rgb)
+
+    # Subtext
+    if subtext:
+        _add_rect(slide, Inches(0.45), Inches(5.85), Inches(1.5), Inches(0.04), fill=c.secondary_rgb)
+        _add_text(slide, subtext,
+                  Inches(0.45), Inches(6.0), W-Inches(0.65), Inches(0.9),
+                  size=16, color=c.text_muted_rgb, italic=True)
+
+
+def _render_process_flow(slide, bp: dict, c: BrandColors):
+    """Horizontal steps with emoji, label, and short description."""
+    steps = bp.get("content", {}).get("steps", [])[:5]
+    if not steps:
+        _render_title_content(slide, bp, c)
+        return
+
+    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
+    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
+    _add_text(slide, bp.get("title",""),
+              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
+              bold=True, size=26, color=c.text_rgb)
+    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+
+    n       = len(steps)
+    x0      = Inches(0.35)
+    x1      = W - Inches(0.2)
+    step_w  = (x1 - x0) / n
+    circle_y = Inches(2.6)
+    r        = Inches(0.45)
+
+    # Connecting line between circles
+    line_y = circle_y + r
+    _add_rect(slide, x0 + r, line_y - Inches(0.03), x1 - x0 - r * 2, Inches(0.06),
+              fill=c.divider_rgb)
+
+    for i, step in enumerate(steps):
+        cx = x0 + step_w * i + step_w / 2
+
+        # Numbered circle background
+        _add_oval(slide, cx - r, circle_y, r * 2, r * 2, fill=c.primary_rgb)
+        # Step number
+        _add_text(slide, str(i + 1),
+                  cx - r, circle_y, r * 2, r * 2,
+                  bold=True, size=18, color=RGBColor(255,255,255), align=PP_ALIGN.CENTER)
+
+        # Emoji above circle
+        emoji = step.get("emoji", "")
+        if emoji:
+            _add_text(slide, emoji,
+                      cx - step_w/2 + Inches(0.05), Inches(1.55), step_w - Inches(0.1), Inches(0.8),
+                      size=26, align=PP_ALIGN.CENTER, word_wrap=False)
+
+        # Label below circle
+        _add_text(slide, step.get("label", ""),
+                  cx - step_w/2 + Inches(0.05), circle_y + r*2 + Inches(0.15),
+                  step_w - Inches(0.1), Inches(0.6),
+                  bold=True, size=13, color=c.text_rgb, align=PP_ALIGN.CENTER)
+
+        # Description
+        _add_text(slide, step.get("desc", ""),
+                  cx - step_w/2 + Inches(0.05), circle_y + r*2 + Inches(0.85),
+                  step_w - Inches(0.1), Inches(2.0),
+                  size=12, color=c.text_muted_rgb, align=PP_ALIGN.CENTER, word_wrap=True)
+
+        # Arrow between steps (except last)
+        if i < n - 1:
+            ax = cx + step_w / 2 - Inches(0.12)
+            _add_text(slide, "→",
+                      ax, circle_y + Inches(0.05), Inches(0.35), Inches(0.8),
+                      size=22, color=c.divider_rgb, align=PP_ALIGN.CENTER)
+
+
+def _render_chart_bar(slide, bp: dict, c: BrandColors):
+    """Column chart using python-pptx Charts API."""
+    content    = bp.get("content", {})
+    categories = content.get("categories", [])
+    series_data = content.get("series", [])
+
+    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
+    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
+    _add_text(slide, bp.get("title",""),
+              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
+              bold=True, size=26, color=c.text_rgb)
+    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+
+    if not categories or not series_data:
+        return
+
+    try:
+        chart_data = ChartData()
+        chart_data.categories = categories
+        for s in series_data:
+            chart_data.add_series(s.get("name", ""), tuple(s.get("values", [])))
+
+        chart_frame = slide.shapes.add_chart(
+            XL_CHART_TYPE.COLUMN_CLUSTERED,
+            Inches(0.45), Inches(1.5), W - Inches(0.65), H - Inches(1.7),
+            chart_data
+        )
+        chart = chart_frame.chart
+        chart.has_legend = len(series_data) > 1
+
+        # Style the chart
+        plot = chart.plots[0]
+        for i, series in enumerate(plot.series):
+            fill = series.format.fill
+            fill.solid()
+            fill.fore_color.rgb = c.primary_rgb if i == 0 else c.secondary_rgb
+
+        chart.category_axis.tick_labels.font.size = Pt(11)
+        chart.value_axis.tick_labels.font.size = Pt(11)
+        chart.chart_style = 2
+    except Exception as e:
+        logger.warning(f"chart_bar render failed: {e}")
+        # Fallback to title_content
+        _render_title_content(slide, {
+            **bp,
+            "content": {"type": "bullets", "items": [
+                f"{cat}: {s.get('values', [])[i] if i < len(s.get('values', [])) else '?'}"
+                for s in series_data
+                for i, cat in enumerate(categories)
+            ][:6]}
+        }, c)
+
+
+def _render_chart_pie(slide, bp: dict, c: BrandColors):
+    """Pie chart using python-pptx Charts API."""
+    content = bp.get("content", {})
+    slices  = content.get("slices", [])
+
+    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
+    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
+    _add_text(slide, bp.get("title",""),
+              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
+              bold=True, size=26, color=c.text_rgb)
+    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+
+    if not slices:
+        return
+
+    try:
+        chart_data = ChartData()
+        chart_data.categories = [s.get("label", f"Item {i+1}") for i, s in enumerate(slices)]
+        chart_data.add_series("", tuple(s.get("value", 0) for s in slices))
+
+        chart_frame = slide.shapes.add_chart(
+            XL_CHART_TYPE.PIE,
+            Inches(0.45), Inches(1.5), W - Inches(0.65), H - Inches(1.7),
+            chart_data
+        )
+        chart = chart_frame.chart
+        chart.has_legend = True
+        chart.chart_style = 2
+
+        plot = chart.plots[0]
+        plot.has_data_labels = True
+        plot.data_labels.show_percentage = True
+        plot.data_labels.show_category_name = False
+    except Exception as e:
+        logger.warning(f"chart_pie render failed: {e}")
+        items = [f"{s.get('label','?')}: {s.get('value','?')}%" for s in slices]
+        _render_title_content(slide, {**bp, "content": {"type": "bullets", "items": items[:6]}}, c)
+
+
 # ─── Dispatch ────────────────────────────────────────────────────────────────
 
 _RENDERERS = {
@@ -430,6 +693,12 @@ _RENDERERS = {
     "quote":           _render_quote,
     "comparison":      _render_comparison,
     "timeline":        _render_timeline,
+    # New visual layouts
+    "icon_grid":       _render_icon_grid,
+    "key_message":     _render_key_message,
+    "process_flow":    _render_process_flow,
+    "chart_bar":       _render_chart_bar,
+    "chart_pie":       _render_chart_pie,
 }
 
 

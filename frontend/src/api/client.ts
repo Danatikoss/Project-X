@@ -426,6 +426,63 @@ export const thesesApi = {
   },
 }
 
+// ─── Presentations (AI Generator) ────────────────────────────────────────────
+
+export interface SlideBlueprint {
+  layout: string
+  title: string
+  content: Record<string, unknown>
+  speaker_notes?: string
+}
+
+export interface PlanResponse {
+  title: string
+  plan: SlideBlueprint[]
+}
+
+export interface RenderResponse {
+  download_url: string
+  filename: string
+}
+
+export const presentationsApi = {
+  plan: async (
+    params: { file?: File; textPrompt?: string; title?: string; language?: string }
+  ): Promise<PlanResponse> => {
+    const form = new FormData()
+    if (params.file) form.append('file', params.file)
+    if (params.textPrompt) form.append('text_prompt', params.textPrompt)
+    form.append('title', params.title ?? 'Презентация')
+    form.append('language', params.language ?? '')
+    const res = await api.post<PlanResponse>('/presentations/plan', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  },
+
+  render: async (params: {
+    title: string
+    plan: SlideBlueprint[]
+    brandTemplateId?: number
+  }): Promise<RenderResponse> => {
+    const res = await api.post<RenderResponse>('/presentations/render', {
+      title: params.title,
+      plan: params.plan,
+      brand_template_id: params.brandTemplateId ?? null,
+    })
+    return res.data
+  },
+
+  download: (downloadUrl: string, filename: string) => {
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  },
+}
+
 // ─── Assembly Templates ───────────────────────────────────────────────────────
 
 export const templatesApi = {
