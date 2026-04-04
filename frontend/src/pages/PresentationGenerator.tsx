@@ -191,6 +191,10 @@ export default function PresentationGenerator() {
     queryFn: () => brandApi.listTemplates(),
   })
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const apiError = (e: any): string =>
+    e?.response?.data?.detail ?? e?.message ?? 'Неизвестная ошибка'
+
   // Plan mutation
   const planMutation = useMutation({
     mutationFn: () => presentationsApi.plan({ file: file ?? undefined, textPrompt: textPrompt || undefined, title, language }),
@@ -199,7 +203,7 @@ export default function PresentationGenerator() {
       setPlanTitle(data.title)
       setStep('plan')
     },
-    onError: (e: Error) => toast.error(`Ошибка: ${e.message}`),
+    onError: (e: unknown) => toast.error(apiError(e)),
   })
 
   // Render mutation — сохраняет слайды в библиотеку и создаёт сборку
@@ -212,7 +216,7 @@ export default function PresentationGenerator() {
     onSuccess: (data) => {
       navigate(`/assemble/${data.assembly_id}`)
     },
-    onError: (e: Error) => toast.error(`Ошибка рендеринга: ${e.message}`),
+    onError: (e: unknown) => toast.error(apiError(e)),
   })
 
   const handleFileDrop = (e: React.DragEvent) => {
