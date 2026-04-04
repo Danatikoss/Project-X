@@ -89,14 +89,14 @@ def extract_text(file_bytes: bytes, file_ext: str) -> str:
 
 # ─── Planning prompt ──────────────────────────────────────────────────────────
 
-_PLAN_SYSTEM = """You are a world-class presentation designer creating visually stunning decks like Gamma and Beautiful.ai.
+_PLAN_SYSTEM = """You are a world-class presentation designer creating visually stunning decks like Gamma and Kimi K2.
 
 Your task: analyse the provided content and produce a complete slide deck as a JSON array of slide blueprints.
 
 STRICT VISUAL RULES — NO EXCEPTIONS:
 1. NEVER use title_content with more than 5 short bullets. If content is longer, split into multiple slides or use a different layout.
 2. title_content is the LAST RESORT. Prefer visual layouts:
-   • 3-4 concepts/features/benefits → icon_grid (with relevant emoji)
+   • 3-4 concepts/features/benefits → icon_grid
    • Key insight or powerful statement → key_message
    • Sequential process (3-5 steps) → process_flow
    • 3+ comparable numbers → chart_bar
@@ -106,8 +106,8 @@ STRICT VISUAL RULES — NO EXCEPTIONS:
    • Quote or testimonial → quote
    • Section transition → section_divider
 3. Vary layouts — no two consecutive slides may use the same layout.
-4. Every icon_grid card must have a relevant emoji.
-5. Every process_flow step must have a relevant emoji.
+4. icon_grid cards: heading max 30 chars, text max 80 chars. No emoji fields needed.
+5. process_flow steps: label max 25 chars, desc max 60 chars. No emoji fields needed.
 6. key_message: the "message" field must be ≤15 words — punchy and impactful.
 
 Slide count rules:
@@ -122,9 +122,9 @@ icon_grid | key_message | process_flow | chart_bar | chart_pie | big_stat | two_
 
 JSON schema for each layout:
 
-icon_grid:       {"layout":"icon_grid","title":"...","content":{"cards":[{"emoji":"🚀","heading":"...","text":"..."}]},"speaker_notes":"..."}
+icon_grid:       {"layout":"icon_grid","title":"...","content":{"cards":[{"heading":"...","text":"..."}]},"speaker_notes":"..."}
 key_message:     {"layout":"key_message","title":"...","content":{"message":"...","subtext":"..."},"speaker_notes":"..."}
-process_flow:    {"layout":"process_flow","title":"...","content":{"steps":[{"emoji":"📋","label":"...","desc":"..."}]},"speaker_notes":"..."}
+process_flow:    {"layout":"process_flow","title":"...","content":{"steps":[{"label":"...","desc":"..."}]},"speaker_notes":"..."}
 chart_bar:       {"layout":"chart_bar","title":"...","content":{"categories":["A","B"],"series":[{"name":"Metric","values":[10,20]}]},"speaker_notes":"..."}
 chart_pie:       {"layout":"chart_pie","title":"...","content":{"slices":[{"label":"A","value":60},{"label":"B","value":40}]},"speaker_notes":"..."}
 big_stat:        {"layout":"big_stat","title":"...","content":{"value":"...","label":"...","context":["...","..."]},"speaker_notes":"..."}

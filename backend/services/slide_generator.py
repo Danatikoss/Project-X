@@ -113,7 +113,7 @@ def _extract_brand_colors(pptx_path: str) -> BrandColors:
 
 # ─── Claude Opus blueprint generation ────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You are an expert presentation designer creating visually rich slides like Gamma and Beautiful.ai.
+_SYSTEM_PROMPT = """You are an expert presentation designer creating visually stunning slides like Gamma and Kimi K2.
 
 CRITICAL ANTI-TEXT-WALL RULES (no exceptions):
 1. NEVER use title_content with more than 5 bullet points
@@ -125,9 +125,9 @@ CRITICAL ANTI-TEXT-WALL RULES (no exceptions):
 7. Split any content that would produce >5 bullets into multiple slides
 
 Available layouts and when to use them:
-- icon_grid      — 3-4 concepts/features/benefits with emoji icons (PREFERRED over bullet lists)
-- key_message    — one powerful statement that dominates the slide (for key insights)
-- process_flow   — sequential steps (3-5) with emoji and descriptions
+- icon_grid      — 3-4 concepts/features/benefits (PREFERRED over bullet lists)
+- key_message    — one powerful statement that dominates the slide
+- process_flow   — sequential steps (3-5) with descriptions
 - chart_bar      — bar/column chart when you have 3+ comparable numeric values
 - chart_pie      — pie chart for proportions/shares that sum to 100%
 - big_stat       — one large dramatic number + label + 2-3 context bullets
@@ -140,9 +140,9 @@ Available layouts and when to use them:
 
 Respond with ONLY valid JSON (no markdown, no commentary):
 
-icon_grid:       {"layout":"icon_grid","title":"...","content":{"cards":[{"emoji":"🚀","heading":"...","text":"..."},{"emoji":"💡","heading":"...","text":"..."},{"emoji":"📊","heading":"...","text":"..."},{"emoji":"🎯","heading":"...","text":"..."}]},"speaker_notes":"..."}
+icon_grid:       {"layout":"icon_grid","title":"...","content":{"cards":[{"heading":"...","text":"..."},{"heading":"...","text":"..."},{"heading":"...","text":"..."},{"heading":"...","text":"..."}]},"speaker_notes":"..."}
 key_message:     {"layout":"key_message","title":"...","content":{"message":"One powerful statement — max 15 words","subtext":"Optional supporting detail or source"},"speaker_notes":"..."}
-process_flow:    {"layout":"process_flow","title":"...","content":{"steps":[{"emoji":"📋","label":"Step name","desc":"Short desc"},{"emoji":"🔍","label":"...","desc":"..."},{"emoji":"✅","label":"...","desc":"..."}]},"speaker_notes":"..."}
+process_flow:    {"layout":"process_flow","title":"...","content":{"steps":[{"label":"Step name","desc":"Short desc"},{"label":"...","desc":"..."},{"label":"...","desc":"..."}]},"speaker_notes":"..."}
 chart_bar:       {"layout":"chart_bar","title":"...","content":{"categories":["A","B","C","D"],"series":[{"name":"Metric","values":[10,20,15,30]}]},"speaker_notes":"..."}
 chart_pie:       {"layout":"chart_pie","title":"...","content":{"slices":[{"label":"Category A","value":45},{"label":"Category B","value":30},{"label":"Category C","value":25}]},"speaker_notes":"..."}
 title_content:   {"layout":"title_content","title":"...","content":{"type":"bullets","items":["...","..."]},"speaker_notes":"..."}
@@ -155,7 +155,7 @@ timeline:        {"layout":"timeline","title":"...","content":{"steps":[{"label"
 
 Rules:
 - Title: max 60 chars, punchy
-- icon_grid cards: 3 or 4 cards; heading max 30 chars; text max 80 chars; use relevant emoji
+- icon_grid cards: 3 or 4 cards; heading max 30 chars; text max 80 chars
 - key_message: message max 15 words — make it impactful
 - process_flow: 3-5 steps; label max 25 chars; desc max 60 chars
 - chart_bar/pie: use real numbers from context when available
@@ -194,6 +194,9 @@ async def generate_blueprint(prompt: str, context: str = "") -> dict:
 
 # ─── python-pptx helpers ─────────────────────────────────────────────────────
 
+_FONT = "Montserrat"
+
+
 def _set_bg(slide, color: RGBColor):
     fill = slide.background.fill
     fill.solid()
@@ -213,22 +216,24 @@ def _add_text(slide, text: str, left, top, width, height, *,
     run.font.bold = bold
     run.font.italic = italic
     run.font.size = Pt(size)
+    run.font.name = _FONT
     if color:
         run.font.color.rgb = color
     return txBox
 
 
 def _add_bullets(slide, items: list[str], left, top, width, height, *,
-                  size=16, color: RGBColor = None):
+                  size=16, color: RGBColor = None, accent: RGBColor = None):
     txBox = slide.shapes.add_textbox(left, top, width, height)
     tf = txBox.text_frame
     tf.word_wrap = True
     for i, item in enumerate(items):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.space_before = Pt(5)
+        p.space_before = Pt(6)
         run = p.add_run()
-        run.text = f"  •  {item}"
+        run.text = f"  \u2013  {item}"
         run.font.size = Pt(size)
+        run.font.name = _FONT
         if color:
             run.font.color.rgb = color
     return txBox
@@ -260,24 +265,54 @@ def _add_oval(slide, left, top, width, height, *, fill: RGBColor = None):
     return shape
 
 
+def _add_circle_label(slide, cx, cy, r, fill: RGBColor, text: str, size: int = 16):
+    """Filled circle with vertically & horizontally centred text (icon replacement)."""
+    shape = slide.shapes.add_shape(9, cx - r, cy - r, r * 2, r * 2)
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = fill
+    shape.line.fill.background()
+    tf = shape.text_frame
+    tf.word_wrap = False
+    try:
+        tf._txBody.bodyPr.set("anchor", "ctr")
+    except Exception:
+        pass
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = text
+    run.font.bold = True
+    run.font.size = Pt(size)
+    run.font.name = _FONT
+    run.font.color.rgb = RGBColor(255, 255, 255)
+    return shape
+
+
+def _header(slide, title: str, c: BrandColors, h: float = 1.45):
+    """Full-width primary header bar with white title — Gamma style."""
+    _add_rect(slide, Inches(0), Inches(0), W, Inches(h), fill=c.primary_rgb)
+    # Thin secondary accent at bottom of header
+    _add_rect(slide, Inches(0), Inches(h), W, Inches(0.055), fill=c.secondary_rgb)
+    _add_text(slide, title,
+              Inches(0.5), Inches(0), W - Inches(0.6), Inches(h),
+              bold=True, size=30, color=RGBColor(255, 255, 255))
+    return h
+
+
 # ─── Layout renderers ─────────────────────────────────────────────────────────
 
 def _render_title_content(slide, bp: dict, c: BrandColors):
     items    = bp.get("content", {}).get("items", [])
     body_txt = bp.get("content", {}).get("text", "")
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,            fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.6), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.3), W-Inches(0.65), Inches(1.1),
-              bold=True, size=30, color=c.text_rgb)
-    _add_rect(slide, Inches(0.18), Inches(1.6), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.45)
+    content_top = Inches(hh + 0.15)
 
     if items:
-        _add_bullets(slide, items, Inches(0.55), Inches(1.85), W-Inches(0.75), H-Inches(2.05),
+        _add_bullets(slide, items, Inches(0.55), content_top, W - Inches(0.75), H - content_top - Inches(0.2),
                      size=18, color=c.text_body_rgb)
     elif body_txt:
-        _add_text(slide, body_txt, Inches(0.55), Inches(1.85), W-Inches(0.75), H-Inches(2.05),
+        _add_text(slide, body_txt, Inches(0.55), content_top, W - Inches(0.75), H - content_top - Inches(0.2),
                   size=18, color=c.text_body_rgb)
 
 
@@ -285,324 +320,319 @@ def _render_two_column(slide, bp: dict, c: BrandColors):
     lc = bp.get("content", {}).get("left",  {})
     rc = bp.get("content", {}).get("right", {})
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,            fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.35), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.25), W-Inches(0.65), Inches(0.95),
-              bold=True, size=26, color=c.text_rgb)
-    _add_rect(slide, Inches(0.18), Inches(1.35), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.3)
+    col_top = Inches(hh + 0.2)
+    col_h   = H - col_top - Inches(0.2)
+    col_w   = (W - Inches(0.5)) / 2 - Inches(0.15)
+    lx = Inches(0.35)
+    rx = Inches(0.35) + col_w + Inches(0.3)
 
-    col_w = (W - Inches(0.18) - Inches(0.45)) / 2 - Inches(0.15)
-    lx, rx = Inches(0.45), W/2 + Inches(0.1)
-
-    _add_rect(slide, W/2-Inches(0.02), Inches(1.45), Inches(0.04), H-Inches(1.55), fill=c.divider_rgb)
+    # Vertical divider
+    _add_rect(slide, W / 2 - Inches(0.025), col_top, Inches(0.05), col_h, fill=c.divider_rgb)
 
     if lc.get("heading"):
-        _add_text(slide, lc["heading"], lx, Inches(1.55), col_w, Inches(0.65),
+        _add_text(slide, lc["heading"], lx, col_top, col_w, Inches(0.6),
                   bold=True, size=16, color=c.primary_rgb)
     if lc.get("items"):
-        _add_bullets(slide, lc["items"], lx, Inches(2.2), col_w, H-Inches(2.4),
-                     size=16, color=c.text_body_rgb)
+        _add_bullets(slide, lc["items"], lx, col_top + Inches(0.65), col_w, col_h - Inches(0.7),
+                     size=15, color=c.text_body_rgb)
 
     if rc.get("heading"):
-        _add_text(slide, rc["heading"], rx, Inches(1.55), col_w, Inches(0.65),
+        _add_text(slide, rc["heading"], rx, col_top, col_w, Inches(0.6),
                   bold=True, size=16, color=c.primary_rgb)
     if rc.get("items"):
-        _add_bullets(slide, rc["items"], rx, Inches(2.2), col_w, H-Inches(2.4),
-                     size=16, color=c.text_body_rgb)
+        _add_bullets(slide, rc["items"], rx, col_top + Inches(0.65), col_w, col_h - Inches(0.7),
+                     size=15, color=c.text_body_rgb)
 
 
 def _render_big_stat(slide, bp: dict, c: BrandColors):
     content = bp.get("content", {})
 
-    _add_rect(slide, Inches(0), Inches(0), Inches(0.18), H, fill=c.primary_rgb)
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.3), Inches(8), Inches(0.65),
-              bold=False, size=18, color=c.text_muted_rgb)
-    _add_text(slide, content.get("value",""),
-              Inches(0.35), Inches(1.1), Inches(6.5), Inches(3.0),
-              bold=True, size=96, color=c.primary_rgb, word_wrap=False)
-    _add_text(slide, content.get("label",""),
-              Inches(0.45), Inches(4.2), Inches(5), Inches(0.75),
-              bold=False, size=22, color=c.text_muted_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.1)
+    # Huge value
+    _add_text(slide, content.get("value", ""),
+              Inches(0.5), Inches(hh + 0.05), Inches(7), Inches(3.5),
+              bold=True, size=100, color=c.primary_rgb, word_wrap=False)
+    # Label under value
+    _add_text(slide, content.get("label", ""),
+              Inches(0.5), Inches(hh + 3.6), Inches(6), Inches(0.75),
+              size=22, color=c.text_muted_rgb)
 
     ctx = content.get("context", [])
     if ctx:
-        _add_rect(slide, Inches(7.3), Inches(1.1), Inches(0.04), Inches(5.5), fill=c.divider_rgb)
-        _add_bullets(slide, ctx, Inches(7.6), Inches(1.6), Inches(5.2), Inches(5.0),
-                     size=18, color=c.text_body_rgb)
+        _add_rect(slide, Inches(7.6), Inches(hh + 0.15), Inches(0.05), H - Inches(hh + 0.35), fill=c.divider_rgb)
+        _add_bullets(slide, ctx, Inches(7.85), Inches(hh + 0.4), Inches(5.1), H - Inches(hh + 0.6),
+                     size=17, color=c.text_body_rgb)
 
 
 def _render_section_divider(slide, bp: dict, c: BrandColors):
     _set_bg(slide, c.primary_rgb)
-    _add_text(slide, bp.get("title",""),
-              Inches(1.0), Inches(1.8), W-Inches(2.0), Inches(2.8),
-              bold=True, size=44, color=RGBColor(255,255,255),
-              align=PP_ALIGN.CENTER)
-    subtitle = bp.get("content", {}).get("subtitle","")
+
+    # Decorative large circle (upper-right, partially off-screen — lighter shade)
+    r_big = Inches(4.0)
+    pr, pg, pb = c.primary_rgb[0], c.primary_rgb[1], c.primary_rgb[2]
+    _add_oval(slide, W - r_big * 0.8, -r_big * 0.6, r_big * 2, r_big * 2,
+              fill=RGBColor(min(255, pr + 28), min(255, pg + 28), min(255, pb + 38)))
+
+    # Thin accent bar at top
+    _add_rect(slide, Inches(0), Inches(0), W, Inches(0.12), fill=c.secondary_rgb)
+
+    # Title — bold, white, left-aligned (Gamma style)
+    _add_text(slide, bp.get("title", ""),
+              Inches(0.75), Inches(1.6), W - Inches(5.0), Inches(3.2),
+              bold=True, size=52, color=RGBColor(255, 255, 255))
+
+    subtitle = bp.get("content", {}).get("subtitle", "")
     if subtitle:
+        _add_rect(slide, Inches(0.75), Inches(5.0), Inches(1.8), Inches(0.06), fill=c.secondary_rgb)
         _add_text(slide, subtitle,
-                  Inches(1.5), Inches(4.8), W-Inches(3.0), Inches(1.2),
-                  size=22, color=RGBColor(200,215,240),
-                  align=PP_ALIGN.CENTER)
-    _add_rect(slide, Inches(0), H-Inches(0.18), W, Inches(0.18), fill=c.secondary_rgb)
+                  Inches(0.75), Inches(5.15), W - Inches(5.5), Inches(1.2),
+                  size=22, color=RGBColor(210, 225, 255))
+
+    # Thin accent bar at bottom
+    _add_rect(slide, Inches(0), H - Inches(0.12), W, Inches(0.12), fill=c.secondary_rgb)
 
 
 def _render_quote(slide, bp: dict, c: BrandColors):
     content = bp.get("content", {})
-    _set_bg(slide, RGBColor(248,250,252))
-    _add_rect(slide, Inches(0), Inches(0), Inches(0.18), H, fill=c.secondary_rgb)
+    _set_bg(slide, c.primary_rgb)
 
-    # Decorative large quote mark
+    # Decorative circle accent (slightly lighter shade)
+    pr, pg, pb = c.primary_rgb[0], c.primary_rgb[1], c.primary_rgb[2]
+    _add_oval(slide, W - Inches(3.5), H - Inches(3.5), Inches(5), Inches(5),
+              fill=RGBColor(min(255, pr + 22), min(255, pg + 22), min(255, pb + 32)))
+
+    # Large opening quote mark
     _add_text(slide, "\u201C",
-              Inches(0.5), Inches(0.1), Inches(2.5), Inches(2.5),
-              bold=True, size=120, color=c.accent_light_rgb, word_wrap=False)
+              Inches(0.5), Inches(0.0), Inches(3), Inches(3),
+              bold=True, size=130, color=RGBColor(255, 255, 255), word_wrap=False)
 
-    _add_text(slide, content.get("quote",""),
-              Inches(1.0), Inches(1.4), W-Inches(2.2), Inches(3.6),
-              size=24, color=c.text_rgb)
+    _add_text(slide, content.get("quote", ""),
+              Inches(0.85), Inches(1.3), W - Inches(1.8), Inches(4.0),
+              size=26, color=RGBColor(255, 255, 255))
 
     if content.get("attribution"):
-        _add_rect(slide, Inches(1.0), Inches(5.2), Inches(1.8), Inches(0.05), fill=c.secondary_rgb)
-        _add_text(slide, f"— {content['attribution']}",
-                  Inches(1.0), Inches(5.4), W-Inches(2.0), Inches(0.8),
-                  size=16, italic=True, color=c.text_muted_rgb)
+        _add_rect(slide, Inches(0.85), Inches(5.45), Inches(2.0), Inches(0.06), fill=c.secondary_rgb)
+        _add_text(slide, f"\u2014 {content['attribution']}",
+                  Inches(0.85), Inches(5.6), W - Inches(1.8), Inches(0.8),
+                  size=16, italic=True, color=RGBColor(200, 220, 255))
 
 
 def _render_comparison(slide, bp: dict, c: BrandColors):
     lc = bp.get("content", {}).get("left",  {})
     rc = bp.get("content", {}).get("right", {})
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,            fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.2), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.85),
-              bold=True, size=26, color=c.text_rgb)
-    _add_rect(slide, Inches(0.18), Inches(1.2), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
-
-    pw   = (W - Inches(0.18) - Inches(0.4)) / 2
-    ph   = H - Inches(1.3)
-    top  = Inches(1.28)
-    lx, rx = Inches(0.28), Inches(0.28) + pw + Inches(0.4)
+    hh = _header(slide, bp.get("title", ""), c, h=1.2)
+    panel_top = Inches(hh + 0.12)
+    pw  = (W - Inches(0.5)) / 2 - Inches(0.1)
+    ph  = H - panel_top - Inches(0.2)
+    lx  = Inches(0.25)
+    rx  = lx + pw + Inches(0.2)
 
     # Left panel
-    _add_rect(slide, lx, top, pw, ph, fill=c.accent_light_rgb)
-    _add_rect(slide, lx, top, pw, Inches(0.55), fill=c.primary_rgb)
-    _add_text(slide, lc.get("label",""), lx+Inches(0.15), top+Inches(0.07), pw-Inches(0.3), Inches(0.45),
-              bold=True, size=16, color=RGBColor(255,255,255), align=PP_ALIGN.CENTER)
+    _add_rect(slide, lx, panel_top, pw, ph, fill=c.accent_light_rgb)
+    _add_rect(slide, lx, panel_top, pw, Inches(0.52), fill=c.primary_rgb)
+    _add_text(slide, lc.get("label", ""),
+              lx + Inches(0.15), panel_top + Inches(0.06), pw - Inches(0.3), Inches(0.44),
+              bold=True, size=16, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
     if lc.get("items"):
-        _add_bullets(slide, lc["items"], lx+Inches(0.2), top+Inches(0.7), pw-Inches(0.35), ph-Inches(0.85),
-                     size=15, color=c.text_body_rgb)
+        _add_bullets(slide, lc["items"], lx + Inches(0.2), panel_top + Inches(0.65),
+                     pw - Inches(0.35), ph - Inches(0.8), size=14, color=c.text_body_rgb)
 
     # Right panel
-    _add_rect(slide, rx, top, pw, ph, fill=RGBColor(240,253,244))
-    _add_rect(slide, rx, top, pw, Inches(0.55), fill=c.secondary_rgb)
-    _add_text(slide, rc.get("label",""), rx+Inches(0.15), top+Inches(0.07), pw-Inches(0.3), Inches(0.45),
-              bold=True, size=16, color=RGBColor(255,255,255), align=PP_ALIGN.CENTER)
+    _add_rect(slide, rx, panel_top, pw, ph, fill=RGBColor(240, 253, 244))
+    _add_rect(slide, rx, panel_top, pw, Inches(0.52), fill=c.secondary_rgb)
+    _add_text(slide, rc.get("label", ""),
+              rx + Inches(0.15), panel_top + Inches(0.06), pw - Inches(0.3), Inches(0.44),
+              bold=True, size=16, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
     if rc.get("items"):
-        _add_bullets(slide, rc["items"], rx+Inches(0.2), top+Inches(0.7), pw-Inches(0.35), ph-Inches(0.85),
-                     size=15, color=c.text_body_rgb)
+        _add_bullets(slide, rc["items"], rx + Inches(0.2), panel_top + Inches(0.65),
+                     pw - Inches(0.35), ph - Inches(0.8), size=14, color=c.text_body_rgb)
 
 
 def _render_timeline(slide, bp: dict, c: BrandColors):
     steps = bp.get("content", {}).get("steps", [])[:5]
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,            fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.25), W-Inches(0.65), Inches(0.9),
-              bold=True, size=26, color=c.text_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.3)
 
     if not steps:
         return
 
     n      = len(steps)
-    line_y = Inches(3.9)
-    x0     = Inches(0.9)
-    x1     = W - Inches(0.7)
+    line_y = Inches(3.8)
+    x0     = Inches(0.8)
+    x1     = W - Inches(0.6)
     step_w = (x1 - x0) / n
 
-    # Horizontal axis
-    _add_rect(slide, x0, line_y, x1-x0, Inches(0.06), fill=c.primary_rgb)
+    # Horizontal axis line
+    _add_rect(slide, x0, line_y - Inches(0.03), x1 - x0, Inches(0.07), fill=c.primary_rgb)
 
     for i, step in enumerate(steps):
         cx = x0 + step_w * i + step_w / 2
-        r  = Inches(0.22)
+        r  = Inches(0.28)
 
-        # Dot
-        _add_oval(slide, cx-r, line_y-r+Inches(0.03), r*2, r*2, fill=c.primary_rgb)
+        # Circle dot on axis
+        _add_circle_label(slide, cx, line_y, r, c.primary_rgb, str(i + 1), size=13)
 
-        # Label above (year / step number)
-        _add_text(slide, step.get("label",""),
-                  cx-step_w/2+Inches(0.05), Inches(2.85), step_w-Inches(0.1), Inches(0.65),
-                  bold=True, size=14, color=c.primary_rgb, align=PP_ALIGN.CENTER)
+        # Label above
+        _add_text(slide, step.get("label", ""),
+                  cx - step_w / 2 + Inches(0.05), Inches(hh + 0.1), step_w - Inches(0.1), Inches(0.7),
+                  bold=True, size=13, color=c.primary_rgb, align=PP_ALIGN.CENTER)
 
         # Event below
-        _add_text(slide, step.get("event",""),
-                  cx-step_w/2+Inches(0.05), line_y+Inches(0.55), step_w-Inches(0.1), Inches(2.4),
-                  size=13, color=c.text_body_rgb, align=PP_ALIGN.CENTER, word_wrap=True)
+        _add_text(slide, step.get("event", ""),
+                  cx - step_w / 2 + Inches(0.05), line_y + Inches(0.55), step_w - Inches(0.1), Inches(2.5),
+                  size=12, color=c.text_body_rgb, align=PP_ALIGN.CENTER, word_wrap=True)
 
 
 # ─── New visual layout renderers ──────────────────────────────────────────────
 
 def _render_icon_grid(slide, bp: dict, c: BrandColors):
-    """3 or 4 cards, each with emoji + heading + short text."""
+    """3 or 4 cards, each with a numbered icon circle + heading + short text."""
     cards = bp.get("content", {}).get("cards", [])[:4]
     if not cards:
         _render_title_content(slide, bp, c)
         return
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
-              bold=True, size=26, color=c.text_rgb)
-    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.35)
 
     n       = len(cards)
     cols    = 2 if n > 2 else n
     rows    = (n + cols - 1) // cols
-    pad     = Inches(0.25)
-    x0      = Inches(0.32)
-    y0      = Inches(1.45)
-    avail_w = W - x0 - Inches(0.14)
+    pad     = Inches(0.22)
+    x0      = Inches(0.3)
+    y0      = Inches(hh + 0.15)
+    avail_w = W - x0 - Inches(0.25)
     avail_h = H - y0 - Inches(0.15)
     card_w  = (avail_w - pad * (cols - 1)) / cols
     card_h  = (avail_h - pad * (rows - 1)) / rows
 
+    # Icon circle palette — rotate through accent shades
+    icon_colors = [
+        c.primary_rgb, c.secondary_rgb,
+        RGBColor(99, 102, 241), RGBColor(20, 184, 166),
+    ]
+
     for i, card in enumerate(cards):
         row = i // cols
         col = i % cols
-        cx = x0 + col * (card_w + pad)
-        cy = y0 + row * (card_h + pad)
+        cx  = x0 + col * (card_w + pad)
+        cy  = y0 + row * (card_h + pad)
 
-        # Card background
-        _add_rect(slide, cx, cy, card_w, card_h, fill=RGBColor(248, 250, 252))
-        # Left accent strip
-        _add_rect(slide, cx, cy, Inches(0.06), card_h, fill=c.secondary_rgb)
+        # Card background (white) + top colored border
+        _add_rect(slide, cx, cy, card_w, card_h, fill=RGBColor(255, 255, 255))
+        _add_rect(slide, cx, cy, card_w, Inches(0.065), fill=icon_colors[i % len(icon_colors)])
 
-        # Emoji
-        emoji = card.get("emoji", "●")
-        _add_text(slide, emoji,
-                  cx + Inches(0.12), cy + Inches(0.1), Inches(0.65), Inches(0.65),
-                  size=28, word_wrap=False)
+        # Icon circle
+        r_icon = Inches(0.32)
+        icon_cx = cx + r_icon + Inches(0.18)
+        icon_cy = cy + r_icon + Inches(0.2)
+        _add_circle_label(slide, icon_cx, icon_cy, r_icon,
+                          icon_colors[i % len(icon_colors)], str(i + 1), size=15)
 
-        # Heading
+        # Heading — to the right of icon
         _add_text(slide, card.get("heading", ""),
-                  cx + Inches(0.8), cy + Inches(0.1), card_w - Inches(0.9), Inches(0.55),
-                  bold=True, size=15, color=c.text_rgb)
+                  cx + r_icon * 2 + Inches(0.35), cy + Inches(0.15),
+                  card_w - r_icon * 2 - Inches(0.45), Inches(0.65),
+                  bold=True, size=14, color=c.text_rgb)
 
         # Body text
         _add_text(slide, card.get("text", ""),
-                  cx + Inches(0.12), cy + Inches(0.72), card_w - Inches(0.2), card_h - Inches(0.82),
-                  size=13, color=c.text_muted_rgb)
+                  cx + Inches(0.15), cy + r_icon * 2 + Inches(0.35),
+                  card_w - Inches(0.3), card_h - r_icon * 2 - Inches(0.5),
+                  size=12, color=c.text_muted_rgb)
 
 
 def _render_key_message(slide, bp: dict, c: BrandColors):
-    """One powerful statement dominates the slide."""
+    """One powerful statement dominates the slide — Gamma big-impact style."""
     content = bp.get("content", {})
     message = content.get("message", bp.get("title", ""))
     subtext = content.get("subtext", "")
     label   = bp.get("title", "")
 
-    _set_bg(slide, RGBColor(248, 250, 252))
-    _add_rect(slide, Inches(0), Inches(0),      Inches(0.18), H,            fill=c.primary_rgb)
-    _add_rect(slide, Inches(0), H-Inches(0.18), W,            Inches(0.18), fill=c.secondary_rgb)
+    _set_bg(slide, RGBColor(255, 255, 255))
 
-    # Small label at top
+    # Thin accent bar at top
+    _add_rect(slide, Inches(0), Inches(0), W, Inches(0.12), fill=c.primary_rgb)
+    # Thin accent bar at bottom
+    _add_rect(slide, Inches(0), H - Inches(0.12), W, Inches(0.12), fill=c.secondary_rgb)
+
+    # Small eyebrow label
     if label and label != message:
         _add_text(slide, label.upper(),
-                  Inches(0.45), Inches(0.28), W-Inches(0.6), Inches(0.5),
-                  size=11, color=c.text_muted_rgb, word_wrap=False)
+                  Inches(0.7), Inches(0.35), W - Inches(1.0), Inches(0.55),
+                  size=11, color=c.text_muted_rgb)
 
-    # The big message
+    # Huge message
     _add_text(slide, message,
-              Inches(0.45), Inches(0.9), W-Inches(0.65), Inches(4.8),
-              bold=True, size=40, color=c.text_rgb)
+              Inches(0.7), Inches(1.0), W - Inches(1.1), Inches(4.5),
+              bold=True, size=44, color=c.primary_rgb)
 
     # Subtext
     if subtext:
-        _add_rect(slide, Inches(0.45), Inches(5.85), Inches(1.5), Inches(0.04), fill=c.secondary_rgb)
+        _add_rect(slide, Inches(0.7), Inches(5.7), Inches(1.8), Inches(0.06), fill=c.secondary_rgb)
         _add_text(slide, subtext,
-                  Inches(0.45), Inches(6.0), W-Inches(0.65), Inches(0.9),
+                  Inches(0.7), Inches(5.85), W - Inches(1.1), Inches(0.9),
                   size=16, color=c.text_muted_rgb, italic=True)
 
 
 def _render_process_flow(slide, bp: dict, c: BrandColors):
-    """Horizontal steps with emoji, label, and short description."""
+    """Horizontal numbered steps with label and description — no emoji."""
     steps = bp.get("content", {}).get("steps", [])[:5]
     if not steps:
         _render_title_content(slide, bp, c)
         return
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
-              bold=True, size=26, color=c.text_rgb)
-    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.3)
 
     n       = len(steps)
     x0      = Inches(0.35)
     x1      = W - Inches(0.2)
     step_w  = (x1 - x0) / n
-    circle_y = Inches(2.6)
-    r        = Inches(0.45)
+    circle_y = Inches(3.2)
+    r        = Inches(0.42)
 
-    # Connecting line between circles
-    line_y = circle_y + r
-    _add_rect(slide, x0 + r, line_y - Inches(0.03), x1 - x0 - r * 2, Inches(0.06),
+    # Connecting line
+    _add_rect(slide, x0 + r, circle_y - Inches(0.03), x1 - x0 - r * 2, Inches(0.06),
               fill=c.divider_rgb)
+
+    # Step number accent colors
+    step_colors = [c.primary_rgb, c.secondary_rgb,
+                   RGBColor(99, 102, 241), RGBColor(20, 184, 166), c.primary_rgb]
 
     for i, step in enumerate(steps):
         cx = x0 + step_w * i + step_w / 2
 
-        # Numbered circle background
-        _add_oval(slide, cx - r, circle_y, r * 2, r * 2, fill=c.primary_rgb)
-        # Step number
-        _add_text(slide, str(i + 1),
-                  cx - r, circle_y, r * 2, r * 2,
-                  bold=True, size=18, color=RGBColor(255,255,255), align=PP_ALIGN.CENTER)
-
-        # Emoji above circle
-        emoji = step.get("emoji", "")
-        if emoji:
-            _add_text(slide, emoji,
-                      cx - step_w/2 + Inches(0.05), Inches(1.55), step_w - Inches(0.1), Inches(0.8),
-                      size=26, align=PP_ALIGN.CENTER, word_wrap=False)
+        # Numbered circle
+        _add_circle_label(slide, cx, circle_y, r, step_colors[i % len(step_colors)], str(i + 1), size=17)
 
         # Label below circle
         _add_text(slide, step.get("label", ""),
-                  cx - step_w/2 + Inches(0.05), circle_y + r*2 + Inches(0.15),
-                  step_w - Inches(0.1), Inches(0.6),
+                  cx - step_w / 2 + Inches(0.05), circle_y + r + Inches(0.18),
+                  step_w - Inches(0.1), Inches(0.65),
                   bold=True, size=13, color=c.text_rgb, align=PP_ALIGN.CENTER)
 
         # Description
         _add_text(slide, step.get("desc", ""),
-                  cx - step_w/2 + Inches(0.05), circle_y + r*2 + Inches(0.85),
-                  step_w - Inches(0.1), Inches(2.0),
+                  cx - step_w / 2 + Inches(0.05), circle_y + r + Inches(0.9),
+                  step_w - Inches(0.1), Inches(2.2),
                   size=12, color=c.text_muted_rgb, align=PP_ALIGN.CENTER, word_wrap=True)
 
-        # Arrow between steps (except last)
+        # Arrow connector (except last)
         if i < n - 1:
-            ax = cx + step_w / 2 - Inches(0.12)
-            _add_text(slide, "→",
-                      ax, circle_y + Inches(0.05), Inches(0.35), Inches(0.8),
-                      size=22, color=c.divider_rgb, align=PP_ALIGN.CENTER)
+            _add_text(slide, "›",
+                      cx + step_w / 2 - Inches(0.15), circle_y - Inches(0.25),
+                      Inches(0.35), Inches(0.9),
+                      size=26, color=c.secondary_rgb, align=PP_ALIGN.CENTER)
 
 
 def _render_chart_bar(slide, bp: dict, c: BrandColors):
-    """Column chart using python-pptx Charts API."""
-    content    = bp.get("content", {})
-    categories = content.get("categories", [])
+    """Column chart using python-pptx Charts API — Gamma style header."""
+    content     = bp.get("content", {})
+    categories  = content.get("categories", [])
     series_data = content.get("series", [])
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
-              bold=True, size=26, color=c.text_rgb)
-    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.3)
 
     if not categories or not series_data:
         return
@@ -615,13 +645,12 @@ def _render_chart_bar(slide, bp: dict, c: BrandColors):
 
         chart_frame = slide.shapes.add_chart(
             XL_CHART_TYPE.COLUMN_CLUSTERED,
-            Inches(0.45), Inches(1.5), W - Inches(0.65), H - Inches(1.7),
+            Inches(0.4), Inches(hh + 0.1), W - Inches(0.6), H - Inches(hh + 0.3),
             chart_data
         )
         chart = chart_frame.chart
         chart.has_legend = len(series_data) > 1
 
-        # Style the chart
         plot = chart.plots[0]
         for i, series in enumerate(plot.series):
             fill = series.format.fill
@@ -629,11 +658,12 @@ def _render_chart_bar(slide, bp: dict, c: BrandColors):
             fill.fore_color.rgb = c.primary_rgb if i == 0 else c.secondary_rgb
 
         chart.category_axis.tick_labels.font.size = Pt(11)
+        chart.category_axis.tick_labels.font.name = _FONT
         chart.value_axis.tick_labels.font.size = Pt(11)
+        chart.value_axis.tick_labels.font.name = _FONT
         chart.chart_style = 2
     except Exception as e:
         logger.warning(f"chart_bar render failed: {e}")
-        # Fallback to title_content
         _render_title_content(slide, {
             **bp,
             "content": {"type": "bullets", "items": [
@@ -645,16 +675,11 @@ def _render_chart_bar(slide, bp: dict, c: BrandColors):
 
 
 def _render_chart_pie(slide, bp: dict, c: BrandColors):
-    """Pie chart using python-pptx Charts API."""
+    """Pie chart using python-pptx Charts API — Gamma style header."""
     content = bp.get("content", {})
     slices  = content.get("slices", [])
 
-    _add_rect(slide, Inches(0),    Inches(0), Inches(0.18), H,             fill=c.primary_rgb)
-    _add_rect(slide, Inches(0.18), Inches(0), W-Inches(0.18), Inches(1.3), fill=RGBColor(248,250,252))
-    _add_text(slide, bp.get("title",""),
-              Inches(0.45), Inches(0.22), W-Inches(0.65), Inches(0.9),
-              bold=True, size=26, color=c.text_rgb)
-    _add_rect(slide, Inches(0.18), Inches(1.3), W-Inches(0.18), Inches(0.04), fill=c.divider_rgb)
+    hh = _header(slide, bp.get("title", ""), c, h=1.3)
 
     if not slices:
         return
@@ -666,7 +691,7 @@ def _render_chart_pie(slide, bp: dict, c: BrandColors):
 
         chart_frame = slide.shapes.add_chart(
             XL_CHART_TYPE.PIE,
-            Inches(0.45), Inches(1.5), W - Inches(0.65), H - Inches(1.7),
+            Inches(0.4), Inches(hh + 0.1), W - Inches(0.6), H - Inches(hh + 0.3),
             chart_data
         )
         chart = chart_frame.chart
@@ -679,7 +704,7 @@ def _render_chart_pie(slide, bp: dict, c: BrandColors):
         plot.data_labels.show_category_name = False
     except Exception as e:
         logger.warning(f"chart_pie render failed: {e}")
-        items = [f"{s.get('label','?')}: {s.get('value','?')}%" for s in slices]
+        items = [f"{s.get('label', '?')}: {s.get('value', '?')}%" for s in slices]
         _render_title_content(slide, {**bp, "content": {"type": "bullets", "items": items[:6]}}, c)
 
 
