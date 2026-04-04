@@ -51,9 +51,22 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     lines = []
     for i, page in enumerate(doc, 1):
-        lines.append(f"\n--- Страница {i} ---")
-        lines.append(page.get_text("text").strip())
-    return "\n".join(lines)
+        text = page.get_text("text").strip()
+        if not text:
+            # Image-based page — try to extract text from embedded images via OCR blocks
+            blocks = page.get_text("blocks")
+            text = " ".join(b[4].strip() for b in blocks if b[4].strip())
+        if text:
+            lines.append(f"\n--- Страница {i} ---")
+            lines.append(text)
+
+    result = "\n".join(lines).strip()
+    if not result:
+        raise ValueError(
+            "PDF не содержит извлекаемого текста. "
+            "Это отсканированный документ — загрузите DOCX, TXT или PPTX, "
+            "либо введите текст вручную."
+        )
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:

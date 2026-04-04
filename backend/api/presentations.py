@@ -62,6 +62,8 @@ async def plan_from_file(
         blueprints = await plan_presentation(content, title=title, language_hint=language)
         return {"title": title, "plan": blueprints}
 
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
     except Exception as e:
         logger.exception(f"plan_from_file failed: {e}")
         raise HTTPException(500, detail=f"Ошибка планирования: {e}")

@@ -747,12 +747,28 @@ def render_slide_pptx(blueprint: dict, colors: BrandColors,
 
 # ─── Thumbnail ───────────────────────────────────────────────────────────────
 
+def _find_libreoffice() -> str:
+    """Find the LibreOffice binary on macOS or Linux."""
+    candidates = [
+        "libreoffice",
+        "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+        "/usr/bin/libreoffice",
+        "/usr/bin/soffice",
+    ]
+    for c in candidates:
+        if subprocess.run(["which", c], capture_output=True).returncode == 0:
+            return c
+        if Path(c).exists():
+            return c
+    return "libreoffice"
+
+
 def _render_thumbnail(pptx_path: str, out_dir: str) -> str | None:
     """PPTX → PDF via LibreOffice → PNG via PyMuPDF."""
     try:
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(
-                ["libreoffice", "--headless", "--convert-to", "pdf",
+                [_find_libreoffice(), "--headless", "--convert-to", "pdf",
                  "--outdir", tmp, pptx_path],
                 capture_output=True, timeout=60,
             )
