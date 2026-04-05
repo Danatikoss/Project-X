@@ -3,9 +3,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Download, ArrowLeft, Plus, Search, X, Edit2, Check,
-  Presentation, ChevronLeft, ChevronRight, Share2,
+  ChevronLeft, ChevronRight, Share2,
   BookImage, Info, Sparkles, PenLine, FolderOpen, Play,
-  Film, Image, PanelLeftClose, PanelLeftOpen, Trash2, FileText,
+  Film, Image, Trash2, FileText, ChevronDown,
+  PanelLeftClose, PanelLeftOpen, Presentation,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { assemblyApi, libraryApi, searchApi, projectsApi, mediaApi, thesesApi } from '../api/client'
@@ -32,38 +33,26 @@ function useDebounce<T>(value: T, delay: number): T {
   return deb
 }
 
-/** Load natural dimensions of an image or video. Returns aspect ratio (w/h) or null on timeout. */
 async function getNaturalAR(asset: MediaAsset): Promise<number | null> {
   return new Promise((resolve) => {
     const tid = setTimeout(() => resolve(null), 1500)
     if (asset.file_type === 'video') {
       const v = document.createElement('video')
-      v.onloadedmetadata = () => {
-        clearTimeout(tid)
-        resolve(v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : null)
-      }
+      v.onloadedmetadata = () => { clearTimeout(tid); resolve(v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : null) }
       v.onerror = () => { clearTimeout(tid); resolve(null) }
       v.src = asset.url
     } else {
       const img = new window.Image()
-      img.onload = () => {
-        clearTimeout(tid)
-        resolve(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : null)
-      }
+      img.onload = () => { clearTimeout(tid); resolve(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : null) }
       img.onerror = () => { clearTimeout(tid); resolve(null) }
       img.src = asset.url
     }
   })
 }
 
-// ─── Library Panel ───────────────────────────────────────────────────────────
+// ─── Library Panel ────────────────────────────────────────────────────────────
 
-function LibraryPanel({
-  existingIds,
-  onAdd,
-  onAddMultiple,
-  onGenerate,
-}: {
+function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
   existingIds: Set<number>
   onAdd: (slide: Slide) => void
   onAddMultiple: (slides: Slide[]) => void
@@ -77,17 +66,12 @@ function LibraryPanel({
   const debouncedQuery = useDebounce(query, 350)
   const PAGE_SIZE = 20
 
-  const { data: projects = [] } = useQuery<Project[]>({
-    queryKey: ['projects'],
-    queryFn: projectsApi.list,
-  })
-
+  const { data: projects = [] } = useQuery<Project[]>({ queryKey: ['projects'], queryFn: projectsApi.list })
   const { data: searchResults, isFetching: searchFetching } = useQuery({
     queryKey: ['assemble-search', debouncedQuery],
     queryFn: () => searchApi.search(debouncedQuery, 40),
     enabled: debouncedQuery.length > 0,
   })
-
   const { data: libraryData, isFetching: libraryFetching } = useQuery({
     queryKey: ['assemble-library', projectId, page],
     queryFn: () => libraryApi.listSlides({ project_id: projectId, page, page_size: PAGE_SIZE }),
@@ -112,16 +96,10 @@ function LibraryPanel({
     })
   }
 
-  const handleAddSelected = () => {
-    onAddMultiple(Array.from(selected.values()))
-    setSelected(new Map())
-    setSelectMode(false)
-  }
-
   return (
     <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-gray-100">
-        <div className="flex items-center gap-2 mb-2">
+      <div className="p-3 border-b border-gray-100 space-y-2">
+        <div className="flex items-center gap-1.5">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
@@ -129,7 +107,7 @@ function LibraryPanel({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Поиск слайдов..."
-              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-brand-300"
+              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-brand-300 bg-gray-50"
             />
             {query && (
               <button onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -139,32 +117,23 @@ function LibraryPanel({
           </div>
           <button
             onClick={() => setSelectMode((v) => !v)}
-            className={cn(
-              'text-[10px] px-2 py-1.5 rounded-lg border transition-colors whitespace-nowrap shrink-0',
-              selectMode ? 'bg-brand-900 text-white border-brand-900' : 'border-gray-200 text-gray-500 hover:border-brand-300 hover:text-brand-700'
-            )}
-          >
-            {selectMode ? 'Отмена' : 'Выбрать'}
-          </button>
+            className={cn('text-[10px] px-2 py-1.5 rounded-lg border transition-colors whitespace-nowrap shrink-0', selectMode ? 'bg-brand-900 text-white border-brand-900' : 'border-gray-200 text-gray-500 hover:border-brand-300 hover:text-brand-700')}
+          >{selectMode ? 'Отмена' : 'Выбрать'}</button>
           <button
             onClick={onGenerate}
             className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-brand-700 hover:border-brand-300 hover:bg-brand-50 transition-colors shrink-0"
-            title="Создать слайд с AI"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-          </button>
+            title="AI-генерация слайда"
+          ><Sparkles className="w-3.5 h-3.5" /></button>
         </div>
 
         {projects.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1">
             <button
               onClick={() => setProjectId(undefined)}
               className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors', projectId === undefined ? 'bg-brand-900 text-white border-brand-900' : 'border-gray-200 text-gray-500 hover:border-brand-300')}
             >Все</button>
             {projects.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setProjectId(projectId === p.id ? undefined : p.id)}
+              <button key={p.id} onClick={() => setProjectId(projectId === p.id ? undefined : p.id)}
                 className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors truncate max-w-[100px]', projectId === p.id ? 'bg-brand-100 text-brand-800 border-brand-300' : 'border-gray-200 text-gray-500 hover:border-brand-300')}
               >
                 <FolderOpen className="w-2.5 h-2.5 shrink-0" style={{ color: p.color }} />
@@ -199,35 +168,29 @@ function LibraryPanel({
                     }}
                     className={cn(added && !selectMode && 'opacity-50 cursor-not-allowed')}
                   />
-                  <p className="text-[10px] text-gray-500 mt-1 leading-tight line-clamp-2 px-0.5">
-                    {slide.title || '(без названия)'}
-                  </p>
+                  <p className="text-[10px] text-gray-500 mt-1 leading-tight line-clamp-1 px-0.5">{slide.title || '(без названия)'}</p>
                   {selectMode && !added && (
                     <div
                       className={cn('absolute inset-0 rounded-lg border-2 transition-all cursor-pointer', isSelected ? 'border-brand-600 bg-brand-900/10' : 'border-transparent hover:border-brand-300')}
                       onClick={() => toggleSelect(slide)}
                     >
-                      <div className={cn('absolute top-1.5 left-1.5 w-4 h-4 rounded border-2 flex items-center justify-center transition-all', isSelected ? 'bg-brand-900 border-brand-900' : 'bg-white border-gray-300')}>
+                      <div className={cn('absolute top-1.5 left-1.5 w-4 h-4 rounded border-2 flex items-center justify-center', isSelected ? 'bg-brand-900 border-brand-900' : 'bg-white border-gray-300')}>
                         {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
                       </div>
                     </div>
                   )}
-                  {!selectMode && (
-                    added ? (
-                      <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/70">
-                        <div className="flex items-center gap-1 bg-brand-900/90 text-white text-[10px] px-2 py-0.5 rounded-full">
-                          <Check className="w-2.5 h-2.5" /> Добавлен
-                        </div>
+                  {!selectMode && (added ? (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/70">
+                      <div className="flex items-center gap-1 bg-brand-900/90 text-white text-[10px] px-2 py-0.5 rounded-full">
+                        <Check className="w-2.5 h-2.5" /> Добавлен
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => onAdd(slide)}
-                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brand-900/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-brand-900 transition-all"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    )
-                  )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => onAdd(slide)}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brand-900/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-brand-900 transition-all"
+                    ><Plus className="w-3 h-3" /></button>
+                  ))}
                 </div>
               )
             })}
@@ -238,7 +201,7 @@ function LibraryPanel({
       {selectMode && selected.size > 0 && (
         <div className="px-3 py-2 border-t border-brand-100 bg-brand-50">
           <button
-            onClick={handleAddSelected}
+            onClick={() => { onAddMultiple(Array.from(selected.values())); setSelected(new Map()); setSelectMode(false) }}
             className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-brand-900 text-white text-xs font-medium hover:bg-brand-800 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -249,17 +212,13 @@ function LibraryPanel({
 
       {!isSearching && totalPages > 1 && (
         <div className="px-3 py-2 border-t border-gray-100 flex items-center justify-between">
-          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors">
-            <ChevronLeft className="w-4 h-4 text-gray-500" />
-          </button>
+          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronLeft className="w-4 h-4 text-gray-500" /></button>
           <span className="text-[10px] text-gray-400">{page} / {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors">
-            <ChevronRight className="w-4 h-4 text-gray-500" />
-          </button>
+          <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronRight className="w-4 h-4 text-gray-500" /></button>
         </div>
       )}
       {!isSearching && (
-        <div className="px-3 pb-2 text-center">
+        <div className="pb-2 text-center">
           <span className="text-[10px] text-gray-400">{total} слайдов в библиотеке</span>
         </div>
       )}
@@ -267,16 +226,11 @@ function LibraryPanel({
   )
 }
 
-// ─── Media Panel ─────────────────────────────────────────────────────────────
+// ─── Media Panel ──────────────────────────────────────────────────────────────
 
 function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
   const [selectedFolder, setSelectedFolder] = useState<number | 'all' | 'unfoldered'>('all')
-
-  const { data: folders = [] } = useQuery<MediaFolder[]>({
-    queryKey: ['media-folders'],
-    queryFn: mediaApi.listFolders,
-  })
-
+  const { data: folders = [] } = useQuery<MediaFolder[]>({ queryKey: ['media-folders'], queryFn: mediaApi.listFolders })
   const { data: assets = [], isLoading } = useQuery({
     queryKey: ['media-assets', selectedFolder],
     queryFn: () => {
@@ -286,17 +240,14 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
     },
   })
 
-  if (isLoading) {
-    return <div className="flex justify-center py-8"><Spinner /></div>
-  }
-
+  if (isLoading) return <div className="flex justify-center py-8"><Spinner /></div>
   if (!isLoading && assets.length === 0 && folders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 p-6">
         <Film className="w-10 h-10 opacity-20" />
         <div className="text-center">
           <p className="text-xs font-medium text-gray-500">Нет медиафайлов</p>
-          <p className="text-[10px] mt-1 text-gray-400">Загрузите GIF, видео или фото в разделе «Медиа»</p>
+          <p className="text-[10px] mt-1">Загрузите GIF, видео или фото в разделе «Медиа»</p>
         </div>
       </div>
     )
@@ -304,21 +255,15 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Folder tabs */}
       {folders.length > 0 && (
         <div className="p-2 border-b border-gray-100 flex flex-wrap gap-1">
-          <button
-            onClick={() => setSelectedFolder('all')}
-            className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors', selectedFolder === 'all' ? 'bg-brand-900 text-white border-brand-900' : 'border-gray-200 text-gray-500 hover:border-brand-300')}
-          >Все</button>
-          <button
-            onClick={() => setSelectedFolder('unfoldered')}
-            className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors', selectedFolder === 'unfoldered' ? 'bg-brand-900 text-white border-brand-900' : 'border-gray-200 text-gray-500 hover:border-brand-300')}
-          >Без папки</button>
+          {(['all', 'unfoldered'] as const).map((v) => (
+            <button key={v} onClick={() => setSelectedFolder(v)}
+              className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors', selectedFolder === v ? 'bg-brand-900 text-white border-brand-900' : 'border-gray-200 text-gray-500 hover:border-brand-300')}
+            >{v === 'all' ? 'Все' : 'Без папки'}</button>
+          ))}
           {folders.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setSelectedFolder(f.id)}
+            <button key={f.id} onClick={() => setSelectedFolder(f.id)}
               className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors truncate max-w-[90px]', selectedFolder === f.id ? 'bg-brand-100 text-brand-800 border-brand-300' : 'border-gray-200 text-gray-500 hover:border-brand-300')}
             >
               <span className="truncate">{f.name}</span>
@@ -327,43 +272,31 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
           ))}
         </div>
       )}
-
       {assets.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 p-4">
           <Film className="w-8 h-8 opacity-20" />
-          <p className="text-xs text-gray-400">Нет файлов в этой папке</p>
+          <p className="text-xs">Нет файлов в папке</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-2">
-          <p className="text-[10px] text-gray-400 px-1 pb-2">Нажмите, чтобы добавить на слайд</p>
+          <p className="text-[10px] text-gray-400 px-1 pb-2">Нажмите — добавить на слайд</p>
           <div className="grid grid-cols-2 gap-2">
             {assets.map((asset) => (
-              <button
-                key={asset.id}
-                onClick={() => onAdd(asset)}
+              <button key={asset.id} onClick={() => onAdd(asset)}
                 className="relative group rounded-lg overflow-hidden border border-gray-200 hover:border-brand-400 transition-all bg-gray-50 hover:shadow-md"
-                style={{ aspectRatio: '16/9' }}
-                title={asset.name}
+                style={{ aspectRatio: '16/9' }} title={asset.name}
               >
-                {asset.file_type === 'video' ? (
-                  <video src={asset.url} className="w-full h-full object-cover" muted preload="metadata" />
-                ) : (
-                  <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
-                )}
+                {asset.file_type === 'video'
+                  ? <video src={asset.url} className="w-full h-full object-cover" muted preload="metadata" />
+                  : <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
+                }
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                  <Plus className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                  <Plus className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-lg" />
                 </div>
-                <div className="absolute top-1 left-1">
-                  {asset.file_type === 'video'
-                    ? <span className="text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium">VID</span>
-                    : asset.file_type === 'gif'
-                    ? <span className="text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium">GIF</span>
-                    : <span className="text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium">IMG</span>
-                  }
-                </div>
-                <p className="absolute bottom-0 left-0 right-0 text-[9px] text-white bg-black/50 px-1.5 py-0.5 truncate">
-                  {asset.name}
-                </p>
+                <span className="absolute top-1 left-1 text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium uppercase">
+                  {asset.file_type}
+                </span>
+                <p className="absolute bottom-0 left-0 right-0 text-[9px] text-white bg-black/50 px-1.5 py-0.5 truncate">{asset.name}</p>
               </button>
             ))}
           </div>
@@ -375,12 +308,7 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 
 // ─── Overlay Item ─────────────────────────────────────────────────────────────
 
-function OverlayItem({
-  overlay,
-  isSelected,
-  onMouseDown,
-  onDelete,
-}: {
+function OverlayItem({ overlay, isSelected, onMouseDown, onDelete }: {
   overlay: SlideOverlay
   isSelected: boolean
   onMouseDown: (e: React.MouseEvent, mode: 'move' | 'resize') => void
@@ -390,55 +318,26 @@ function OverlayItem({
     <div
       className={cn(
         'absolute select-none',
-        isSelected
-          ? 'outline outline-2 outline-brand-500 outline-offset-0 cursor-move z-10'
-          : 'cursor-pointer hover:outline hover:outline-1 hover:outline-brand-300 z-[5]'
+        isSelected ? 'outline outline-2 outline-brand-500 outline-offset-0 cursor-move z-10' : 'cursor-pointer hover:outline hover:outline-1 hover:outline-brand-300 z-[5]'
       )}
-      style={{
-        left: `${overlay.x}%`,
-        top: `${overlay.y}%`,
-        width: `${overlay.w}%`,
-        height: `${overlay.h}%`,
-      }}
+      style={{ left: `${overlay.x}%`, top: `${overlay.y}%`, width: `${overlay.w}%`, height: `${overlay.h}%` }}
       onMouseDown={(e) => onMouseDown(e, 'move')}
-      onClick={(e) => e.stopPropagation()}  // prevent parent deselect on click
+      onClick={(e) => e.stopPropagation()}
     >
-      {overlay.file_type === 'video' ? (
-        <video
-          src={overlay.url}
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-full object-contain pointer-events-none"
-        />
-      ) : (
-        <img
-          src={overlay.url}
-          alt=""
-          className="w-full h-full object-contain pointer-events-none"
-          draggable={false}
-        />
-      )}
-
+      {overlay.file_type === 'video'
+        ? <video src={overlay.url} autoPlay loop muted playsInline className="w-full h-full object-contain pointer-events-none" />
+        : <img src={overlay.url} alt="" className="w-full h-full object-contain pointer-events-none" draggable={false} />
+      }
       {isSelected && (
         <>
-          {/* Delete button */}
           <button
             className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 z-20 cursor-pointer"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); onDelete() }}
-          >
-            <X className="w-3 h-3" />
-          </button>
-          {/* Resize handle */}
+          ><X className="w-3 h-3" /></button>
           <div
             className="absolute bottom-0 right-0 w-5 h-5 bg-brand-500 hover:bg-brand-400 cursor-se-resize rounded-tl z-20 flex items-center justify-center"
-            title="Изменить размер"
-            onMouseDown={(e) => {
-              e.stopPropagation()
-              onMouseDown(e, 'resize')
-            }}
+            onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize') }}
             onClick={(e) => e.stopPropagation()}
           >
             <svg width="8" height="8" viewBox="0 0 8 8" className="text-white opacity-80">
@@ -451,7 +350,50 @@ function OverlayItem({
   )
 }
 
-// ─── Main Page ───────────────────────────────────────────────────────────────
+// ─── Export Dropdown ──────────────────────────────────────────────────────────
+
+function ExportMenu({ onExport, isExporting, disabled }: {
+  onExport: (fmt: 'pptx' | 'pdf') => void
+  isExporting: boolean
+  disabled: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        disabled={disabled || isExporting}
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-900 text-white text-sm font-medium hover:bg-brand-800 disabled:opacity-50 transition-colors"
+      >
+        {isExporting ? <Spinner size="sm" className="border-white border-t-transparent" /> : <Download className="w-4 h-4" />}
+        Экспорт
+        <ChevronDown className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1 min-w-[140px]">
+          <button
+            onClick={() => { onExport('pptx'); setOpen(false) }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          ><Download className="w-4 h-4 text-gray-400" /> PPTX</button>
+          <button
+            onClick={() => { onExport('pdf'); setOpen(false) }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          ><Download className="w-4 h-4 text-gray-400" /> PDF</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Assemble() {
   const { id } = useParams<{ id: string }>()
@@ -466,7 +408,7 @@ export default function Assemble() {
   const [localSlides, setLocalSlides] = useState<Slide[]>([])
   const [overlays, setOverlays] = useState<Record<string, SlideOverlay[]>>({})
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [filmstripCollapsed, setFilmstripCollapsed] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [isCreatingTheses, setIsCreatingTheses] = useState(false)
@@ -480,12 +422,8 @@ export default function Assemble() {
   const containerRef = useRef<HTMLDivElement>(null)
   const overlaysRef = useRef<Record<string, SlideOverlay[]>>({})
   const dragRef = useRef<{
-    overlayId: string
-    slideId: string
-    mode: 'move' | 'resize'
-    startX: number
-    startY: number
-    startOverlay: SlideOverlay
+    overlayId: string; slideId: string; mode: 'move' | 'resize'
+    startX: number; startY: number; startOverlay: SlideOverlay
   } | null>(null)
   const saveOverlaysRef = useRef<() => void>(() => {})
 
@@ -508,17 +446,12 @@ export default function Assemble() {
   const updateMutation = useMutation({
     mutationFn: (data: { slide_ids?: number[]; title?: string; overlays?: Record<string, SlideOverlay[]> }) =>
       assemblyApi.update(assemblyId, data),
-    onSuccess: (updated: Assembly) => {
-      queryClient.setQueryData(['assembly', assemblyId], updated)
-    },
+    onSuccess: (updated: Assembly) => { queryClient.setQueryData(['assembly', assemblyId], updated) },
     onError: () => toast.error('Не удалось сохранить изменения'),
   })
 
-  saveOverlaysRef.current = () => {
-    updateMutation.mutate({ overlays: overlaysRef.current })
-  }
+  saveOverlaysRef.current = () => { updateMutation.mutate({ overlays: overlaysRef.current }) }
 
-  // Document-level drag/resize — stable, all access via refs
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const drag = dragRef.current
@@ -543,27 +476,14 @@ export default function Assemble() {
         return { ...prev, [slideId]: list }
       })
     }
-    const onUp = () => {
-      if (!dragRef.current) return
-      dragRef.current = null
-      saveOverlaysRef.current()
-    }
+    const onUp = () => { if (!dragRef.current) return; dragRef.current = null; saveOverlaysRef.current() }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-    return () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
   }, [])
 
-  const handleOverlayMouseDown = useCallback((
-    e: React.MouseEvent,
-    overlayId: string,
-    slideId: string,
-    mode: 'move' | 'resize'
-  ) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const handleOverlayMouseDown = useCallback((e: React.MouseEvent, overlayId: string, slideId: string, mode: 'move' | 'resize') => {
+    e.preventDefault(); e.stopPropagation()
     setSelectedOverlayId(overlayId)
     const overlay = overlaysRef.current[slideId]?.find((o) => o.id === overlayId)
     if (!overlay) return
@@ -572,115 +492,71 @@ export default function Assemble() {
 
   const handleAddOverlay = useCallback(async (asset: MediaAsset) => {
     const slideId = String(localSlides[selectedIndex]?.id)
-    if (!slideId || slideId === 'undefined') {
-      toast.error('Выберите слайд')
-      return
-    }
-
-    // Detect natural aspect ratio to set correct initial size
+    if (!slideId || slideId === 'undefined') { toast.error('Выберите слайд'); return }
     const naturalAR = await getNaturalAR(asset)
     const w = 35
-    // h in slide % coordinates: w/W = (h * 9/16)/W => h = w * 16/9 / naturalAR
-    const h = naturalAR
-      ? Math.max(5, Math.min(80, Math.round(w * (16 / 9) / naturalAR)))
-      : 22
-
+    const h = naturalAR ? Math.max(5, Math.min(80, Math.round(w * (16 / 9) / naturalAR))) : 22
     const newOverlay: SlideOverlay = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      asset_id: asset.id,
-      url: asset.url,
-      file_type: asset.file_type,
-      x: 5,
-      y: Math.max(5, Math.min(95 - h, 10)),
-      w,
-      h,
+      asset_id: asset.id, url: asset.url, file_type: asset.file_type,
+      x: 5, y: Math.max(5, Math.min(95 - h, 10)), w, h,
     }
-    const newOverlays = {
-      ...overlaysRef.current,
-      [slideId]: [...(overlaysRef.current[slideId] || []), newOverlay],
-    }
+    const newOverlays = { ...overlaysRef.current, [slideId]: [...(overlaysRef.current[slideId] || []), newOverlay] }
     setOverlays(newOverlays)
     setSelectedOverlayId(newOverlay.id)
     updateMutation.mutate({ overlays: newOverlays })
-    toast.success('Медиа добавлено на слайд', { duration: 1500 })
+    toast.success('Медиа добавлено', { duration: 1500 })
   }, [localSlides, selectedIndex, updateMutation])
 
   const deleteOverlay = useCallback((slideId: string, overlayId: string) => {
-    const newOverlays = {
-      ...overlaysRef.current,
-      [slideId]: (overlaysRef.current[slideId] || []).filter((o) => o.id !== overlayId),
-    }
-    setOverlays(newOverlays)
-    setSelectedOverlayId(null)
+    const newOverlays = { ...overlaysRef.current, [slideId]: (overlaysRef.current[slideId] || []).filter((o) => o.id !== overlayId) }
+    setOverlays(newOverlays); setSelectedOverlayId(null)
     updateMutation.mutate({ overlays: newOverlays })
   }, [updateMutation])
 
-  const handleReorder = (newSlides: Slide[]) => {
-    setLocalSlides(newSlides)
-    updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) })
-  }
-
+  const handleReorder = (newSlides: Slide[]) => { setLocalSlides(newSlides); updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) }) }
   const handleRemove = (slideId: number) => {
     const newSlides = localSlides.filter((s) => s.id !== slideId)
     setLocalSlides(newSlides)
     setSelectedIndex(Math.min(selectedIndex, newSlides.length - 1))
     updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) })
   }
-
   const handleAddSlide = (slide: Slide) => {
     if (localSlides.some((s) => s.id === slide.id)) return
     const newSlides = [...localSlides, slide]
-    setLocalSlides(newSlides)
-    setSelectedIndex(newSlides.length - 1)
+    setLocalSlides(newSlides); setSelectedIndex(newSlides.length - 1)
     updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) })
-    toast.success(`Слайд добавлен`, { duration: 1500 })
+    toast.success('Слайд добавлен', { duration: 1500 })
   }
-
   const handleAddMultiple = (slides: Slide[]) => {
     const toAdd = slides.filter((s) => !localSlides.some((e) => e.id === s.id))
     if (!toAdd.length) return
     const newSlides = [...localSlides, ...toAdd]
-    setLocalSlides(newSlides)
-    setSelectedIndex(newSlides.length - 1)
+    setLocalSlides(newSlides); setSelectedIndex(newSlides.length - 1)
     updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) })
     toast.success(`Добавлено ${toAdd.length} ${toAdd.length === 1 ? 'слайд' : toAdd.length < 5 ? 'слайда' : 'слайдов'}`, { duration: 2000 })
   }
-
   const handleTitleSave = () => {
     setEditingTitle(false)
     if (titleValue !== assembly?.title) updateMutation.mutate({ title: titleValue })
   }
-
   const handleShare = async () => {
     setIsSharing(true)
     try {
       const { share_token } = await assemblyApi.share(assemblyId)
-      const url = `${window.location.origin}/share/${share_token}`
-      await navigator.clipboard.writeText(url)
-      toast.success('Ссылка скопирована в буфер обмена')
-    } catch {
-      toast.error('Не удалось создать ссылку')
-    } finally {
-      setIsSharing(false)
-    }
+      await navigator.clipboard.writeText(`${window.location.origin}/share/${share_token}`)
+      toast.success('Ссылка скопирована')
+    } catch { toast.error('Не удалось создать ссылку') }
+    finally { setIsSharing(false) }
   }
-
   const handleExport = async (format: 'pptx' | 'pdf') => {
     setIsExporting(true)
-    try {
-      await assemblyApi.export(assemblyId, format)
-      toast.success(`${format.toUpperCase()} экспортирован`)
-    } catch {
-      toast.error('Ошибка экспорта')
-    } finally {
-      setIsExporting(false)
-    }
+    try { await assemblyApi.export(assemblyId, format); toast.success(`${format.toUpperCase()} экспортирован`) }
+    catch { toast.error('Ошибка экспорта') }
+    finally { setIsExporting(false) }
   }
 
-  if (isLoading) {
-    return <div className="flex items-center justify-center h-full"><Spinner size="lg" /></div>
-  }
-
+  if (isLoading) return <div className="flex items-center justify-center h-full"><Spinner size="lg" /></div>
   if (!assembly && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-400">
@@ -696,395 +572,517 @@ export default function Assemble() {
   const isManual = assembly?.prompt === '(создано вручную)'
   const currentSlideId = selectedSlide ? String(selectedSlide.id) : null
   const currentOverlays = currentSlideId ? (overlays[currentSlideId] || []) : []
-  const rightPanelWidth = rightTab === 'library' ? 'w-[340px]' : rightTab === 'media' ? 'w-[300px]' : 'w-[260px]'
+  const isSaving = updateMutation.isPending
 
   return (
-    <div className="flex h-full overflow-hidden bg-white">
-      {/* Left: filmstrip (collapsible) */}
-      <div className={cn(
-        'shrink-0 border-r border-gray-200 flex flex-col bg-surface transition-all duration-200 overflow-hidden',
-        sidebarCollapsed ? 'w-[40px]' : 'w-[200px]'
-      )}>
-        <div className="p-2 border-b border-gray-200 flex items-center justify-between shrink-0">
-          {!sidebarCollapsed && (
-            <button onClick={() => navigate('/dashboard')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-              <ArrowLeft className="w-3.5 h-3.5" /> Назад
-            </button>
-          )}
-          <button
-            onClick={() => setSidebarCollapsed((v) => !v)}
-            className={cn('p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0', sidebarCollapsed && 'mx-auto')}
-            title={sidebarCollapsed ? 'Развернуть панель' : 'Свернуть панель'}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-          </button>
-          {!sidebarCollapsed && <span className="text-xs text-gray-400">{localSlides.length} сл.</span>}
-        </div>
+    <div className="flex flex-col h-full overflow-hidden bg-gray-950">
 
-        {!sidebarCollapsed && (
-          <>
-            <div className="flex-1 overflow-y-auto">
-              <FilmStrip slides={localSlides} selectedIndex={selectedIndex} onSelect={setSelectedIndex} onReorder={handleReorder} onRemove={handleRemove} />
-            </div>
-            <div className="p-2 border-t border-gray-200">
-              <button
-                onClick={() => setRightTab('library')}
-                className={cn('w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs transition-colors', rightTab === 'library' ? 'border-brand-400 text-brand-700 bg-brand-50' : 'border-dashed border-gray-300 text-gray-500 hover:border-brand-400 hover:text-brand-700')}
-              >
-                <Plus className="w-3.5 h-3.5" /> Добавить слайды
+      {/* ── Top toolbar ─────────────────────────────────────────────────────── */}
+      <header className="shrink-0 flex items-center gap-3 px-4 h-[52px] bg-gray-900 border-b border-white/10">
+        {/* Back */}
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="hidden sm:inline">Назад</span>
+        </button>
+
+        <div className="w-px h-5 bg-white/10 shrink-0" />
+
+        {/* Title */}
+        <div className="flex-1 min-w-0">
+          {editingTitle ? (
+            <div className="flex items-center gap-2 max-w-sm">
+              <input
+                autoFocus
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                onBlur={handleTitleSave}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleTitleSave(); if (e.key === 'Escape') { setEditingTitle(false); setTitleValue(assembly?.title || '') } }}
+                className="flex-1 bg-white/10 text-white text-sm font-medium rounded-lg px-2.5 py-1 border border-white/20 focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-400/50"
+              />
+              <button onClick={handleTitleSave} className="p-1 rounded text-brand-400 hover:text-brand-300">
+                <Check className="w-4 h-4" />
               </button>
             </div>
-          </>
-        )}
-
-        {sidebarCollapsed && (
-          <div className="flex-1 flex flex-col items-center pt-2">
-            <span className="text-[10px] text-gray-400">{localSlides.length}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Center: large preview */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200">
-          {sidebarCollapsed && (
-            <button onClick={() => navigate('/dashboard')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors mr-1">
-              <ArrowLeft className="w-3.5 h-3.5" />
+          ) : (
+            <button
+              onClick={() => setEditingTitle(true)}
+              className="group flex items-center gap-1.5 max-w-sm text-left"
+            >
+              <span className="text-sm font-semibold text-white truncate group-hover:text-gray-200 transition-colors">
+                {titleValue || 'Без названия'}
+              </span>
+              <Edit2 className="w-3 h-3 text-gray-600 group-hover:text-gray-400 shrink-0 transition-colors" />
             </button>
           )}
-          <button disabled={selectedIndex === 0} onClick={() => setSelectedIndex(selectedIndex - 1)} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors">
-            <ChevronLeft className="w-4 h-4 text-gray-600" />
-          </button>
-          <span className="text-sm text-gray-500 min-w-[60px] text-center">
-            {localSlides.length > 0 ? `${selectedIndex + 1} / ${localSlides.length}` : '—'}
-          </span>
-          <button disabled={selectedIndex >= localSlides.length - 1} onClick={() => setSelectedIndex(selectedIndex + 1)} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors">
-            <ChevronRight className="w-4 h-4 text-gray-600" />
-          </button>
+        </div>
 
-          {selectedSlide && (
-            <p className="text-sm text-gray-600 truncate flex-1 ml-2">{selectedSlide.title || '(без названия)'}</p>
-          )}
-
-          {currentOverlays.length > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 shrink-0">
-              {currentOverlays.length} медиа
+        {/* Save status */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isSaving ? (
+            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+              <Spinner size="sm" className="border-gray-500 border-t-transparent w-3 h-3" />
+              Сохранение…
+            </span>
+          ) : (
+            <span className="text-[11px] text-gray-600">
+              {localSlides.length} {localSlides.length === 1 ? 'слайд' : localSlides.length < 5 ? 'слайда' : 'слайдов'}
             </span>
           )}
-          {selectedOverlayId && (
+        </div>
+
+        <div className="w-px h-5 bg-white/10 shrink-0" />
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Slideshow */}
+          {localSlides.length > 0 && (
             <button
-              onClick={() => setSelectedOverlayId(null)}
-              className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors shrink-0"
+              onClick={() => setShowSlideshow(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 text-sm transition-colors"
             >
-              Снять выделение
+              <Play className="w-4 h-4" />
+              <span className="hidden md:inline">Слайд-шоу</span>
             </button>
+          )}
+
+          {/* Theses */}
+          <button
+            onClick={async () => {
+              setIsCreatingTheses(true)
+              try { const s = await thesesApi.create(assemblyId); navigate(`/theses/${s.id}`) }
+              catch { toast.error('Не удалось создать тезисы') }
+              finally { setIsCreatingTheses(false) }
+            }}
+            disabled={isCreatingTheses || localSlides.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 text-sm transition-colors disabled:opacity-40"
+            title="Тезисы к выступлению"
+          >
+            {isCreatingTheses ? <Spinner size="sm" className="border-gray-400 border-t-transparent" /> : <FileText className="w-4 h-4" />}
+            <span className="hidden md:inline">Тезисы</span>
+          </button>
+
+          {/* Share */}
+          <button
+            onClick={handleShare}
+            disabled={isSharing || localSlides.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 text-gray-300 hover:text-white hover:border-white/40 text-sm transition-colors disabled:opacity-40"
+          >
+            {isSharing ? <Spinner size="sm" className="border-gray-400 border-t-transparent" /> : <Share2 className="w-4 h-4" />}
+            <span className="hidden md:inline">Поделиться</span>
+          </button>
+
+          {/* Export */}
+          <ExportMenu onExport={handleExport} isExporting={isExporting} disabled={localSlides.length === 0} />
+        </div>
+      </header>
+
+      {/* ── Body ────────────────────────────────────────────────────────────── */}
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* ── Left: filmstrip (dark) ─────────────────────────────────────── */}
+        <aside className={cn(
+          'shrink-0 flex flex-col bg-gray-900 border-r border-white/10 transition-all duration-200',
+          filmstripCollapsed ? 'w-[48px]' : 'w-[200px]'
+        )}>
+          {/* Filmstrip header */}
+          <div className={cn(
+            'flex items-center gap-2 px-2 py-2.5 border-b border-white/10 shrink-0',
+            filmstripCollapsed && 'justify-center'
+          )}>
+            {!filmstripCollapsed && (
+              <button
+                onClick={() => { setRightTab('library') }}
+                className="flex-1 flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-white transition-colors px-1"
+              >
+                <Plus className="w-3 h-3" />
+                Добавить
+              </button>
+            )}
+            <button
+              onClick={() => setFilmstripCollapsed((v) => !v)}
+              className="p-1 rounded hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors shrink-0"
+              title={filmstripCollapsed ? 'Развернуть' : 'Свернуть'}
+            >
+              {filmstripCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* Slide count when collapsed */}
+          {filmstripCollapsed && (
+            <div className="flex flex-col items-center pt-3 gap-2">
+              <span className="text-[10px] text-gray-600 font-mono">{localSlides.length}</span>
+              <button
+                onClick={() => { setFilmstripCollapsed(false); setRightTab('library') }}
+                className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
+                title="Добавить слайды"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Filmstrip list */}
+          {!filmstripCollapsed && (
+            <>
+              <div className="flex-1 overflow-y-auto">
+                {localSlides.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
+                    <div className="w-16 h-10 rounded border-2 border-dashed border-white/10 flex items-center justify-center">
+                      <Plus className="w-4 h-4 text-white/20" />
+                    </div>
+                    <button
+                      onClick={() => setRightTab('library')}
+                      className="text-[10px] text-brand-400 hover:text-brand-300 transition-colors text-center"
+                    >
+                      Добавить слайды из библиотеки
+                    </button>
+                  </div>
+                ) : (
+                  <FilmStrip
+                    slides={localSlides}
+                    selectedIndex={selectedIndex}
+                    onSelect={setSelectedIndex}
+                    onReorder={handleReorder}
+                    onRemove={handleRemove}
+                    dark
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </aside>
+
+        {/* ── Center: canvas ────────────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col min-w-0 bg-gray-950">
+
+          {/* Slide navigation bar */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 shrink-0">
+            <div className="flex items-center gap-1">
+              <button
+                disabled={selectedIndex === 0}
+                onClick={() => setSelectedIndex(selectedIndex - 1)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-300 hover:bg-white/10 disabled:opacity-30 transition-colors"
+              ><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-xs text-gray-500 min-w-[52px] text-center font-mono">
+                {localSlides.length > 0 ? `${selectedIndex + 1} / ${localSlides.length}` : '—'}
+              </span>
+              <button
+                disabled={selectedIndex >= localSlides.length - 1}
+                onClick={() => setSelectedIndex(selectedIndex + 1)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-300 hover:bg-white/10 disabled:opacity-30 transition-colors"
+              ><ChevronRight className="w-4 h-4" /></button>
+            </div>
+
+            {selectedSlide && (
+              <p className="text-xs text-gray-500 truncate flex-1 mx-3 text-center hidden sm:block">
+                {selectedSlide.title || ''}
+              </p>
+            )}
+
+            {/* Edit button */}
+            {selectedSlide && !editingSlideId && (
+              <button
+                onClick={() => setEditingSlideId(selectedSlide.id)}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-gray-300 hover:text-white transition-colors"
+              >
+                <Edit2 className="w-3.5 h-3.5" /> Редактировать текст
+              </button>
+            )}
+          </div>
+
+          {/* Main canvas area */}
+          {editingSlideId !== null && selectedSlide ? (
+            <div className="flex-1 overflow-hidden bg-gray-900">
+              <SlideTextEditor
+                slideId={editingSlideId}
+                thumbnailUrl={selectedSlide.thumbnail_url}
+                onClose={() => setEditingSlideId(null)}
+                onSaved={(thumbVersion) => {
+                  setEditingSlideId(null)
+                  if (thumbVersion && editingSlideId !== null) {
+                    setLocalSlides((prev) =>
+                      prev.map((s) =>
+                        s.id === editingSlideId
+                          ? { ...s, thumbnail_url: `${s.thumbnail_url.split('?')[0]}?t=${thumbVersion}` }
+                          : s
+                      )
+                    )
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <div
+              className="flex-1 flex items-center justify-center p-8 overflow-auto"
+              onClick={() => setSelectedOverlayId(null)}
+            >
+              {selectedSlide ? (
+                <div className="w-full max-w-4xl flex flex-col items-center gap-4">
+                  {/* Slide frame */}
+                  <div
+                    ref={containerRef}
+                    className="relative w-full rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
+                  >
+                    {selectedSlide.video_url ? (
+                      <video
+                        src={selectedSlide.video_url}
+                        controls
+                        className="w-full object-contain bg-black"
+                        style={{ aspectRatio: '16/9' }}
+                        poster={selectedSlide.thumbnail_url || undefined}
+                      />
+                    ) : (
+                      <SlideThumbnail slide={selectedSlide} />
+                    )}
+
+                    {currentOverlays.map((overlay) => (
+                      <OverlayItem
+                        key={overlay.id}
+                        overlay={overlay}
+                        isSelected={selectedOverlayId === overlay.id}
+                        onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
+                        onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Below slide: hints */}
+                  {currentOverlays.length > 0 && !selectedOverlayId && (
+                    <p className="text-[11px] text-gray-600">
+                      Нажмите на медиаэлемент → перетащите или измените размер (угол ▟)
+                    </p>
+                  )}
+                  {selectedOverlayId && (
+                    <button
+                      onClick={() => setSelectedOverlayId(null)}
+                      className="text-[11px] text-gray-500 hover:text-gray-300 px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                    >
+                      Снять выделение
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-5">
+                  <div className="w-32 h-20 rounded-xl border-2 border-dashed border-white/10 flex items-center justify-center">
+                    <Plus className="w-8 h-8 text-white/10" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Нет слайдов</p>
+                    <button onClick={() => setRightTab('library')} className="text-sm text-brand-400 hover:text-brand-300 transition-colors">
+                      Добавить слайды из библиотеки →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Slide preview / text editor */}
-        {editingSlideId !== null && selectedSlide ? (
-          <div className="flex-1 overflow-hidden">
-            <SlideTextEditor
-              slideId={editingSlideId}
-              thumbnailUrl={selectedSlide.thumbnail_url}
-              onClose={() => setEditingSlideId(null)}
-              onSaved={(thumbVersion) => {
-                setEditingSlideId(null)
-                if (thumbVersion && editingSlideId !== null) {
-                  setLocalSlides((prev) =>
-                    prev.map((s) =>
-                      s.id === editingSlideId
-                        ? { ...s, thumbnail_url: `${s.thumbnail_url.split('?')[0]}?t=${thumbVersion}` }
-                        : s
-                    )
-                  )
-                }
-              }}
-            />
+        {/* ── Right panel ──────────────────────────────────────────────────── */}
+        <aside className={cn(
+          'shrink-0 flex flex-col bg-white border-l border-gray-200 transition-all duration-200',
+          rightTab === 'library' ? 'w-[340px]' : rightTab === 'media' ? 'w-[300px]' : 'w-[280px]'
+        )}>
+          {/* Tabs */}
+          <div className="flex items-center border-b border-gray-200 bg-gray-50 shrink-0">
+            {([
+              { key: 'info', label: 'Слайд', icon: Info },
+              { key: 'library', label: 'Библиотека', icon: BookImage },
+              { key: 'media', label: 'Медиа', icon: Film },
+            ] as const).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setRightTab(key)}
+                className={cn(
+                  'relative flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors',
+                  rightTab === key
+                    ? 'text-brand-700 bg-white border-b-2 border-brand-600'
+                    : 'text-gray-400 hover:text-gray-600 border-b-2 border-transparent'
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+                {key === 'media' && currentOverlays.length > 0 && (
+                  <span className="absolute top-2 right-1 w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[8px] flex items-center justify-center font-bold">
+                    {currentOverlays.length}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div
-            className="flex-1 flex items-center justify-center p-8 bg-gray-50"
-            onClick={() => setSelectedOverlayId(null)}
-          >
-            {selectedSlide ? (
-              <div className="w-full max-w-4xl">
-                <div
-                  ref={containerRef}
-                  className="relative w-full rounded-xl overflow-hidden shadow-xl border border-gray-200"
-                >
-                  {selectedSlide.video_url ? (
-                    <video
-                      src={selectedSlide.video_url}
-                      controls
-                      className="w-full object-contain bg-white"
-                      style={{ aspectRatio: '16/9' }}
-                      poster={selectedSlide.thumbnail_url || undefined}
-                    />
-                  ) : (
-                    <SlideThumbnail slide={selectedSlide} />
-                  )}
 
-                  {/* Overlay items */}
-                  {currentOverlays.map((overlay) => (
-                    <OverlayItem
-                      key={overlay.id}
-                      overlay={overlay}
-                      isSelected={selectedOverlayId === overlay.id}
-                      onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
-                      onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
-                    />
-                  ))}
+          {/* Tab content */}
+          <div className="flex-1 overflow-hidden flex flex-col">
 
-                  {/* Slideshow button */}
-                  {localSlides.length > 1 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setShowSlideshow(true) }}
-                      className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
-                    >
-                      <Play className="w-3 h-3" /> Слайд-шоу
-                    </button>
-                  )}
-
-                  {/* Native text edit button */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingSlideId(selectedSlide.id) }}
-                    className="absolute bottom-3 left-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
-                  >
-                    <Edit2 className="w-3 h-3" /> Редактировать
-                  </button>
-
-                </div>
-
-                {currentOverlays.length > 0 && !selectedOverlayId && (
-                  <p className="text-center text-[10px] text-gray-400 mt-2">
-                    Нажмите на медиаэлемент → перетащите или измените размер (угол ▟)
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-gray-400 gap-4">
-                <div className="w-24 h-16 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-                  <Plus className="w-6 h-6 opacity-40" />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-medium text-gray-500 mb-1">Презентация пустая</p>
-                  <p className="text-xs text-gray-400">
-                    Нажмите{' '}
-                    <button onClick={() => setRightTab('library')} className="text-brand-600 hover:underline">«Добавить слайды»</button>
-                    {' '}чтобы начать
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Right panel */}
-      <div className={cn('shrink-0 border-l border-gray-200 flex flex-col bg-white transition-all duration-200', rightPanelWidth)}>
-        {/* Tabs */}
-        <div className="flex items-center border-b border-gray-200 shrink-0">
-          <button
-            onClick={() => setRightTab('info')}
-            className={cn('flex-1 flex items-center justify-center gap-1 py-3 text-xs font-medium transition-colors border-b-2', rightTab === 'info' ? 'text-brand-700 border-brand-700' : 'text-gray-400 border-transparent hover:text-gray-600')}
-          >
-            <Info className="w-3.5 h-3.5" /> Слайд
-          </button>
-          <button
-            onClick={() => setRightTab('library')}
-            className={cn('flex-1 flex items-center justify-center gap-1 py-3 text-xs font-medium transition-colors border-b-2', rightTab === 'library' ? 'text-brand-700 border-brand-700' : 'text-gray-400 border-transparent hover:text-gray-600')}
-          >
-            <BookImage className="w-3.5 h-3.5" /> Слайды
-          </button>
-          <button
-            onClick={() => setRightTab('media')}
-            className={cn('flex-1 flex items-center justify-center gap-1 py-3 text-xs font-medium transition-colors border-b-2 relative', rightTab === 'media' ? 'text-brand-700 border-brand-700' : 'text-gray-400 border-transparent hover:text-gray-600')}
-          >
-            <Film className="w-3.5 h-3.5" /> Медиа
-            {currentOverlays.length > 0 && (
-              <span className="absolute top-2 right-1 w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[8px] flex items-center justify-center font-bold">
-                {currentOverlays.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Tab content */}
-        {rightTab === 'info' && (
-          <div className="flex flex-col flex-1 overflow-auto">
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center gap-1 mb-2">
-                {isManual ? <PenLine className="w-3.5 h-3.5 text-teal-600" /> : <Sparkles className="w-3.5 h-3.5 text-brand-600" />}
-                <span className="text-[10px] text-gray-400 uppercase tracking-wide">{isManual ? 'Вручную' : 'AI-сборка'}</span>
-              </div>
-              {editingTitle ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    autoFocus
-                    value={titleValue}
-                    onChange={(e) => setTitleValue(e.target.value)}
-                    onBlur={handleTitleSave}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleTitleSave() }}
-                    className="flex-1 text-sm font-medium border-b border-brand-400 focus:outline-none py-0.5"
-                  />
-                  <button onClick={handleTitleSave}><Check className="w-4 h-4 text-brand-700" /></button>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2">
-                  <h2 className="flex-1 text-sm font-semibold text-gray-900 leading-snug">{titleValue || 'Без названия'}</h2>
-                  <button onClick={() => setEditingTitle(true)} className="mt-0.5 opacity-50 hover:opacity-100 transition-opacity">
-                    <Edit2 className="w-3.5 h-3.5 text-gray-500" />
-                  </button>
-                </div>
-              )}
-              {!isManual && <p className="text-[11px] text-gray-400 mt-1 line-clamp-2">{assembly?.prompt}</p>}
-            </div>
-
-            {selectedSlide ? (
-              <div className="p-4 border-b border-gray-200">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Слайд {selectedIndex + 1}</p>
-                <p className="text-sm font-medium text-gray-800 mb-1">{selectedSlide.title || '(без названия)'}</p>
-                {selectedSlide.summary && <p className="text-xs text-gray-500 mb-2 line-clamp-3">{selectedSlide.summary}</p>}
-                {selectedSlide.labels && selectedSlide.labels.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {selectedSlide.labels.map((lbl) => (
-                      <span key={lbl} className="text-[10px] px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded-full border border-teal-200">{lbl}</span>
-                    ))}
-                  </div>
-                )}
-                {selectedSlide.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {selectedSlide.tags.map((tag) => (
-                      <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded-full">{tag}</span>
-                    ))}
-                  </div>
-                )}
-                {selectedSlide.source_filename && (
-                  <p className="text-[10px] text-gray-400 mt-1 truncate">Источник: {selectedSlide.source_filename}</p>
-                )}
-                <button
-                  onClick={() => handleRemove(selectedSlide.id)}
-                  className="mt-3 flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors"
-                >
-                  <X className="w-3 h-3" /> Убрать из презентации
-                </button>
-              </div>
-            ) : (
-              <div className="p-4 text-center text-gray-400">
-                <p className="text-xs">Выберите слайд в левой панели</p>
-              </div>
-            )}
-
-            <div className="p-4 mt-auto">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Экспорт</p>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={handleShare}
-                  disabled={isSharing || localSlides.length === 0}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                >
-                  <Share2 className="w-4 h-4" /> Поделиться ссылкой
-                </button>
-                <button
-                  onClick={() => handleExport('pptx')}
-                  disabled={isExporting || localSlides.length === 0}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand-900 text-white text-sm font-medium hover:bg-brand-800 transition-colors disabled:opacity-50"
-                >
-                  {isExporting ? <Spinner size="sm" className="border-white border-t-transparent" /> : <Download className="w-4 h-4" />}
-                  Скачать PPTX
-                </button>
-                <button
-                  onClick={() => handleExport('pdf')}
-                  disabled={isExporting || localSlides.length === 0}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                >
-                  <Download className="w-4 h-4" /> Скачать PDF
-                </button>
-                <button
-                  onClick={async () => {
-                    setIsCreatingTheses(true)
-                    try {
-                      const session = await thesesApi.create(assemblyId)
-                      navigate(`/theses/${session.id}`)
-                    } catch {
-                      toast.error('Не удалось создать тезисы')
-                    } finally {
-                      setIsCreatingTheses(false)
-                    }
-                  }}
-                  disabled={isCreatingTheses || localSlides.length === 0}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-violet-200 text-violet-700 text-sm font-medium hover:border-violet-300 hover:bg-violet-50 transition-colors disabled:opacity-50"
-                >
-                  {isCreatingTheses
-                    ? <Spinner size="sm" className="border-violet-400 border-t-transparent" />
-                    : <FileText className="w-4 h-4" />
-                  }
-                  Тезисы к выступлению
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {rightTab === 'library' && (
-          <LibraryPanel
-            existingIds={existingIds}
-            onAdd={handleAddSlide}
-            onAddMultiple={handleAddMultiple}
-            onGenerate={() => setShowGenerateModal(true)}
-          />
-        )}
-
-        {rightTab === 'media' && (
-          <div className="flex flex-col h-full">
-            {!selectedSlide ? (
-              <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400 p-6">
-                <Image className="w-8 h-8 opacity-20" />
-                <p className="text-xs text-center text-gray-400">Выберите слайд, чтобы добавить медиа</p>
-              </div>
-            ) : (
-              <>
-                {currentOverlays.length > 0 && (
-                  <div className="p-3 border-b border-gray-100 shrink-0">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2 font-medium">
-                      На этом слайде ({currentOverlays.length})
-                    </p>
-                    <div className="flex flex-col gap-1">
-                      {currentOverlays.map((overlay) => (
-                        <div
-                          key={overlay.id}
-                          className={cn(
-                            'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors',
-                            selectedOverlayId === overlay.id ? 'bg-brand-50 border border-brand-200' : 'hover:bg-gray-50 border border-transparent'
-                          )}
-                          onClick={() => setSelectedOverlayId(selectedOverlayId === overlay.id ? null : overlay.id)}
-                        >
-                          <div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-gray-100">
-                            {overlay.file_type === 'video'
-                              ? <video src={overlay.url} className="w-full h-full object-cover" muted />
-                              : <img src={overlay.url} alt="" className="w-full h-full object-cover" />
-                            }
-                          </div>
-                          <span className="text-[10px] text-gray-600 flex-1 uppercase">{overlay.file_type}</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteOverlay(currentSlideId!, overlay.id) }}
-                            className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
+            {/* ── Info tab ──────────────────────────────────────────────── */}
+            {rightTab === 'info' && (
+              <div className="flex-1 overflow-y-auto">
+                {/* Assembly info */}
+                <div className="p-4 border-b border-gray-100">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <div className={cn(
+                      'w-6 h-6 rounded-md flex items-center justify-center',
+                      isManual ? 'bg-teal-50' : 'bg-brand-50'
+                    )}>
+                      {isManual
+                        ? <PenLine className="w-3.5 h-3.5 text-teal-600" />
+                        : <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                      }
                     </div>
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">
+                      {isManual ? 'Вручную' : 'AI-сборка'}
+                    </span>
+                  </div>
+                  {!isManual && assembly?.prompt && (
+                    <p className="text-[11px] text-gray-400 leading-relaxed line-clamp-3 italic">
+                      «{assembly.prompt}»
+                    </p>
+                  )}
+                  <div className="mt-3 flex items-center justify-between text-[11px] text-gray-400">
+                    <span>{localSlides.length} {localSlides.length === 1 ? 'слайд' : localSlides.length < 5 ? 'слайда' : 'слайдов'}</span>
+                    {isSaving && <span className="text-brand-500">Сохраняется…</span>}
+                  </div>
+                </div>
+
+                {/* Selected slide info */}
+                {selectedSlide ? (
+                  <div className="p-4 border-b border-gray-100">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-2">
+                      Слайд {selectedIndex + 1}
+                    </p>
+                    <p className="text-sm font-semibold text-gray-800 leading-snug mb-1">
+                      {selectedSlide.title || '(без названия)'}
+                    </p>
+                    {selectedSlide.summary && (
+                      <p className="text-xs text-gray-500 leading-relaxed mb-3 line-clamp-4">{selectedSlide.summary}</p>
+                    )}
+                    {selectedSlide.labels && selectedSlide.labels.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {selectedSlide.labels.map((lbl) => (
+                          <span key={lbl} className="text-[10px] px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded-full border border-teal-200">{lbl}</span>
+                        ))}
+                      </div>
+                    )}
+                    {selectedSlide.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {selectedSlide.tags.slice(0, 5).map((tag) => (
+                          <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded-full">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                    {selectedSlide.source_filename && (
+                      <p className="text-[10px] text-gray-400 truncate mt-1">Из: {selectedSlide.source_filename}</p>
+                    )}
+                    <button
+                      onClick={() => handleRemove(selectedSlide.id)}
+                      className="mt-4 flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors"
+                    >
+                      <X className="w-3 h-3" /> Убрать из презентации
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-4 text-center">
+                    <p className="text-xs text-gray-400">Выберите слайд</p>
                   </div>
                 )}
-                <MediaPanel onAdd={handleAddOverlay} />
-              </>
+
+                {/* Export section */}
+                <div className="p-4">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-3">Быстрый экспорт</p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleShare}
+                      disabled={isSharing || localSlides.length === 0}
+                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      <Share2 className="w-4 h-4" /> Поделиться
+                    </button>
+                    <button
+                      onClick={() => handleExport('pptx')}
+                      disabled={isExporting || localSlides.length === 0}
+                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand-900 text-white text-sm font-medium hover:bg-brand-800 transition-colors disabled:opacity-50"
+                    >
+                      {isExporting ? <Spinner size="sm" className="border-white border-t-transparent" /> : <Download className="w-4 h-4" />}
+                      Скачать PPTX
+                    </button>
+                    <button
+                      onClick={() => handleExport('pdf')}
+                      disabled={isExporting || localSlides.length === 0}
+                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4" /> Скачать PDF
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Library tab ────────────────────────────────────────────── */}
+            {rightTab === 'library' && (
+              <LibraryPanel
+                existingIds={existingIds}
+                onAdd={handleAddSlide}
+                onAddMultiple={handleAddMultiple}
+                onGenerate={() => setShowGenerateModal(true)}
+              />
+            )}
+
+            {/* ── Media tab ──────────────────────────────────────────────── */}
+            {rightTab === 'media' && (
+              <div className="flex flex-col h-full overflow-hidden">
+                {!selectedSlide ? (
+                  <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 p-6">
+                    <Image className="w-8 h-8 opacity-20" />
+                    <p className="text-xs text-center">Выберите слайд, чтобы добавить медиа</p>
+                  </div>
+                ) : (
+                  <>
+                    {currentOverlays.length > 0 && (
+                      <div className="p-3 border-b border-gray-100 shrink-0">
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-2">
+                          На слайде ({currentOverlays.length})
+                        </p>
+                        <div className="flex flex-col gap-1">
+                          {currentOverlays.map((overlay) => (
+                            <div
+                              key={overlay.id}
+                              className={cn(
+                                'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors',
+                                selectedOverlayId === overlay.id ? 'bg-brand-50 border border-brand-200' : 'hover:bg-gray-50 border border-transparent'
+                              )}
+                              onClick={() => setSelectedOverlayId(selectedOverlayId === overlay.id ? null : overlay.id)}
+                            >
+                              <div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-gray-100">
+                                {overlay.file_type === 'video'
+                                  ? <video src={overlay.url} className="w-full h-full object-cover" muted />
+                                  : <img src={overlay.url} alt="" className="w-full h-full object-cover" />
+                                }
+                              </div>
+                              <span className="text-[10px] text-gray-600 flex-1 uppercase font-medium">{overlay.file_type}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); deleteOverlay(currentSlideId!, overlay.id) }}
+                                className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+                              ><Trash2 className="w-3 h-3" /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex-1 overflow-hidden">
+                      <MediaPanel onAdd={handleAddOverlay} />
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
-        )}
+        </aside>
       </div>
 
+      {/* ── Modals ────────────────────────────────────────────────────────────── */}
       {showSlideshow && localSlides.length > 0 && (
         <Slideshow
           slides={localSlides}
@@ -1098,13 +1096,9 @@ export default function Assemble() {
         <GenerateSlideModal
           onClose={() => setShowGenerateModal(false)}
           assemblyContext={assembly?.title}
-          onSlideGenerated={(slide) => {
-            handleAddSlide(slide)
-            setShowGenerateModal(false)
-          }}
+          onSlideGenerated={(slide) => { handleAddSlide(slide); setShowGenerateModal(false) }}
         />
       )}
-
     </div>
   )
 }

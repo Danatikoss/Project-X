@@ -1,5 +1,9 @@
+import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film, FileText, Wand2, ShieldCheck } from 'lucide-react'
+import {
+  LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film,
+  FileText, Wand2, ShieldCheck, ChevronLeft, ChevronRight,
+} from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { IndexingBell } from './IndexingBell'
 import { useAuthStore } from '../../store/auth'
@@ -19,11 +23,20 @@ const ADMIN_NAV = [
   { to: '/brand/guidelines', icon: ShieldCheck, label: 'Гайдлайны' },
 ]
 
-
 export function AppShell() {
   const location = useLocation()
   const isAssemblePage = location.pathname.startsWith('/assemble/')
   const user = useAuthStore((s) => s.user)
+
+  const [collapsed, setCollapsed] = useState(() =>
+    localStorage.getItem('nav-collapsed') === 'true'
+  )
+
+  const toggleCollapsed = () => {
+    const next = !collapsed
+    setCollapsed(next)
+    localStorage.setItem('nav-collapsed', String(next))
+  }
 
   const initials = user?.name
     ? user.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
@@ -37,16 +50,28 @@ export function AppShell() {
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
       {/* Sidebar — desktop */}
-      <aside className="hidden md:flex w-56 flex-col bg-sidebar shrink-0 border-r border-white/5 shadow-sidebar">
+      <aside
+        className={cn(
+          'hidden md:flex flex-col bg-sidebar shrink-0 border-r border-white/5 shadow-sidebar transition-all duration-200',
+          collapsed ? 'w-[60px]' : 'w-56'
+        )}
+      >
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-4 py-5 border-b border-white/5">
+        <div className={cn(
+          'flex items-center border-b border-white/5 shrink-0',
+          collapsed ? 'px-3 py-5 justify-center' : 'gap-2.5 px-4 py-5'
+        )}>
           <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center shrink-0 shadow-md">
             <Layers className="w-4 h-4 text-white" />
           </div>
-          <span className="text-white font-bold text-base tracking-tight">SLIDEX</span>
-          <div className="ml-auto">
-            <IndexingBell />
-          </div>
+          {!collapsed && (
+            <>
+              <span className="text-white font-bold text-base tracking-tight">SLIDEX</span>
+              <div className="ml-auto">
+                <IndexingBell />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Nav */}
@@ -55,9 +80,11 @@ export function AppShell() {
             <NavLink
               key={to}
               to={to}
+              title={collapsed ? label : undefined}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
+                  'flex items-center rounded-xl text-sm font-medium transition-all duration-150',
+                  collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5',
                   isActive
                     ? 'bg-brand-600/20 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
@@ -67,9 +94,13 @@ export function AppShell() {
               {({ isActive }) => (
                 <>
                   <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-brand-400' : '')} />
-                  {label}
-                  {isActive && (
-                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />
+                  {!collapsed && (
+                    <>
+                      {label}
+                      {isActive && (
+                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -77,24 +108,57 @@ export function AppShell() {
           ))}
         </nav>
 
-        {/* User */}
-        <div className="px-3 py-3 border-t border-white/5">
-          <NavLink
-            to="/profile"
-            className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors group"
+        {/* User + collapse toggle */}
+        <div className="px-2 py-3 border-t border-white/5 flex flex-col gap-1">
+          {!collapsed && (
+            <NavLink
+              to="/profile"
+              className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors group"
+            >
+              <div className="w-7 h-7 rounded-full bg-gradient-brand flex items-center justify-center shrink-0">
+                <span className="text-white text-xs font-semibold">{initials}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-slate-300 text-xs font-medium truncate group-hover:text-white transition-colors">
+                  {user?.name || user?.email || 'Профиль'}
+                </p>
+                {user?.email && user?.name && (
+                  <p className="text-slate-500 text-[10px] truncate">{user.email}</p>
+                )}
+              </div>
+            </NavLink>
+          )}
+          {collapsed && (
+            <NavLink
+              to="/profile"
+              title="Профиль"
+              className="flex items-center justify-center py-2 rounded-xl hover:bg-white/5 transition-colors"
+            >
+              <div className="w-7 h-7 rounded-full bg-gradient-brand flex items-center justify-center">
+                <span className="text-white text-xs font-semibold">{initials}</span>
+              </div>
+            </NavLink>
+          )}
+
+          {/* Collapse toggle */}
+          <button
+            onClick={toggleCollapsed}
+            title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+            className={cn(
+              'flex items-center rounded-xl py-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all',
+              collapsed ? 'justify-center px-2' : 'gap-2 px-2'
+            )}
           >
-            <div className="w-7 h-7 rounded-full bg-gradient-brand flex items-center justify-center shrink-0">
-              <span className="text-white text-xs font-semibold">{initials}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-slate-300 text-xs font-medium truncate group-hover:text-white transition-colors">
-                {user?.name || user?.email || 'Профиль'}
-              </p>
-              {user?.email && user?.name && (
-                <p className="text-slate-500 text-[10px] truncate">{user.email}</p>
-              )}
-            </div>
-          </NavLink>
+            {collapsed
+              ? <ChevronRight className="w-4 h-4" />
+              : (
+                <>
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="text-xs">Свернуть</span>
+                </>
+              )
+            }
+          </button>
         </div>
       </aside>
 
