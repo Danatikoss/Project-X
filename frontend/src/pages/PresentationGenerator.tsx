@@ -440,6 +440,7 @@ export default function PresentationGenerator() {
   const textWalls = (layoutCounts['title_content'] ?? 0)
 
   return (
+    <>
     <div className="min-h-full bg-gray-50/50">
       <div className="max-w-3xl mx-auto px-4 py-8">
 
@@ -723,5 +724,6 @@ export default function PresentationGenerator() {
         </div>
       </div>
     )}
+    </>
   )
 }
