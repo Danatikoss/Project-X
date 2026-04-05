@@ -50,6 +50,8 @@ class SlideLibraryEntry(Base):
 
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
 
+    text_edits_json = Column(Text, nullable=True)        # JSON {shape_id: new_text} — user text edits
+
     is_outdated = Column(Boolean, default=False)
     is_generated = Column(Boolean, default=False)      # True = AI-generated, hidden from library until saved
     access_level = Column(String, default="internal")  # public|internal|confidential

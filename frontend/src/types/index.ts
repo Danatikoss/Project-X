@@ -286,6 +286,22 @@ export interface ThesesSession {
   updated_at: string | null
 }
 
+// ─── Text Editing ─────────────────────────────────────────────────────────────
+
+export interface TextElement {
+  id: string
+  name: string
+  text: string
+  x: number
+  y: number
+  w: number
+  h: number
+  font_size: number
+  font_bold: boolean
+  font_color: string
+  font_align: 'left' | 'center' | 'right'
+}
+
 // ─── Assembly Templates ───────────────────────────────────────────────────────
 
 export interface AssemblyTemplate {

@@ -361,3 +361,192 @@ def delete_source(source_id: int, db: Session = Depends(get_db), user: User = De
     # Cascade deletes slides (defined in model)
     db.delete(source)
     db.commit()
+
+
+# ── Text editing endpoints ────────────────────────────────────────────────────
+
+def _extract_text_elements(pptx_bytes: bytes) -> list[dict]:
+    """Use python-pptx to extract positioned text elements from a 1-slide PPTX."""
+    import io
+    from pptx import Presentation
+
+    try:
+        prs = Presentation(io.BytesIO(pptx_bytes))
+    except Exception as e:
+        logger.warning(f"Cannot open PPTX for text extraction: {e}")
+        return []
+
+    if not prs.slides:
+        return []
+
+    sl = prs.slides[0]
+    slide_w = prs.slide_width or 1
+    slide_h = prs.slide_height or 1
+    elements = []
+
+    for shape in sl.shapes:
+        if not shape.has_text_frame:
+            continue
+        if shape.left is None or shape.top is None:
+            continue
+
+        tf = shape.text_frame
+        lines = []
+        for para in tf.paragraphs:
+            line = "".join(run.text for run in para.runs if run.text)
+            if line:
+                lines.append(line)
+        full_text = "\n".join(lines)
+        if not full_text.strip():
+            continue
+
+        x_pct = round(shape.left / slide_w * 100, 2)
+        y_pct = round(shape.top / slide_h * 100, 2)
+        w_pct = round(shape.width / slide_w * 100, 2)
+        h_pct = round(shape.height / slide_h * 100, 2)
+
+        font_size = 18
+        font_bold = False
+        font_color = "#000000"
+        font_align = "left"
+
+        try:
+            from pptx.enum.text import PP_ALIGN
+            for para in tf.paragraphs:
+                if not para.runs:
+                    continue
+                run = para.runs[0]
+                if run.font.size:
+                    font_size = max(6, int(run.font.size.pt))
+                font_bold = bool(run.font.bold)
+                try:
+                    rgb = run.font.color.rgb
+                    font_color = f"#{rgb}"
+                except Exception:
+                    pass
+                if para.alignment == PP_ALIGN.CENTER:
+                    font_align = "center"
+                elif para.alignment == PP_ALIGN.RIGHT:
+                    font_align = "right"
+                break
+        except Exception:
+            pass
+
+        elements.append({
+            "id": str(shape.shape_id),
+            "name": shape.name,
+            "text": full_text,
+            "x": x_pct,
+            "y": y_pct,
+            "w": w_pct,
+            "h": h_pct,
+            "font_size": font_size,
+            "font_bold": font_bold,
+            "font_color": font_color,
+            "font_align": font_align,
+        })
+
+    return elements
+
+
+def _apply_text_edits(pptx_bytes: bytes, edits: dict) -> bytes:
+    """Replace text in specified shapes while preserving run formatting."""
+    import io
+    from pptx import Presentation
+
+    prs = Presentation(io.BytesIO(pptx_bytes))
+    if not prs.slides:
+        return pptx_bytes
+
+    sl = prs.slides[0]
+    for shape in sl.shapes:
+        sid = str(shape.shape_id)
+        if sid not in edits or not shape.has_text_frame:
+            continue
+
+        new_text = str(edits[sid])
+        tf = shape.text_frame
+
+        # Collect all runs across all paragraphs
+        all_runs = [run for para in tf.paragraphs for run in para.runs]
+        if not all_runs:
+            continue
+
+        # Put all new text into the first run, blank out the rest
+        all_runs[0].text = new_text
+        for run in all_runs[1:]:
+            run.text = ""
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+@router.get("/slides/{slide_id}/text-elements")
+def get_text_elements(
+    slide_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return positioned text elements for a slide (for the inline text editor)."""
+    slide = db.query(SlideLibraryEntry).options(
+        joinedload(SlideLibraryEntry.source)
+    ).get(slide_id)
+    if not slide:
+        raise HTTPException(404, detail="Слайд не найден")
+
+    from api.wopi import _build_single_slide_pptx
+    pptx_bytes = _build_single_slide_pptx(slide)
+    elements = _extract_text_elements(pptx_bytes)
+
+    # Merge already-saved edits into the element texts
+    saved_edits: dict = json.loads(slide.text_edits_json or "{}")
+    for el in elements:
+        if el["id"] in saved_edits:
+            el["text"] = saved_edits[el["id"]]
+
+    return {"elements": elements, "has_edits": bool(saved_edits)}
+
+
+@router.post("/slides/{slide_id}/text-edits")
+def save_text_edits(
+    slide_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Save user text edits for a slide.
+    body = {"edits": {"shape_id": "new text", ...}}
+    Persists a new single-slide PPTX with the edits applied.
+    """
+    from datetime import datetime, timezone
+    from api.wopi import _build_single_slide_pptx, _edited_pptx_path
+
+    slide = db.query(SlideLibraryEntry).options(
+        joinedload(SlideLibraryEntry.source)
+    ).get(slide_id)
+    if not slide:
+        raise HTTPException(404, detail="Слайд не найден")
+
+    edits: dict = body.get("edits", {})
+    if not edits:
+        return {"ok": True, "edited": 0}
+
+    # Merge with any existing edits
+    existing: dict = json.loads(slide.text_edits_json or "{}")
+    existing.update(edits)
+
+    # Build PPTX (uses already-edited version if it exists), apply new edits
+    pptx_bytes = _build_single_slide_pptx(slide)
+    updated_bytes = _apply_text_edits(pptx_bytes, existing)
+
+    # Persist edited PPTX (reusing WOPI infrastructure)
+    _edited_pptx_path(slide_id).write_bytes(updated_bytes)
+
+    # Update DB
+    slide.text_edits_json = json.dumps(existing)
+    slide.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {"ok": True, "edited": len(existing)}

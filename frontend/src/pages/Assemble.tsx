@@ -15,6 +15,7 @@ import { Slideshow } from '../components/common/Slideshow'
 import { Spinner } from '../components/common/Spinner'
 import { GenerateSlideModal } from '../components/common/GenerateSlideModal'
 import { SlideEditor, isCollaboraEnabled } from '../components/common/SlideEditor'
+import { SlideTextEditor } from '../components/common/SlideTextEditor'
 import { cn } from '../utils/cn'
 import { useAppStore } from '../store'
 import type { Slide, Assembly, Project, SlideOverlay, MediaAsset, MediaFolder } from '../types'
@@ -781,83 +782,102 @@ export default function Assemble() {
           )}
         </div>
 
-        {/* Slide preview */}
-        <div
-          className="flex-1 flex items-center justify-center p-8 bg-gray-50"
-          onClick={() => setSelectedOverlayId(null)}
-        >
-          {selectedSlide ? (
-            <div className="w-full max-w-4xl">
-              <div
-                ref={containerRef}
-                className="relative w-full rounded-xl overflow-hidden shadow-xl border border-gray-200"
-              >
-                {selectedSlide.video_url ? (
-                  <video
-                    src={selectedSlide.video_url}
-                    controls
-                    className="w-full object-contain bg-white"
-                    style={{ aspectRatio: '16/9' }}
-                    poster={selectedSlide.thumbnail_url || undefined}
-                  />
-                ) : (
-                  <SlideThumbnail slide={selectedSlide} />
-                )}
+        {/* Slide preview / text editor */}
+        {editingSlideId !== null && selectedSlide ? (
+          <div className="flex-1 overflow-hidden">
+            <SlideTextEditor
+              slideId={editingSlideId}
+              thumbnailUrl={selectedSlide.thumbnail_url}
+              onClose={() => setEditingSlideId(null)}
+              onSaved={() => setEditingSlideId(null)}
+            />
+          </div>
+        ) : (
+          <div
+            className="flex-1 flex items-center justify-center p-8 bg-gray-50"
+            onClick={() => setSelectedOverlayId(null)}
+          >
+            {selectedSlide ? (
+              <div className="w-full max-w-4xl">
+                <div
+                  ref={containerRef}
+                  className="relative w-full rounded-xl overflow-hidden shadow-xl border border-gray-200"
+                >
+                  {selectedSlide.video_url ? (
+                    <video
+                      src={selectedSlide.video_url}
+                      controls
+                      className="w-full object-contain bg-white"
+                      style={{ aspectRatio: '16/9' }}
+                      poster={selectedSlide.thumbnail_url || undefined}
+                    />
+                  ) : (
+                    <SlideThumbnail slide={selectedSlide} />
+                  )}
 
-                {/* Overlay items */}
-                {currentOverlays.map((overlay) => (
-                  <OverlayItem
-                    key={overlay.id}
-                    overlay={overlay}
-                    isSelected={selectedOverlayId === overlay.id}
-                    onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
-                    onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
-                  />
-                ))}
+                  {/* Overlay items */}
+                  {currentOverlays.map((overlay) => (
+                    <OverlayItem
+                      key={overlay.id}
+                      overlay={overlay}
+                      isSelected={selectedOverlayId === overlay.id}
+                      onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
+                      onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
+                    />
+                  ))}
 
-                {/* Slideshow button */}
-                {localSlides.length > 1 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setShowSlideshow(true) }}
-                    className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
-                  >
-                    <Play className="w-3 h-3" /> Слайд-шоу
-                  </button>
-                )}
+                  {/* Slideshow button */}
+                  {localSlides.length > 1 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowSlideshow(true) }}
+                      className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
+                    >
+                      <Play className="w-3 h-3" /> Слайд-шоу
+                    </button>
+                  )}
 
-                {/* Collabora edit button (only if feature is enabled) */}
-                {isCollaboraEnabled() && selectedSlide && (
+                  {/* Native text edit button */}
                   <button
                     onClick={(e) => { e.stopPropagation(); setEditingSlideId(selectedSlide.id) }}
                     className="absolute bottom-3 left-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
                   >
                     <Edit2 className="w-3 h-3" /> Редактировать
                   </button>
+
+                  {/* Collabora edit button (only if feature is separately enabled) */}
+                  {isCollaboraEnabled() && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingSlideId(-(selectedSlide.id)) }}
+                      className="absolute top-3 right-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
+                    >
+                      <Edit2 className="w-3 h-3" /> Collabora
+                    </button>
+                  )}
+                </div>
+
+                {currentOverlays.length > 0 && !selectedOverlayId && (
+                  <p className="text-center text-[10px] text-gray-400 mt-2">
+                    Нажмите на медиаэлемент → перетащите или измените размер (угол ▟)
+                  </p>
                 )}
               </div>
-
-              {currentOverlays.length > 0 && !selectedOverlayId && (
-                <p className="text-center text-[10px] text-gray-400 mt-2">
-                  Нажмите на медиаэлемент → перетащите или измените размер (угол ▟)
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center text-gray-400 gap-4">
-              <div className="w-24 h-16 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-                <Plus className="w-6 h-6 opacity-40" />
+            ) : (
+              <div className="flex flex-col items-center justify-center text-gray-400 gap-4">
+                <div className="w-24 h-16 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
+                  <Plus className="w-6 h-6 opacity-40" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Презентация пустая</p>
+                  <p className="text-xs text-gray-400">
+                    Нажмите{' '}
+                    <button onClick={() => setRightTab('library')} className="text-brand-600 hover:underline">«Добавить слайды»</button>
+                    {' '}чтобы начать
+                  </p>
+                </div>
               </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-gray-500 mb-1">Презентация пустая</p>
-                <p className="text-xs text-gray-400">
-                  Нажмите{' '}
-                  <button onClick={() => setRightTab('library')} className="text-brand-600 hover:underline">«Добавить слайды»</button>
-                  {' '}чтобы начать
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Right panel */}
@@ -1084,9 +1104,9 @@ export default function Assemble() {
         />
       )}
 
-      {editingSlideId !== null && (
+      {editingSlideId !== null && editingSlideId < 0 && (
         <SlideEditor
-          slideId={editingSlideId}
+          slideId={-editingSlideId}
           onClose={() => setEditingSlideId(null)}
         />
       )}

@@ -6,7 +6,7 @@ import type {
   AuthResponse, Project, BrandTemplate, BrandGuidelinesUpdate, GenerateSlideRequest, GenerateSlideResponse,
   MediaFolder, MediaAsset, AssemblyTemplate,
   ThesisQuestion, ThesesSession, ThesesSessionListItem,
-  ProfileStats, AdminUser,
+  ProfileStats, AdminUser, TextElement,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -159,6 +159,16 @@ export const libraryApi = {
 
   saveGeneratedSlides: async (slideIds: number[]): Promise<{ saved: number }> => {
     const res = await api.post<{ saved: number }>('/library/slides/save-generated', { slide_ids: slideIds })
+    return res.data
+  },
+
+  getTextElements: async (slideId: number): Promise<{ elements: TextElement[]; has_edits: boolean }> => {
+    const res = await api.get(`/library/slides/${slideId}/text-elements`)
+    return res.data
+  },
+
+  saveTextEdits: async (slideId: number, edits: Record<string, string>): Promise<{ ok: boolean; edited: number }> => {
+    const res = await api.post(`/library/slides/${slideId}/text-edits`, { edits })
     return res.data
   },
 
