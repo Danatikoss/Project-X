@@ -71,8 +71,6 @@ services:
       - password=${COLLABORA_ADMIN_PASSWORD:-admin}
     cap_add:
       - MKNOD
-    depends_on:
-      - backend
 
   # ── Certbot (runs once to get/renew SSL cert) ────────────────────────────
   certbot:
