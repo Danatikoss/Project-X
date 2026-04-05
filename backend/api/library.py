@@ -485,6 +485,35 @@ def _apply_text_edits(pptx_bytes: bytes, edits: dict) -> bytes:
     return buf.getvalue()
 
 
+def _build_original_pptx(slide: SlideLibraryEntry) -> bytes:
+    """
+    Always build a fresh single-slide PPTX from the ORIGINAL source file,
+    never from a previously-edited version.  This is used as the clean base
+    for applying accumulated text edits so we never compound corruptions.
+    """
+    import io as _io
+    from pptx import Presentation as _Prs
+    from pptx.util import Inches as _Inches
+
+    src = slide.source
+    if src and src.file_type == "pptx" and src.file_path and Path(src.file_path).exists():
+        try:
+            from services.export import _clone_slide
+            dest = _Prs()
+            dest.slide_width = _Inches(13.33)
+            dest.slide_height = _Inches(7.5)
+            if _clone_slide(dest, src.file_path, slide.slide_index):
+                buf = _io.BytesIO()
+                dest.save(buf)
+                return buf.getvalue()
+        except Exception as exc:
+            logger.warning("Original PPTX clone failed for slide %d: %s", slide.id, exc)
+
+    # Fallback: use whatever _build_single_slide_pptx returns
+    from api.wopi import _build_single_slide_pptx
+    return _build_single_slide_pptx(slide)
+
+
 @router.get("/slides/{slide_id}/text-elements")
 def get_text_elements(
     slide_id: int,
@@ -498,8 +527,8 @@ def get_text_elements(
     if not slide:
         raise HTTPException(404, detail="Слайд не найден")
 
-    from api.wopi import _build_single_slide_pptx
-    pptx_bytes = _build_single_slide_pptx(slide)
+    # Always extract structure from ORIGINAL PPTX so positions/paragraphs are clean
+    pptx_bytes = _build_original_pptx(slide)
     elements = _extract_text_elements(pptx_bytes)
 
     # Merge already-saved edits into the element texts
@@ -526,7 +555,7 @@ def save_text_edits(
     import tempfile
     import time
     from datetime import datetime, timezone
-    from api.wopi import _build_single_slide_pptx, _edited_pptx_path
+    from api.wopi import _edited_pptx_path
 
     slide = db.query(SlideLibraryEntry).options(
         joinedload(SlideLibraryEntry.source)
@@ -542,8 +571,9 @@ def save_text_edits(
     existing: dict = json.loads(slide.text_edits_json or "{}")
     existing.update(edits)
 
-    # Build PPTX (uses already-edited version if it exists), apply new edits
-    pptx_bytes = _build_single_slide_pptx(slide)
+    # ALWAYS build from original source — never from the previously-edited file.
+    # This prevents compounding corruptions when edits are re-applied.
+    pptx_bytes = _build_original_pptx(slide)
     updated_bytes = _apply_text_edits(pptx_bytes, existing)
 
     # Persist edited PPTX (reusing WOPI infrastructure)
