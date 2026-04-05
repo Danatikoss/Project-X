@@ -450,7 +450,7 @@ def _extract_text_elements(pptx_bytes: bytes) -> list[dict]:
 
 
 def _apply_text_edits(pptx_bytes: bytes, edits: dict) -> bytes:
-    """Replace text in specified shapes while preserving run formatting."""
+    """Replace text in specified shapes while preserving paragraph/run structure."""
     import io
     from pptx import Presentation
 
@@ -466,16 +466,19 @@ def _apply_text_edits(pptx_bytes: bytes, edits: dict) -> bytes:
 
         new_text = str(edits[sid])
         tf = shape.text_frame
+        new_lines = new_text.split('\n')
 
-        # Collect all runs across all paragraphs
-        all_runs = [run for para in tf.paragraphs for run in para.runs]
-        if not all_runs:
-            continue
-
-        # Put all new text into the first run, blank out the rest
-        all_runs[0].text = new_text
-        for run in all_runs[1:]:
-            run.text = ""
+        # Distribute lines to matching paragraphs (one line → one paragraph).
+        # This preserves per-paragraph font size/bold/color inherited by runs.
+        for i, para in enumerate(tf.paragraphs):
+            if not para.runs:
+                continue
+            line = new_lines[i] if i < len(new_lines) else ''
+            # First run of the paragraph gets the new line text
+            para.runs[0].text = line
+            # Blank out any additional runs inside this paragraph
+            for run in para.runs[1:]:
+                run.text = ''
 
     buf = io.BytesIO()
     prs.save(buf)

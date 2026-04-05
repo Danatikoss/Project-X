@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Download, ArrowLeft, Plus, Search, X, Edit2, Check,
   ChevronLeft, ChevronRight, Share2,
-  BookImage, Info, Sparkles, PenLine, FolderOpen, Play,
+  BookImage, Sparkles, FolderOpen, Play,
   Film, Image, Trash2, FileText, ChevronDown,
   PanelLeftClose, PanelLeftOpen, Presentation,
 } from 'lucide-react'
@@ -415,9 +415,10 @@ export default function Assemble() {
   const [showSlideshow, setShowSlideshow] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [editingSlideId, setEditingSlideId] = useState<number | null>(null)
-  const [rightTab, setRightTab] = useState<'info' | 'library' | 'media'>(
-    searchParams.get('tab') === 'library' ? 'library' : 'info'
+  const [rightTab, setRightTab] = useState<'library' | 'media'>(
+    searchParams.get('tab') === 'library' ? 'library' : 'library'
   )
+  const [rightCollapsed, setRightCollapsed] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const overlaysRef = useRef<Record<string, SlideOverlay[]>>({})
@@ -883,202 +884,143 @@ export default function Assemble() {
 
         {/* ── Right panel ──────────────────────────────────────────────────── */}
         <aside className={cn(
-          'shrink-0 flex flex-col bg-white border-l border-gray-200 transition-all duration-200',
-          rightTab === 'library' ? 'w-[340px]' : rightTab === 'media' ? 'w-[300px]' : 'w-[280px]'
+          'shrink-0 flex bg-white border-l border-gray-200 transition-all duration-200',
+          rightCollapsed ? 'w-[48px] flex-col' : cn('flex-col', rightTab === 'library' ? 'w-[340px]' : 'w-[300px]')
         )}>
-          {/* Tabs */}
-          <div className="flex items-center border-b border-gray-200 bg-gray-50 shrink-0">
-            {([
-              { key: 'info', label: 'Слайд', icon: Info },
-              { key: 'library', label: 'Библиотека', icon: BookImage },
-              { key: 'media', label: 'Медиа', icon: Film },
-            ] as const).map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setRightTab(key)}
-                className={cn(
-                  'relative flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors',
-                  rightTab === key
-                    ? 'text-brand-700 bg-white border-b-2 border-brand-600'
-                    : 'text-gray-400 hover:text-gray-600 border-b-2 border-transparent'
-                )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-                {key === 'media' && currentOverlays.length > 0 && (
-                  <span className="absolute top-2 right-1 w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[8px] flex items-center justify-center font-bold">
-                    {currentOverlays.length}
-                  </span>
-                )}
-              </button>
-            ))}
+          {/* Header: tabs + collapse toggle */}
+          <div className={cn(
+            'border-b border-gray-200 bg-gray-50 shrink-0',
+            rightCollapsed ? 'flex flex-col items-center gap-1 py-2 px-1' : 'flex items-center'
+          )}>
+            {rightCollapsed ? (
+              /* Collapsed: icon column */
+              <>
+                <button
+                  onClick={() => setRightCollapsed(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                  title="Развернуть панель"
+                >
+                  <PanelLeftOpen className="w-4 h-4 rotate-180" />
+                </button>
+                <div className="w-full h-px bg-gray-200 my-1" />
+                {([
+                  { key: 'library' as const, icon: BookImage, label: 'Библиотека' },
+                  { key: 'media' as const, icon: Film, label: 'Медиа' },
+                ]).map(({ key, icon: Icon, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setRightTab(key); setRightCollapsed(false) }}
+                    title={label}
+                    className={cn(
+                      'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+                      rightTab === key ? 'bg-brand-100 text-brand-700' : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {key === 'media' && currentOverlays.length > 0 && (
+                      <span className="absolute top-0.5 right-0.5 w-2.5 h-2.5 rounded-full bg-brand-500" />
+                    )}
+                  </button>
+                ))}
+              </>
+            ) : (
+              /* Expanded: tab row */
+              <>
+                {([
+                  { key: 'library' as const, label: 'Библиотека', icon: BookImage },
+                  { key: 'media' as const, label: 'Медиа', icon: Film },
+                ]).map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setRightTab(key)}
+                    className={cn(
+                      'relative flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors border-b-2',
+                      rightTab === key
+                        ? 'text-brand-700 bg-white border-brand-600'
+                        : 'text-gray-400 hover:text-gray-600 border-transparent'
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                    {key === 'media' && currentOverlays.length > 0 && (
+                      <span className="absolute top-2 right-1 w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[8px] flex items-center justify-center font-bold">
+                        {currentOverlays.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setRightCollapsed(true)}
+                  className="shrink-0 w-8 h-8 mx-1 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                  title="Свернуть панель"
+                >
+                  <PanelLeftClose className="w-4 h-4 rotate-180" />
+                </button>
+              </>
+            )}
           </div>
 
-          {/* Tab content */}
-          <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Tab content (hidden when collapsed) */}
+          {!rightCollapsed && (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {rightTab === 'library' && (
+                <LibraryPanel
+                  existingIds={existingIds}
+                  onAdd={handleAddSlide}
+                  onAddMultiple={handleAddMultiple}
+                  onGenerate={() => setShowGenerateModal(true)}
+                />
+              )}
 
-            {/* ── Info tab ──────────────────────────────────────────────── */}
-            {rightTab === 'info' && (
-              <div className="flex-1 overflow-y-auto">
-                {/* Assembly info */}
-                <div className="p-4 border-b border-gray-100">
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <div className={cn(
-                      'w-6 h-6 rounded-md flex items-center justify-center',
-                      isManual ? 'bg-teal-50' : 'bg-brand-50'
-                    )}>
-                      {isManual
-                        ? <PenLine className="w-3.5 h-3.5 text-teal-600" />
-                        : <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                      }
+              {rightTab === 'media' && (
+                <div className="flex flex-col h-full overflow-hidden">
+                  {!selectedSlide ? (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 p-6">
+                      <Image className="w-8 h-8 opacity-20" />
+                      <p className="text-xs text-center">Выберите слайд, чтобы добавить медиа</p>
                     </div>
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">
-                      {isManual ? 'Вручную' : 'AI-сборка'}
-                    </span>
-                  </div>
-                  {!isManual && assembly?.prompt && (
-                    <p className="text-[11px] text-gray-400 leading-relaxed line-clamp-3 italic">
-                      «{assembly.prompt}»
-                    </p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-gray-400">
-                    <span>{localSlides.length} {localSlides.length === 1 ? 'слайд' : localSlides.length < 5 ? 'слайда' : 'слайдов'}</span>
-                    {isSaving && <span className="text-brand-500">Сохраняется…</span>}
-                  </div>
-                </div>
-
-                {/* Selected slide info */}
-                {selectedSlide ? (
-                  <div className="p-4 border-b border-gray-100">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-2">
-                      Слайд {selectedIndex + 1}
-                    </p>
-                    <p className="text-sm font-semibold text-gray-800 leading-snug mb-1">
-                      {selectedSlide.title || '(без названия)'}
-                    </p>
-                    {selectedSlide.summary && (
-                      <p className="text-xs text-gray-500 leading-relaxed mb-3 line-clamp-4">{selectedSlide.summary}</p>
-                    )}
-                    {selectedSlide.labels && selectedSlide.labels.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {selectedSlide.labels.map((lbl) => (
-                          <span key={lbl} className="text-[10px] px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded-full border border-teal-200">{lbl}</span>
-                        ))}
-                      </div>
-                    )}
-                    {selectedSlide.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {selectedSlide.tags.slice(0, 5).map((tag) => (
-                          <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded-full">{tag}</span>
-                        ))}
-                      </div>
-                    )}
-                    {selectedSlide.source_filename && (
-                      <p className="text-[10px] text-gray-400 truncate mt-1">Из: {selectedSlide.source_filename}</p>
-                    )}
-                    <button
-                      onClick={() => handleRemove(selectedSlide.id)}
-                      className="mt-4 flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors"
-                    >
-                      <X className="w-3 h-3" /> Убрать из презентации
-                    </button>
-                  </div>
-                ) : (
-                  <div className="p-4 text-center">
-                    <p className="text-xs text-gray-400">Выберите слайд</p>
-                  </div>
-                )}
-
-                {/* Export section */}
-                <div className="p-4">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-3">Быстрый экспорт</p>
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={handleShare}
-                      disabled={isSharing || localSlides.length === 0}
-                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                    >
-                      <Share2 className="w-4 h-4" /> Поделиться
-                    </button>
-                    <button
-                      onClick={() => handleExport('pptx')}
-                      disabled={isExporting || localSlides.length === 0}
-                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand-900 text-white text-sm font-medium hover:bg-brand-800 transition-colors disabled:opacity-50"
-                    >
-                      {isExporting ? <Spinner size="sm" className="border-white border-t-transparent" /> : <Download className="w-4 h-4" />}
-                      Скачать PPTX
-                    </button>
-                    <button
-                      onClick={() => handleExport('pdf')}
-                      disabled={isExporting || localSlides.length === 0}
-                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                    >
-                      <Download className="w-4 h-4" /> Скачать PDF
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Library tab ────────────────────────────────────────────── */}
-            {rightTab === 'library' && (
-              <LibraryPanel
-                existingIds={existingIds}
-                onAdd={handleAddSlide}
-                onAddMultiple={handleAddMultiple}
-                onGenerate={() => setShowGenerateModal(true)}
-              />
-            )}
-
-            {/* ── Media tab ──────────────────────────────────────────────── */}
-            {rightTab === 'media' && (
-              <div className="flex flex-col h-full overflow-hidden">
-                {!selectedSlide ? (
-                  <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 p-6">
-                    <Image className="w-8 h-8 opacity-20" />
-                    <p className="text-xs text-center">Выберите слайд, чтобы добавить медиа</p>
-                  </div>
-                ) : (
-                  <>
-                    {currentOverlays.length > 0 && (
-                      <div className="p-3 border-b border-gray-100 shrink-0">
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-2">
-                          На слайде ({currentOverlays.length})
-                        </p>
-                        <div className="flex flex-col gap-1">
-                          {currentOverlays.map((overlay) => (
-                            <div
-                              key={overlay.id}
-                              className={cn(
-                                'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors',
-                                selectedOverlayId === overlay.id ? 'bg-brand-50 border border-brand-200' : 'hover:bg-gray-50 border border-transparent'
-                              )}
-                              onClick={() => setSelectedOverlayId(selectedOverlayId === overlay.id ? null : overlay.id)}
-                            >
-                              <div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-gray-100">
-                                {overlay.file_type === 'video'
-                                  ? <video src={overlay.url} className="w-full h-full object-cover" muted />
-                                  : <img src={overlay.url} alt="" className="w-full h-full object-cover" />
-                                }
+                  ) : (
+                    <>
+                      {currentOverlays.length > 0 && (
+                        <div className="p-3 border-b border-gray-100 shrink-0">
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-2">
+                            На слайде ({currentOverlays.length})
+                          </p>
+                          <div className="flex flex-col gap-1">
+                            {currentOverlays.map((overlay) => (
+                              <div
+                                key={overlay.id}
+                                className={cn(
+                                  'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors',
+                                  selectedOverlayId === overlay.id ? 'bg-brand-50 border border-brand-200' : 'hover:bg-gray-50 border border-transparent'
+                                )}
+                                onClick={() => setSelectedOverlayId(selectedOverlayId === overlay.id ? null : overlay.id)}
+                              >
+                                <div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-gray-100">
+                                  {overlay.file_type === 'video'
+                                    ? <video src={overlay.url} className="w-full h-full object-cover" muted />
+                                    : <img src={overlay.url} alt="" className="w-full h-full object-cover" />
+                                  }
+                                </div>
+                                <span className="text-[10px] text-gray-600 flex-1 uppercase font-medium">{overlay.file_type}</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); deleteOverlay(currentSlideId!, overlay.id) }}
+                                  className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+                                ><Trash2 className="w-3 h-3" /></button>
                               </div>
-                              <span className="text-[10px] text-gray-600 flex-1 uppercase font-medium">{overlay.file_type}</span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteOverlay(currentSlideId!, overlay.id) }}
-                                className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
-                              ><Trash2 className="w-3 h-3" /></button>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
+                      )}
+                      <div className="flex-1 overflow-hidden">
+                        <MediaPanel onAdd={handleAddOverlay} />
                       </div>
-                    )}
-                    <div className="flex-1 overflow-hidden">
-                      <MediaPanel onAdd={handleAddOverlay} />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </aside>
       </div>
 
