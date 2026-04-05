@@ -74,16 +74,12 @@ def _add_overlays_pptx(dest_prs, dest_slide, slide_id: str, overlays_map: dict):
             w    = int(ov["w"] / 100 * sw)
             h    = int(ov["h"] / 100 * sh)
 
-            file_type = ov.get("file_type", "")
-
-            if file_type == "text":
-                _add_text_overlay_pptx(dest_slide, ov, left, top, w, h)
-                continue
-
             path = _media_path_from_url(ov.get("url", ""))
             if not path:
                 logger.debug(f"Overlay media not found: {ov.get('url')}")
                 continue
+
+            file_type = ov.get("file_type", "")
 
             if file_type in ("gif", "image"):
                 # GIF preserves animation in PPTX; images embed as-is
@@ -100,56 +96,6 @@ def _add_overlays_pptx(dest_prs, dest_slide, slide_id: str, overlays_map: dict):
                     _add_video_placeholder_pptx(dest_slide, left, top, w, h)
         except Exception as e:
             logger.debug(f"Overlay PPTX add failed: {e}")
-
-
-def _add_text_overlay_pptx(slide, ov: dict, left: int, top: int, width: int, height: int):
-    """Add a text overlay as a PPTX textbox shape."""
-    from pptx.util import Pt
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
-
-    text = ov.get("text") or ""
-    if not text:
-        return
-
-    txBox = slide.shapes.add_textbox(left, top, max(width, 30000), max(height, 20000))
-    txBox.line.fill.background()  # no border
-
-    bg_color = ov.get("bgColor", "transparent")
-    if bg_color and bg_color not in ("transparent", ""):
-        # Parse rgba(...) or hex
-        if bg_color.startswith("rgba("):
-            # rgba(255,255,255,0.92) → RGB
-            try:
-                parts = bg_color[5:-1].split(",")
-                r, g, b = int(parts[0].strip()), int(parts[1].strip()), int(float(parts[2].strip()))
-                txBox.fill.solid()
-                txBox.fill.fore_color.rgb = RGBColor(r, g, b)
-            except Exception:
-                pass
-        elif bg_color.startswith("#"):
-            hex_c = bg_color.lstrip("#")
-            if len(hex_c) == 6:
-                txBox.fill.solid()
-                txBox.fill.fore_color.rgb = RGBColor(int(hex_c[:2], 16), int(hex_c[2:4], 16), int(hex_c[4:], 16))
-
-    tf = txBox.text_frame
-    tf.word_wrap = True
-
-    # Split into lines
-    lines = text.split("\n")
-    for li, line in enumerate(lines):
-        para = tf.paragraphs[0] if li == 0 else tf.add_paragraph()
-        align_str = ov.get("align", "left")
-        para.alignment = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}.get(align_str, PP_ALIGN.LEFT)
-        run = para.add_run()
-        run.text = line
-        font_size_pt = float(ov.get("fontSize", 22))
-        run.font.size = Pt(font_size_pt)
-        run.font.bold = ov.get("fontWeight") == "bold"
-        hex_color = ov.get("fontColor", "#000000").lstrip("#")
-        if len(hex_color) == 6:
-            run.font.color.rgb = RGBColor(int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:], 16))
 
 
 def _add_video_placeholder_pptx(slide, left, top, width, height):
@@ -173,74 +119,6 @@ def _add_video_placeholder_pptx(slide, left, top, width, height):
     tf.paragraphs[0].runs[0].font.color.rgb = RGBColor(0xff, 0xff, 0xff)
 
 
-def _parse_color_pil(color_str: str, default=(0, 0, 0, 255)):
-    """Parse hex or rgba() color to RGBA tuple for PIL."""
-    if not color_str or color_str == "transparent":
-        return (0, 0, 0, 0)
-    if color_str.startswith("rgba("):
-        try:
-            parts = color_str[5:-1].split(",")
-            r, g, b = int(parts[0].strip()), int(parts[1].strip()), int(float(parts[2].strip()))
-            a = int(float(parts[3].strip()) * 255) if len(parts) > 3 else 255
-            return (r, g, b, a)
-        except Exception:
-            return default
-    if color_str.startswith("#"):
-        hex_c = color_str.lstrip("#")
-        if len(hex_c) == 6:
-            return (int(hex_c[:2], 16), int(hex_c[2:4], 16), int(hex_c[4:], 16), 255)
-    return default
-
-
-def _composite_text_overlay_pil(img, ov: dict, x: int, y: int, w: int, h: int):
-    """Draw a text overlay onto a PIL RGBA image in-place."""
-    text = ov.get("text") or ""
-    if not text:
-        return
-
-    from PIL import Image, ImageDraw
-
-    # Background box
-    bg_rgba = _parse_color_pil(ov.get("bgColor", "transparent"))
-    if bg_rgba[3] > 0:
-        overlay_layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        draw_bg = ImageDraw.Draw(overlay_layer)
-        draw_bg.rectangle([x, y, x + w, y + h], fill=bg_rgba)
-        img.paste(overlay_layer, mask=overlay_layer)
-
-    # Text
-    font_color = _parse_color_pil(ov.get("fontColor", "#000000"))
-    font_size_pt = float(ov.get("fontSize", 22))
-    # Convert pt to px assuming 96 DPI reference, scale to image width (ref=1280px)
-    font_size_px = max(8, int(font_size_pt * img.width / 1280 * 96 / 72))
-
-    font = None
-    try:
-        from PIL import ImageFont
-        import os
-        # Try common system fonts
-        for font_path in [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if ov.get("fontWeight") == "bold" else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-        ]:
-            if os.path.exists(font_path):
-                font = ImageFont.truetype(font_path, font_size_px)
-                break
-    except Exception:
-        pass
-
-    draw = ImageDraw.Draw(img)
-    if font is None:
-        try:
-            from PIL import ImageFont
-            font = ImageFont.load_default()
-        except Exception:
-            pass
-
-    draw.text((x + 4, y + 4), text, fill=font_color[:3] + (255,), font=font)
-
-
 def _composite_overlays_pil(base_img, slide_id: str, overlays_map: dict):
     """Composite media overlays onto a PIL RGBA image in-place. Returns modified image."""
     slide_overlays = overlays_map.get(slide_id, [])
@@ -257,10 +135,6 @@ def _composite_overlays_pil(base_img, slide_id: str, overlays_map: dict):
             y = int(ov["y"] / 100 * H)
             w = max(1, int(ov["w"] / 100 * W))
             h = max(1, int(ov["h"] / 100 * H))
-
-            if ov.get("file_type") == "text":
-                _composite_text_overlay_pil(result, ov, x, y, w, h)
-                continue
 
             path = _media_path_from_url(ov.get("url", ""))
             if not path:

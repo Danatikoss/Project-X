@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   X, ChevronLeft, ChevronRight, Maximize, Minimize,
   Play, Pause, SkipBack, SkipForward,
@@ -138,7 +138,7 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
             </div>
           ) : null}
 
-          {/* Overlays (media + text) */}
+          {/* Media overlays */}
           {slide && overlays && (overlays[String(slide.id)] || []).map((overlay) => (
             <div
               key={overlay.id}
@@ -147,28 +147,10 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
                 left: `${overlay.x}%`,
                 top: `${overlay.y}%`,
                 width: `${overlay.w}%`,
-                minHeight: `${overlay.h}%`,
+                height: `${overlay.h}%`,
               }}
             >
-              {overlay.file_type === 'text' ? (
-                <div
-                  style={{
-                    fontSize: `${overlay.fontSize ?? 22}px`,
-                    color: overlay.fontColor ?? '#000000',
-                    fontWeight: overlay.fontWeight ?? 'normal',
-                    textAlign: (overlay.align ?? 'left') as React.CSSProperties['textAlign'],
-                    backgroundColor: overlay.bgColor && overlay.bgColor !== 'transparent'
-                      ? overlay.bgColor
-                      : 'transparent',
-                    padding: '4px 6px',
-                    lineHeight: 1.3,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {overlay.text}
-                </div>
-              ) : overlay.file_type === 'video' ? (
+              {overlay.file_type === 'video' ? (
                 <video
                   src={overlay.url}
                   autoPlay
