@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Check, X, Pencil, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '../../utils/cn'
@@ -10,7 +10,7 @@ interface SlideTextEditorProps {
   slideId: number
   thumbnailUrl: string
   onClose: () => void
-  onSaved?: () => void
+  onSaved?: (thumbVersion: number | null) => void
 }
 
 export function SlideTextEditor({ slideId, thumbnailUrl, onClose, onSaved }: SlideTextEditorProps) {
@@ -19,24 +19,16 @@ export function SlideTextEditor({ slideId, thumbnailUrl, onClose, onSaved }: Sli
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerW, setContainerW] = useState(960)
 
   useEffect(() => {
     setLoading(true)
     setEdits({})
+    setActiveId(null)
     libraryApi.getTextElements(slideId)
       .then((data) => setElements(data.elements))
       .catch(() => toast.error('Не удалось загрузить текстовые блоки'))
       .finally(() => setLoading(false))
   }, [slideId])
-
-  useEffect(() => {
-    if (!containerRef.current) return
-    const obs = new ResizeObserver(([e]) => setContainerW(e.contentRect.width))
-    obs.observe(containerRef.current)
-    return () => obs.disconnect()
-  }, [])
 
   const hasChanges = Object.keys(edits).length > 0
 
@@ -44,9 +36,9 @@ export function SlideTextEditor({ slideId, thumbnailUrl, onClose, onSaved }: Sli
     if (!hasChanges) { onClose(); return }
     setSaving(true)
     try {
-      await libraryApi.saveTextEdits(slideId, edits)
+      const result = await libraryApi.saveTextEdits(slideId, edits)
       toast.success('Изменения сохранены')
-      onSaved?.()
+      onSaved?.(result.thumb_version)
       onClose()
     } catch {
       toast.error('Ошибка при сохранении')
@@ -55,8 +47,7 @@ export function SlideTextEditor({ slideId, thumbnailUrl, onClose, onSaved }: Sli
     }
   }
 
-  // Scale font size: PPTX slide width ≈ 960pt, map to container px
-  const scale = containerW / 960
+  const activeEl = elements.find((e) => e.id === activeId)
 
   return (
     <div className="flex flex-col h-full">
@@ -92,104 +83,135 @@ export function SlideTextEditor({ slideId, thumbnailUrl, onClose, onSaved }: Sli
       </div>
 
       {/* Editor */}
-      <div className="flex-1 flex items-center justify-center p-6 bg-gray-50 overflow-hidden">
-        {loading ? (
-          <div className="flex flex-col items-center gap-3 text-gray-400">
-            <Spinner size="lg" />
-            <p className="text-sm">Загрузка блоков…</p>
+      {loading ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+          <Spinner size="lg" />
+          <p className="text-sm">Загрузка блоков…</p>
+        </div>
+      ) : elements.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center max-w-xs">
+            <RefreshCw className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm font-medium text-gray-700">Нет редактируемых блоков</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Слайд не содержит текста в PPTX-формате или был загружен как PDF
+            </p>
+            <button
+              onClick={onClose}
+              className="mt-3 text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+            >
+              Закрыть
+            </button>
           </div>
-        ) : (
-          <div
-            ref={containerRef}
-            className="relative w-full max-w-4xl rounded-xl overflow-hidden shadow-xl border border-gray-200"
-            style={{ aspectRatio: '16/9' }}
-            onClick={() => setActiveId(null)}
-          >
-            {/* Base thumbnail */}
-            <img
-              src={thumbnailUrl}
-              alt="slide"
-              className="w-full h-full object-cover select-none pointer-events-none"
-              draggable={false}
-            />
-
-            {/* Editable text overlays */}
-            {elements.map((el) => {
-              const isActive = activeId === el.id
-              const isEdited = el.id in edits
-              const currentText = isEdited ? edits[el.id] : el.text
-              const fontPx = Math.max(8, Math.round(el.font_size * scale))
-
-              return (
+        </div>
+      ) : (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: slide preview with highlight */}
+          <div className="flex-1 bg-gray-100 flex items-center justify-center p-6 overflow-hidden">
+            <div className="relative w-full max-w-2xl rounded-xl overflow-hidden shadow-xl border border-gray-200"
+              style={{ aspectRatio: '16/9' }}>
+              <img
+                src={thumbnailUrl}
+                alt="slide"
+                className="w-full h-full object-contain select-none pointer-events-none"
+                draggable={false}
+              />
+              {/* Highlight box for active element */}
+              {activeEl && (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: `${activeEl.x}%`,
+                    top: `${activeEl.y}%`,
+                    width: `${activeEl.w}%`,
+                    height: `${activeEl.h}%`,
+                    border: '2px solid #3b82f6',
+                    boxSizing: 'border-box',
+                    boxShadow: '0 0 0 1px rgba(59,130,246,0.3)',
+                    borderRadius: '2px',
+                  }}
+                />
+              )}
+              {/* Subtle outlines for all elements when none is active */}
+              {!activeId && elements.map((el) => (
                 <div
                   key={el.id}
-                  className={cn(
-                    'absolute transition-all duration-100',
-                    isActive
-                      ? 'z-20 ring-2 ring-brand-500'
-                      : isEdited
-                      ? 'z-10 ring-1 ring-green-400 hover:ring-green-500'
-                      : 'z-10 hover:ring-1 hover:ring-brand-300 cursor-pointer'
-                  )}
+                  className="absolute pointer-events-none"
                   style={{
                     left: `${el.x}%`,
                     top: `${el.y}%`,
                     width: `${el.w}%`,
                     height: `${el.h}%`,
+                    border: '1px dashed rgba(59,130,246,0.35)',
+                    boxSizing: 'border-box',
+                    borderRadius: '2px',
                   }}
-                  onClick={(e) => { e.stopPropagation(); setActiveId(el.id) }}
-                >
-                  <textarea
-                    value={currentText}
-                    onChange={(e) => setEdits((prev) => ({ ...prev, [el.id]: e.target.value }))}
-                    onFocus={() => setActiveId(el.id)}
-                    onBlur={() => setActiveId(null)}
-                    onClick={(e) => e.stopPropagation()}
-                    className={cn(
-                      'w-full h-full resize-none border-0 outline-none p-1 leading-tight',
-                      isActive || isEdited
-                        ? 'bg-white/90 text-gray-900'
-                        : 'bg-transparent text-transparent caret-transparent cursor-pointer'
-                    )}
-                    style={{
-                      fontSize: `${fontPx}px`,
-                      fontWeight: el.font_bold ? 'bold' : 'normal',
-                      textAlign: el.font_align,
-                      lineHeight: 1.25,
-                      color: isActive || isEdited ? el.font_color : 'transparent',
-                    }}
-                    spellCheck={false}
-                  />
-                </div>
-              )
-            })}
-
-            {/* Empty state */}
-            {elements.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                <div className="bg-white/95 rounded-xl px-6 py-5 text-center shadow-lg max-w-xs">
-                  <RefreshCw className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-gray-700">Нет редактируемых блоков</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Слайд не содержит текста в PPTX-формате или был загружен как PDF
-                  </p>
-                  <button
-                    onClick={onClose}
-                    className="mt-3 text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
-                  >
-                    Закрыть
-                  </button>
-                </div>
-              </div>
-            )}
+                />
+              ))}
+            </div>
           </div>
-        )}
-      </div>
 
-      {!loading && elements.length > 0 && (
-        <p className="text-center text-xs text-gray-400 pb-3 shrink-0">
-          Нажмите на текстовый блок чтобы редактировать · Нажмите вне блока чтобы снять выделение
-        </p>
+          {/* Right: text element list */}
+          <div className="w-72 shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+            <div className="p-3 border-b border-gray-100">
+              <p className="text-xs text-gray-500">
+                Выберите блок и отредактируйте текст. Выделение на слайде обновляется автоматически.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1 p-2">
+              {elements.map((el) => {
+                const isActive = activeId === el.id
+                const isEdited = el.id in edits
+                const currentText = isEdited ? edits[el.id] : el.text
+
+                return (
+                  <div
+                    key={el.id}
+                    className={cn(
+                      'rounded-lg border transition-all cursor-pointer',
+                      isActive
+                        ? 'border-brand-400 bg-brand-50 shadow-sm'
+                        : isEdited
+                        ? 'border-green-300 bg-green-50 hover:border-green-400'
+                        : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                    )}
+                    onClick={() => setActiveId(isActive ? null : el.id)}
+                  >
+                    <div className="flex items-center justify-between px-2.5 pt-2 pb-1">
+                      <span className="text-[10px] font-medium text-gray-400 truncate max-w-[80%]">
+                        {el.name}
+                      </span>
+                      {isEdited && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-green-100 text-green-600 rounded-full shrink-0">
+                          изм.
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-2.5 pb-2" onClick={(e) => e.stopPropagation()}>
+                      <textarea
+                        value={currentText}
+                        onChange={(e) => {
+                          setEdits((prev) => ({ ...prev, [el.id]: e.target.value }))
+                          setActiveId(el.id)
+                        }}
+                        onFocus={() => setActiveId(el.id)}
+                        rows={Math.max(2, currentText.split('\n').length)}
+                        className={cn(
+                          'w-full resize-none border rounded px-2 py-1 text-sm leading-snug outline-none transition-colors',
+                          isActive
+                            ? 'border-brand-300 bg-white focus:ring-1 focus:ring-brand-400'
+                            : 'border-gray-200 bg-gray-50 focus:border-brand-300 focus:bg-white focus:ring-1 focus:ring-brand-400'
+                        )}
+                        spellCheck={false}
+                        placeholder="(пусто)"
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

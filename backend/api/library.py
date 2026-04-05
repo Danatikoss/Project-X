@@ -518,8 +518,10 @@ def save_text_edits(
     """
     Save user text edits for a slide.
     body = {"edits": {"shape_id": "new text", ...}}
-    Persists a new single-slide PPTX with the edits applied.
+    Persists a new single-slide PPTX with the edits applied and regenerates thumbnail.
     """
+    import tempfile
+    import time
     from datetime import datetime, timezone
     from api.wopi import _build_single_slide_pptx, _edited_pptx_path
 
@@ -531,7 +533,7 @@ def save_text_edits(
 
     edits: dict = body.get("edits", {})
     if not edits:
-        return {"ok": True, "edited": 0}
+        return {"ok": True, "edited": 0, "thumb_version": None}
 
     # Merge with any existing edits
     existing: dict = json.loads(slide.text_edits_json or "{}")
@@ -549,4 +551,43 @@ def save_text_edits(
     slide.updated_at = datetime.now(timezone.utc)
     db.commit()
 
-    return {"ok": True, "edited": len(existing)}
+    # Regenerate thumbnail from the edited PPTX
+    thumb_version: int | None = None
+    if slide.thumbnail_path:
+        thumb_path = Path(settings.thumbnail_dir) / slide.thumbnail_path
+        if thumb_path.parent.exists():
+            try:
+                import fitz
+                from services.thumbnail import _pptx_to_pdf_via_libreoffice
+
+                with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
+                    f.write(updated_bytes)
+                    tmp_pptx = f.name
+
+                try:
+                    pdf_path = _pptx_to_pdf_via_libreoffice(tmp_pptx)
+                    if pdf_path:
+                        doc = fitz.open(pdf_path)
+                        pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
+                        pix.save(str(thumb_path))
+                        try:
+                            os.unlink(pdf_path)
+                        except Exception:
+                            pass
+                    else:
+                        # Fallback: direct PyMuPDF render
+                        doc = fitz.open(tmp_pptx)
+                        if doc.page_count > 0:
+                            pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
+                            pix.save(str(thumb_path))
+                finally:
+                    try:
+                        os.unlink(tmp_pptx)
+                    except Exception:
+                        pass
+
+                thumb_version = int(time.time())
+            except Exception as e:
+                logger.warning(f"Thumbnail regen failed for slide {slide_id}: {e}")
+
+    return {"ok": True, "edited": len(existing), "thumb_version": thumb_version}

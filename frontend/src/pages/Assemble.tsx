@@ -14,7 +14,6 @@ import { SlideCard, SlideThumbnail } from '../components/common/SlideCard'
 import { Slideshow } from '../components/common/Slideshow'
 import { Spinner } from '../components/common/Spinner'
 import { GenerateSlideModal } from '../components/common/GenerateSlideModal'
-import { SlideEditor, isCollaboraEnabled } from '../components/common/SlideEditor'
 import { SlideTextEditor } from '../components/common/SlideTextEditor'
 import { cn } from '../utils/cn'
 import { useAppStore } from '../store'
@@ -789,7 +788,18 @@ export default function Assemble() {
               slideId={editingSlideId}
               thumbnailUrl={selectedSlide.thumbnail_url}
               onClose={() => setEditingSlideId(null)}
-              onSaved={() => setEditingSlideId(null)}
+              onSaved={(thumbVersion) => {
+                setEditingSlideId(null)
+                if (thumbVersion && editingSlideId !== null) {
+                  setLocalSlides((prev) =>
+                    prev.map((s) =>
+                      s.id === editingSlideId
+                        ? { ...s, thumbnail_url: `${s.thumbnail_url.split('?')[0]}?t=${thumbVersion}` }
+                        : s
+                    )
+                  )
+                }
+              }}
             />
           </div>
         ) : (
@@ -844,15 +854,6 @@ export default function Assemble() {
                     <Edit2 className="w-3 h-3" /> Редактировать
                   </button>
 
-                  {/* Collabora edit button (only if feature is separately enabled) */}
-                  {isCollaboraEnabled() && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setEditingSlideId(-(selectedSlide.id)) }}
-                      className="absolute top-3 right-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
-                    >
-                      <Edit2 className="w-3 h-3" /> Collabora
-                    </button>
-                  )}
                 </div>
 
                 {currentOverlays.length > 0 && !selectedOverlayId && (
@@ -1104,12 +1105,6 @@ export default function Assemble() {
         />
       )}
 
-      {editingSlideId !== null && editingSlideId < 0 && (
-        <SlideEditor
-          slideId={-editingSlideId}
-          onClose={() => setEditingSlideId(null)}
-        />
-      )}
     </div>
   )
 }

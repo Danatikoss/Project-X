@@ -167,7 +167,7 @@ export const libraryApi = {
     return res.data
   },
 
-  saveTextEdits: async (slideId: number, edits: Record<string, string>): Promise<{ ok: boolean; edited: number }> => {
+  saveTextEdits: async (slideId: number, edits: Record<string, string>): Promise<{ ok: boolean; edited: number; thumb_version: number | null }> => {
     const res = await api.post(`/library/slides/${slideId}/text-edits`, { edits })
     return res.data
   },
