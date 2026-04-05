@@ -54,6 +54,26 @@ services:
       - backend
       - frontend
 
+  # ── Collabora Online (WOPI-based slide editor) ───────────────────────────
+  # Feature flag: set COLLABORA_URL + WOPI_BASE_URL in .env to activate.
+  # To disable: comment out this service and the nginx /collabora/ block.
+  collabora:
+    image: collabora/code:latest
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    environment:
+      # Trust requests coming from our backend
+      - aliasgroup1=http://backend:8000
+      # SSL is terminated by nginx, so disable it inside Collabora
+      - extra_params=--o:ssl.enable=false --o:ssl.termination=true
+      - username=admin
+      - password=${COLLABORA_ADMIN_PASSWORD:-admin}
+    cap_add:
+      - MKNOD
+    depends_on:
+      - backend
+
   # ── Certbot (runs once to get/renew SSL cert) ────────────────────────────
   certbot:
     image: certbot/certbot

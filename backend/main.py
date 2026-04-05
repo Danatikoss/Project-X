@@ -17,6 +17,7 @@ from config import settings
 from database import create_tables
 from api.router import router
 from api.ws import websocket_endpoint
+from api.wopi import wopi_router
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -75,6 +76,9 @@ app.add_middleware(
 
 # API routes
 app.include_router(router, prefix="/api")
+
+# WOPI callbacks — called directly by Collabora Online (no /api prefix)
+app.include_router(wopi_router, prefix="/wopi")
 
 # WebSocket endpoint
 from fastapi import WebSocket

@@ -11,6 +11,7 @@ from api.templates import router as templates_router
 from api.theses import router as theses_router
 from api.presentations import router as presentations_router
 from api.admin import router as admin_router
+from api.wopi import api_router as wopi_api_router
 
 router = APIRouter()
 
@@ -26,3 +27,5 @@ router.include_router(templates_router, prefix="/templates", tags=["Templates"])
 router.include_router(theses_router, prefix="/theses", tags=["Theses"])
 router.include_router(presentations_router, prefix="/presentations", tags=["Presentations"])
 router.include_router(admin_router, prefix="/admin", tags=["Admin"])
+# Collabora WOPI token endpoint (authenticated, feature-flagged)
+router.include_router(wopi_api_router, prefix="/wopi", tags=["WOPI"])

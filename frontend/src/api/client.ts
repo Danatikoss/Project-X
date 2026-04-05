@@ -517,6 +517,15 @@ export const presentationsApi = {
   },
 }
 
+// ─── WOPI / Collabora Online ──────────────────────────────────────────────────
+
+export const wopiApi = {
+  getEditorUrl: async (slideId: number): Promise<{ access_token: string; editor_url: string }> => {
+    const res = await api.get(`/wopi/token/${slideId}`)
+    return res.data
+  },
+}
+
 // ─── Assembly Templates ───────────────────────────────────────────────────────
 
 export const templatesApi = {

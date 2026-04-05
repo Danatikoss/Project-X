@@ -22,6 +22,9 @@ class Settings(BaseSettings):
         default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000",
         env="ALLOWED_ORIGINS",
     )
+    # Collabora Online integration (optional — leave empty to disable)
+    collabora_url: str = Field(default="", env="COLLABORA_URL")
+    wopi_base_url: str = Field(default="", env="WOPI_BASE_URL")
 
     class Config:
         env_file = ".env"

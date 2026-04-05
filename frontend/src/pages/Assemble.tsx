@@ -14,6 +14,7 @@ import { SlideCard, SlideThumbnail } from '../components/common/SlideCard'
 import { Slideshow } from '../components/common/Slideshow'
 import { Spinner } from '../components/common/Spinner'
 import { GenerateSlideModal } from '../components/common/GenerateSlideModal'
+import { SlideEditor, isCollaboraEnabled } from '../components/common/SlideEditor'
 import { cn } from '../utils/cn'
 import { useAppStore } from '../store'
 import type { Slide, Assembly, Project, SlideOverlay, MediaAsset, MediaFolder } from '../types'
@@ -471,6 +472,7 @@ export default function Assemble() {
   const [isCreatingTheses, setIsCreatingTheses] = useState(false)
   const [showSlideshow, setShowSlideshow] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
+  const [editingSlideId, setEditingSlideId] = useState<number | null>(null)
   const [rightTab, setRightTab] = useState<'info' | 'library' | 'media'>(
     searchParams.get('tab') === 'library' ? 'library' : 'info'
   )
@@ -822,6 +824,16 @@ export default function Assemble() {
                     <Play className="w-3 h-3" /> Слайд-шоу
                   </button>
                 )}
+
+                {/* Collabora edit button (only if feature is enabled) */}
+                {isCollaboraEnabled() && selectedSlide && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingSlideId(selectedSlide.id) }}
+                    className="absolute bottom-3 left-3 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-md z-[5]"
+                  >
+                    <Edit2 className="w-3 h-3" /> Редактировать
+                  </button>
+                )}
               </div>
 
               {currentOverlays.length > 0 && !selectedOverlayId && (
@@ -1069,6 +1081,13 @@ export default function Assemble() {
             handleAddSlide(slide)
             setShowGenerateModal(false)
           }}
+        />
+      )}
+
+      {editingSlideId !== null && (
+        <SlideEditor
+          slideId={editingSlideId}
+          onClose={() => setEditingSlideId(null)}
         />
       )}
     </div>
