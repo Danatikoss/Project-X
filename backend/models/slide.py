@@ -51,6 +51,7 @@ class SlideLibraryEntry(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
 
     is_outdated = Column(Boolean, default=False)
+    is_generated = Column(Boolean, default=False)      # True = AI-generated, hidden from library until saved
     access_level = Column(String, default="internal")  # public|internal|confidential
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

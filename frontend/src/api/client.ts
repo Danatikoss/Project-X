@@ -157,6 +157,11 @@ export const libraryApi = {
     await api.delete(`/library/slides/${id}`)
   },
 
+  saveGeneratedSlides: async (slideIds: number[]): Promise<{ saved: number }> => {
+    const res = await api.post<{ saved: number }>('/library/slides/save-generated', { slide_ids: slideIds })
+    return res.data
+  },
+
   getLabels: async (): Promise<string[]> => {
     const res = await api.get<string[]>('/library/labels')
     return res.data
@@ -480,6 +485,7 @@ export interface PlanResponse {
 
 export interface RenderResponse {
   assembly_id: number
+  slide_ids: number[]
 }
 
 export const presentationsApi = {

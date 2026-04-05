@@ -249,4 +249,4 @@ async def create_assembly_from_plan(
     db.add(assembly)
     db.commit()
     db.refresh(assembly)
-    return assembly.id
+    return assembly.id, slide_ids

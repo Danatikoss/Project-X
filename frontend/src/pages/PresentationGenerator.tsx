@@ -7,9 +7,10 @@ import {
   Quote, LayoutList, Layers, Star, RefreshCw, Wand2,
   AlertCircle, CheckCircle2, ChevronUp, ChevronDown,
   Trash2, GitMerge, Type, TrendingUp, Clock, Columns,
+  BookMarked,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { presentationsApi, brandApi } from '../api/client'
+import { presentationsApi, brandApi, libraryApi } from '../api/client'
 import type { SlideBlueprint } from '../api/client'
 import type { BrandTemplate } from '../types'
 import { Spinner } from '../components/common/Spinner'
@@ -335,6 +336,10 @@ export default function PresentationGenerator() {
   const [planTitle, setPlanTitle] = useState('')
   const [step, setStep]           = useState<Step>('input')
 
+  // Post-render: "add to library?" dialog
+  const [pendingNav, setPendingNav]             = useState<{ assemblyId: number; slideIds: number[] } | null>(null)
+  const [savingToLibrary, setSavingToLibrary]   = useState(false)
+
   // Fetch brand templates
   const { data: templates = [] } = useQuery<BrandTemplate[]>({
     queryKey: ['brand-templates'],
@@ -369,10 +374,26 @@ export default function PresentationGenerator() {
       brandTemplateId: brandId ?? undefined,
     }),
     onSuccess: (data) => {
-      navigate(`/assemble/${data.assembly_id}`)
+      setPendingNav({ assemblyId: data.assembly_id, slideIds: data.slide_ids ?? [] })
     },
     onError: (e: unknown) => toast.error(apiError(e)),
   })
+
+  const handleSaveToLibrary = async (save: boolean) => {
+    if (!pendingNav) return
+    if (save && pendingNav.slideIds.length > 0) {
+      setSavingToLibrary(true)
+      try {
+        await libraryApi.saveGeneratedSlides(pendingNav.slideIds)
+        toast.success(`${pendingNav.slideIds.length} слайдов добавлено в библиотеку`)
+      } catch {
+        toast.error('Не удалось сохранить слайды в библиотеку')
+      } finally {
+        setSavingToLibrary(false)
+      }
+    }
+    navigate(`/assemble/${pendingNav.assemblyId}`)
+  }
 
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -663,5 +684,44 @@ export default function PresentationGenerator() {
 
       </div>
     </div>
+
+    {/* "Add to library?" modal */}
+    {pendingNav && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
+              <BookMarked className="w-5 h-5 text-violet-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Сохранить в библиотеку?</p>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {pendingNav.slideIds.length} слайдов сгенерировано
+              </p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            Добавить эти слайды в библиотеку, чтобы использовать их в других презентациях?
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleSaveToLibrary(false)}
+              disabled={savingToLibrary}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
+            >
+              Не сохранять
+            </button>
+            <button
+              onClick={() => handleSaveToLibrary(true)}
+              disabled={savingToLibrary}
+              className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+            >
+              {savingToLibrary ? <Spinner size="sm" /> : <BookMarked className="w-4 h-4" />}
+              Добавить
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   )
 }

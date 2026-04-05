@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Search, Upload, SlidersHorizontal, Play, X } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Search, Upload, SlidersHorizontal, Play, X, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { libraryApi, searchApi } from '../api/client'
 import { SlideCard } from '../components/common/SlideCard'
 import { SlidePreviewModal } from '../components/common/SlidePreviewModal'
@@ -25,13 +26,26 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export default function Library() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { searchQuery: query, setSearchQuery: setQuery } = useAppStore()
   const [filters, setFilters] = useState<Filters>({})
   const [page, setPage] = useState(1)
   const [showFilters, setShowFilters] = useState(false)
   const [previewSlide, setPreviewSlide] = useState<Slide | null>(null)
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null)
+  const [slideToDelete, setSlideToDelete] = useState<Slide | null>(null)
   const PAGE_SIZE = 24
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => libraryApi.deleteSlide(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['slides'] })
+      queryClient.invalidateQueries({ queryKey: ['search'] })
+      setSlideToDelete(null)
+      toast.success('Слайд удалён из библиотеки')
+    },
+    onError: () => toast.error('Не удалось удалить слайд'),
+  })
 
   const debouncedQuery = useDebounce(query, 400)
 
@@ -204,6 +218,8 @@ export default function Library() {
                   key={slide.id}
                   slide={slide}
                   showFolderAssign
+                  showRemove
+                  onRemove={() => setSlideToDelete(slide)}
                   onClick={() => setPreviewSlide(slide)}
                 />
               ))}
@@ -252,6 +268,47 @@ export default function Library() {
         startIndex={slideshowIndex}
         onClose={() => setSlideshowIndex(null)}
       />
+    )}
+
+    {/* Delete confirmation modal */}
+    {slideToDelete && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSlideToDelete(null)}>
+        <div
+          className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+              <Trash2 className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Удалить слайд?</p>
+              <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">
+                {slideToDelete.title || '(без названия)'}
+              </p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            Слайд будет безвозвратно удалён из библиотеки. Это действие нельзя отменить.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setSlideToDelete(null)}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={() => deleteMutation.mutate(slideToDelete.id)}
+              disabled={deleteMutation.isPending}
+              className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+            >
+              {deleteMutation.isPending ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
+              Удалить
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </>
   )

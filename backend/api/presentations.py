@@ -91,7 +91,7 @@ async def render_plan(
         raise HTTPException(400, detail="План слайдов пустой")
 
     try:
-        assembly_id = await create_assembly_from_plan(
+        assembly_id, slide_ids = await create_assembly_from_plan(
             blueprints=body.plan,
             title=body.title,
             brand_template_id=body.brand_template_id,
@@ -102,4 +102,4 @@ async def render_plan(
         logger.exception(f"render_plan failed: {e}")
         raise HTTPException(500, detail=f"Ошибка рендеринга: {e}")
 
-    return {"assembly_id": assembly_id}
+    return {"assembly_id": assembly_id, "slide_ids": slide_ids}

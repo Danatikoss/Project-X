@@ -1113,6 +1113,7 @@ async def save_slide_from_blueprint(
         language       = _detect_language(title),
         embedding_json = json.dumps(embedding) if embedding else None,
         has_media      = False,
+        is_generated   = True,
     )
     db.add(entry)
     db.commit()

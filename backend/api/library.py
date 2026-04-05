@@ -123,7 +123,10 @@ def list_slides(
     user: User = Depends(get_current_user),
 ):
     owned = _owned_source_ids(db, user.id)
-    query = db.query(SlideLibraryEntry).filter(SlideLibraryEntry.source_id.in_(owned))
+    query = db.query(SlideLibraryEntry).filter(
+        SlideLibraryEntry.source_id.in_(owned),
+        SlideLibraryEntry.is_generated == False,  # noqa: E712
+    )
 
     if source_id is not None:
         query = query.filter(SlideLibraryEntry.source_id == source_id)
@@ -211,6 +214,31 @@ def delete_slide(slide_id: int, db: Session = Depends(get_db), user: User = Depe
     _check_slide_owner(slide, user.id)
     db.delete(slide)
     db.commit()
+
+
+from pydantic import BaseModel as _BaseModel
+
+class _SaveGeneratedRequest(_BaseModel):
+    slide_ids: list[int]
+
+
+@router.post("/slides/save-generated", status_code=200)
+def save_generated_slides(
+    body: _SaveGeneratedRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark AI-generated slides as saved to library (is_generated=False)."""
+    owned = _owned_source_ids(db, user.id)
+    updated = db.query(SlideLibraryEntry).filter(
+        SlideLibraryEntry.id.in_(body.slide_ids),
+        SlideLibraryEntry.source_id.in_(owned),
+        SlideLibraryEntry.is_generated == True,  # noqa: E712
+    ).all()
+    for slide in updated:
+        slide.is_generated = False
+    db.commit()
+    return {"saved": len(updated)}
 
 
 @router.get("/labels", response_model=list[str])
