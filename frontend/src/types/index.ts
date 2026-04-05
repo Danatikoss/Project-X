@@ -81,13 +81,21 @@ export interface IndexProgress {
 
 export interface SlideOverlay {
   id: string
-  asset_id: number
-  url: string
-  file_type: 'gif' | 'video' | 'image'
+  file_type: 'gif' | 'video' | 'image' | 'text'
   x: number
   y: number
   w: number
   h: number
+  // Media overlay fields
+  asset_id?: number
+  url?: string
+  // Text overlay fields
+  text?: string
+  fontSize?: number       // pt, default 22
+  fontColor?: string      // hex, default '#000000'
+  bgColor?: string        // hex or 'transparent', default 'transparent'
+  fontWeight?: 'normal' | 'bold'
+  align?: 'left' | 'center' | 'right'
 }
 
 export interface Assembly {

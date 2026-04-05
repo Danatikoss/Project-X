@@ -6,6 +6,7 @@ import {
   Presentation, ChevronLeft, ChevronRight, Share2,
   BookImage, Info, Sparkles, PenLine, FolderOpen, Play,
   Film, Image, PanelLeftClose, PanelLeftOpen, Trash2, FileText,
+  Type, Bold, AlignLeft, AlignCenter, AlignRight, Save,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { assemblyApi, libraryApi, searchApi, projectsApi, mediaApi, thesesApi } from '../api/client'
@@ -450,6 +451,105 @@ function OverlayItem({
   )
 }
 
+// ─── Text Overlay Item ────────────────────────────────────────────────────────
+
+function TextOverlayItem({
+  overlay,
+  isSelected,
+  isEditing,
+  onMouseDown,
+  onDelete,
+  onEditStart,
+  onEditEnd,
+  onTextChange,
+}: {
+  overlay: SlideOverlay
+  isSelected: boolean
+  isEditing: boolean
+  onMouseDown: (e: React.MouseEvent, mode: 'move' | 'resize') => void
+  onDelete: () => void
+  onEditStart: () => void
+  onEditEnd: () => void
+  onTextChange: (text: string) => void
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (isEditing) {
+      textareaRef.current?.focus()
+      textareaRef.current?.select()
+    }
+  }, [isEditing])
+
+  const style: React.CSSProperties = {
+    fontSize: `${overlay.fontSize ?? 22}px`,
+    color: overlay.fontColor ?? '#000000',
+    fontWeight: overlay.fontWeight ?? 'normal',
+    textAlign: (overlay.align ?? 'left') as React.CSSProperties['textAlign'],
+    backgroundColor: overlay.bgColor && overlay.bgColor !== 'transparent'
+      ? overlay.bgColor
+      : 'transparent',
+    padding: '4px 6px',
+    lineHeight: 1.3,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  }
+
+  return (
+    <div
+      className={cn(
+        'absolute select-none',
+        isEditing
+          ? 'z-20'
+          : isSelected
+            ? 'outline outline-2 outline-indigo-500 outline-offset-0 cursor-move z-10'
+            : 'cursor-pointer hover:outline hover:outline-1 hover:outline-indigo-300 z-[5]'
+      )}
+      style={{ left: `${overlay.x}%`, top: `${overlay.y}%`, width: `${overlay.w}%`, minHeight: `${overlay.h}%` }}
+      onMouseDown={(e) => { if (!isEditing) onMouseDown(e, 'move') }}
+      onDoubleClick={(e) => { e.stopPropagation(); onEditStart() }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {isEditing ? (
+        <textarea
+          ref={textareaRef}
+          value={overlay.text ?? ''}
+          onChange={(e) => onTextChange(e.target.value)}
+          onBlur={onEditEnd}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onEditEnd() } }}
+          className="w-full resize-none focus:outline-none bg-transparent"
+          style={{ ...style, backgroundColor: 'rgba(255,255,255,0.15)', border: '1.5px dashed #6366f1', minHeight: 32 }}
+        />
+      ) : (
+        <div style={style}>
+          {overlay.text || <span className="text-gray-400/80 italic text-sm">Дважды кликните для редактирования</span>}
+        </div>
+      )}
+
+      {isSelected && !isEditing && (
+        <>
+          <button
+            className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 z-20 cursor-pointer"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+          >
+            <X className="w-3 h-3" />
+          </button>
+          <div
+            className="absolute bottom-0 right-0 w-5 h-5 bg-indigo-500 hover:bg-indigo-400 cursor-se-resize rounded-tl z-20 flex items-center justify-center"
+            onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize') }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="8" height="8" viewBox="0 0 8 8" className="text-white opacity-80">
+              <path d="M7 1L1 7M7 4L4 7M7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function Assemble() {
@@ -465,6 +565,7 @@ export default function Assemble() {
   const [localSlides, setLocalSlides] = useState<Slide[]>([])
   const [overlays, setOverlays] = useState<Record<string, SlideOverlay[]>>({})
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
+  const [editingTextOverlayId, setEditingTextOverlayId] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
@@ -610,6 +711,62 @@ export default function Assemble() {
     }
     setOverlays(newOverlays)
     setSelectedOverlayId(null)
+    setEditingTextOverlayId(null)
+    updateMutation.mutate({ overlays: newOverlays })
+  }, [updateMutation])
+
+  const handleAddTextOverlay = useCallback(() => {
+    const slideId = String(localSlides[selectedIndex]?.id)
+    if (!slideId || slideId === 'undefined') { toast.error('Выберите слайд'); return }
+    const newOverlay: SlideOverlay = {
+      id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      file_type: 'text',
+      text: '',
+      fontSize: 22,
+      fontColor: '#000000',
+      bgColor: 'transparent',
+      fontWeight: 'normal',
+      align: 'left',
+      x: 10, y: 10, w: 50, h: 12,
+    }
+    const newOverlays = {
+      ...overlaysRef.current,
+      [slideId]: [...(overlaysRef.current[slideId] || []), newOverlay],
+    }
+    setOverlays(newOverlays)
+    setSelectedOverlayId(newOverlay.id)
+    setEditingTextOverlayId(newOverlay.id)
+    updateMutation.mutate({ overlays: newOverlays })
+  }, [localSlides, selectedIndex, updateMutation])
+
+  const handleTextChange = useCallback((slideId: string, overlayId: string, text: string) => {
+    setOverlays((prev) => {
+      const list = [...(prev[slideId] || [])]
+      const i = list.findIndex((o) => o.id === overlayId)
+      if (i < 0) return prev
+      list[i] = { ...list[i], text }
+      return { ...prev, [slideId]: list }
+    })
+  }, [])
+
+  const handleTextEditEnd = useCallback((slideId: string) => {
+    setEditingTextOverlayId(null)
+    updateMutation.mutate({ overlays: overlaysRef.current })
+  }, [updateMutation])
+
+  const handleTextStyleChange = useCallback((
+    slideId: string,
+    overlayId: string,
+    style: Partial<SlideOverlay>
+  ) => {
+    const newOverlays = {
+      ...overlaysRef.current,
+      [slideId]: (overlaysRef.current[slideId] || []).map((o) =>
+        o.id === overlayId ? { ...o, ...style } : o
+      ),
+    }
+    setOverlays(newOverlays)
+    overlaysRef.current = newOverlays
     updateMutation.mutate({ overlays: newOverlays })
   }, [updateMutation])
 
@@ -764,14 +921,29 @@ export default function Assemble() {
             <p className="text-sm text-gray-600 truncate flex-1 ml-2">{selectedSlide.title || '(без названия)'}</p>
           )}
 
+          {selectedSlide && (
+            <button
+              onClick={handleAddTextOverlay}
+              title="Добавить текст на слайд"
+              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-all shrink-0 font-medium"
+            >
+              <Type className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Текст</span>
+            </button>
+          )}
           {currentOverlays.length > 0 && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 shrink-0">
-              {currentOverlays.length} медиа
+              {currentOverlays.length} эл.
+            </span>
+          )}
+          {updateMutation.isPending && (
+            <span className="text-[10px] text-gray-400 flex items-center gap-1 shrink-0">
+              <Spinner size="sm" /> Сохранение…
             </span>
           )}
           {selectedOverlayId && (
             <button
-              onClick={() => setSelectedOverlayId(null)}
+              onClick={() => { setSelectedOverlayId(null); setEditingTextOverlayId(null) }}
               className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors shrink-0"
             >
               Снять выделение
@@ -803,15 +975,29 @@ export default function Assemble() {
                 )}
 
                 {/* Overlay items */}
-                {currentOverlays.map((overlay) => (
-                  <OverlayItem
-                    key={overlay.id}
-                    overlay={overlay}
-                    isSelected={selectedOverlayId === overlay.id}
-                    onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
-                    onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
-                  />
-                ))}
+                {currentOverlays.map((overlay) =>
+                  overlay.file_type === 'text' ? (
+                    <TextOverlayItem
+                      key={overlay.id}
+                      overlay={overlay}
+                      isSelected={selectedOverlayId === overlay.id}
+                      isEditing={editingTextOverlayId === overlay.id}
+                      onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
+                      onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
+                      onEditStart={() => { setSelectedOverlayId(overlay.id); setEditingTextOverlayId(overlay.id) }}
+                      onEditEnd={() => handleTextEditEnd(currentSlideId!)}
+                      onTextChange={(text) => handleTextChange(currentSlideId!, overlay.id, text)}
+                    />
+                  ) : (
+                    <OverlayItem
+                      key={overlay.id}
+                      overlay={overlay}
+                      isSelected={selectedOverlayId === overlay.id}
+                      onMouseDown={(e, mode) => handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)}
+                      onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
+                    />
+                  )
+                )}
 
                 {/* Slideshow button */}
                 {localSlides.length > 1 && (
@@ -824,9 +1010,100 @@ export default function Assemble() {
                 )}
               </div>
 
+              {/* Text overlay formatting toolbar */}
+              {(() => {
+                const selOverlay = currentSlideId
+                  ? (overlays[currentSlideId] || []).find((o) => o.id === selectedOverlayId && o.file_type === 'text')
+                  : null
+                if (!selOverlay) return null
+                return (
+                  <div className="mt-2 flex items-center gap-2 flex-wrap bg-white border border-indigo-100 rounded-xl px-3 py-2 shadow-sm">
+                    <Type className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    {/* Font size */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400">Размер</span>
+                      <input
+                        type="number"
+                        min={8} max={120}
+                        value={selOverlay.fontSize ?? 22}
+                        onChange={(e) => handleTextStyleChange(currentSlideId!, selectedOverlayId!, { fontSize: Number(e.target.value) })}
+                        className="w-14 text-xs border border-gray-200 rounded-lg px-1.5 py-1 text-center focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+                    {/* Font color */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400">Цвет</span>
+                      <input
+                        type="color"
+                        value={selOverlay.fontColor ?? '#000000'}
+                        onChange={(e) => handleTextStyleChange(currentSlideId!, selectedOverlayId!, { fontColor: e.target.value })}
+                        className="w-8 h-7 rounded cursor-pointer border border-gray-200"
+                      />
+                    </div>
+                    {/* Background */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400">Фон</span>
+                      <button
+                        onClick={() => handleTextStyleChange(currentSlideId!, selectedOverlayId!, {
+                          bgColor: selOverlay.bgColor && selOverlay.bgColor !== 'transparent'
+                            ? 'transparent'
+                            : 'rgba(255,255,255,0.92)'
+                        })}
+                        className={cn(
+                          'text-[10px] px-2 py-1 rounded-lg border transition-colors',
+                          selOverlay.bgColor && selOverlay.bgColor !== 'transparent'
+                            ? 'bg-white border-gray-300 text-gray-700'
+                            : 'bg-gray-100 border-gray-200 text-gray-400'
+                        )}
+                      >
+                        {selOverlay.bgColor && selOverlay.bgColor !== 'transparent' ? 'Белый' : 'Прозрач.'}
+                      </button>
+                    </div>
+                    {/* Bold */}
+                    <button
+                      onClick={() => handleTextStyleChange(currentSlideId!, selectedOverlayId!, {
+                        fontWeight: selOverlay.fontWeight === 'bold' ? 'normal' : 'bold'
+                      })}
+                      className={cn(
+                        'p-1.5 rounded-lg border transition-colors',
+                        selOverlay.fontWeight === 'bold'
+                          ? 'bg-indigo-100 border-indigo-300 text-indigo-700'
+                          : 'border-gray-200 text-gray-400 hover:bg-gray-50'
+                      )}
+                      title="Жирный"
+                    >
+                      <Bold className="w-3.5 h-3.5" />
+                    </button>
+                    {/* Alignment */}
+                    {(['left', 'center', 'right'] as const).map((a) => {
+                      const Icon = a === 'left' ? AlignLeft : a === 'center' ? AlignCenter : AlignRight
+                      return (
+                        <button
+                          key={a}
+                          onClick={() => handleTextStyleChange(currentSlideId!, selectedOverlayId!, { align: a })}
+                          className={cn(
+                            'p-1.5 rounded-lg border transition-colors',
+                            (selOverlay.align ?? 'left') === a
+                              ? 'bg-indigo-100 border-indigo-300 text-indigo-700'
+                              : 'border-gray-200 text-gray-400 hover:bg-gray-50'
+                          )}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                        </button>
+                      )
+                    })}
+                    <button
+                      onClick={() => { setEditingTextOverlayId(selectedOverlayId); setTimeout(() => {}, 0) }}
+                      className="ml-auto flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                    >
+                      <Save className="w-3 h-3" /> Редактировать текст
+                    </button>
+                  </div>
+                )
+              })()}
               {currentOverlays.length > 0 && !selectedOverlayId && (
                 <p className="text-center text-[10px] text-gray-400 mt-2">
-                  Нажмите на медиаэлемент → перетащите или измените размер (угол ▟)
+                  Нажмите на элемент → перетащите или измените размер (угол ▟) · Двойной клик на тексте — редактировать
                 </p>
               )}
             </div>
