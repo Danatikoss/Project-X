@@ -70,3 +70,80 @@
     -webkit-backdrop-filter: blur(12px);
   }
 }
+
+/* ─── Dark mode overrides ─────────────────────────────────────────────────────
+   These live outside @layer so they cascade after all Tailwind utilities.
+   Two-class selectors (.dark .bg-white) have higher specificity than
+   Tailwind's single-class utilities (.bg-white), so no !important needed.
+────────────────────────────────────────────────────────────────────────────── */
+
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+/* Scrollbar */
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Surface */
+.dark .bg-surface { background-color: #0f172a; }
+
+/* White & grays */
+.dark .bg-white       { background-color: #1e293b; }
+.dark .bg-gray-50,
+.dark .bg-slate-50    { background-color: #0f172a; }
+.dark .bg-gray-100,
+.dark .bg-slate-100   { background-color: #1e293b; }
+.dark .bg-gray-200,
+.dark .bg-slate-200   { background-color: #334155; }
+
+/* Hover backgrounds */
+.dark .hover\:bg-white:hover       { background-color: #1e293b; }
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-slate-50:hover    { background-color: #1e293b; }
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-slate-100:hover   { background-color: #334155; }
+.dark .hover\:bg-red-50:hover      { background-color: #450a0a; }
+
+/* Focus backgrounds */
+.dark .focus\:bg-white:focus       { background-color: #1e293b; }
+
+/* Borders */
+.dark .border-gray-100,
+.dark .border-slate-100 { border-color: #1e293b; }
+.dark .border-gray-200,
+.dark .border-slate-200 { border-color: #334155; }
+.dark .border-gray-300,
+.dark .border-slate-300 { border-color: #475569; }
+
+/* Text */
+.dark .text-gray-900,
+.dark .text-slate-900   { color: #f1f5f9; }
+.dark .text-gray-800,
+.dark .text-slate-800   { color: #e2e8f0; }
+.dark .text-gray-700,
+.dark .text-slate-700   { color: #cbd5e1; }
+.dark .text-gray-600,
+.dark .text-slate-600   { color: #94a3b8; }
+.dark .text-gray-500,
+.dark .text-slate-500   { color: #64748b; }
+.dark .text-gray-400,
+.dark .text-slate-400   { color: #475569; }
+
+/* Shadows */
+.dark .shadow-sm   { box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.dark .shadow-md   { box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.dark .shadow-xl   { box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+.dark .shadow-card { box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+
+/* Inputs & placeholders */
+.dark input::placeholder,
+.dark textarea::placeholder { color: #475569; }
+
+/* Specific: violet tab active bg used in Theses.tsx */
+.dark .bg-white.text-violet-700 { background-color: #2e1065; color: #a78bfa; }
