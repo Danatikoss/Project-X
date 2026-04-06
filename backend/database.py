@@ -78,6 +78,9 @@ def migrate_db():
             _add_column_if_missing(conn, "slide_library_entries", "video_path", "TEXT")
             _add_column_if_missing(conn, "slide_library_entries", "is_generated", "BOOLEAN DEFAULT 0")
             _add_column_if_missing(conn, "slide_library_entries", "text_edits_json", "TEXT")
+            _add_column_if_missing(conn, "slide_library_entries", "text_content", "TEXT")
+            _add_column_if_missing(conn, "slide_library_entries", "key_message", "TEXT")
+            _add_column_if_missing(conn, "slide_library_entries", "topic", "TEXT")
         if "user_profiles" in tables:
             _add_column_if_missing(conn, "user_profiles", "user_id", "INTEGER REFERENCES users(id)")
             conn.execute(text(

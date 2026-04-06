@@ -50,6 +50,10 @@ class SlideLibraryEntry(Base):
 
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
 
+    text_content = Column(Text, nullable=True)            # full extracted text from slide (for keyword search)
+    key_message = Column(String, nullable=True)          # main claim/point of the slide (1 sentence)
+    topic = Column(String, nullable=True)                # thematic category: finance|strategy|product|team|market|ops|other
+
     text_edits_json = Column(Text, nullable=True)        # JSON {shape_id: new_text} — user text edits
 
     is_outdated = Column(Boolean, default=False)

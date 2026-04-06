@@ -28,12 +28,15 @@ logger = logging.getLogger(__name__)
 
 SINGLE_SLIDE_PROMPT = """Ты анализируешь один слайд презентации. Верни строго JSON-объект с полями:
 - "title": содержательный заголовок слайда (до 60 символов, на языке слайда). НЕ пиши "Слайд 1" — читай реальный текст на слайде.
-- "summary": одно предложение о содержании
-- "tags": массив из 3-7 ключевых слов
+- "summary": 1-2 предложения о содержании слайда
+- "key_message": главный тезис или утверждение слайда в 1 предложении (что именно он доказывает или показывает). Если слайд — оглавление или заставка, напиши "навигационный слайд".
+- "topic": одна категория из списка: finance | strategy | product | team | market | operations | legal | other
+- "tags": массив из 3-7 ключевых слов (конкретные термины, не общие слова)
 - "layout_type": один из: "title", "content", "chart", "image", "table", "section", "blank"
 - "language": "ru", "kk", или "en"
 
-Ответь ТОЛЬКО JSON-объектом."""
+Если есть и текст, и изображение — учитывай оба. Диаграммы и таблицы несут данные, которых нет в тексте.
+Ответь ТОЛЬКО JSON-объектом без комментариев."""
 
 
 def _resize_for_vision(img_bytes: bytes, max_width: int = 768) -> bytes:
@@ -58,23 +61,32 @@ async def _extract_single_metadata(
     text: str,
     thumbnail: bytes | None,
 ) -> dict:
-    """Extract metadata for a single slide. Uses vision when text is empty."""
+    """Extract metadata for a single slide. Always uses both text and image when available."""
     has_text = bool(text and text.strip())
 
-    if has_text:
-        user_content: list | str = f"Текст слайда:\n{text}"
-    elif thumbnail:
+    if thumbnail:
         small_img = _resize_for_vision(thumbnail)
-        user_content = [
-            {"type": "text", "text": "Проанализируй этот слайд:"},
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{_img_to_base64(small_img)}",
-                    "detail": "low",
-                }
+        img_part = {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{_img_to_base64(small_img)}",
+                "detail": "low",
             }
-        ]
+        }
+        if has_text:
+            # Best case: both text and visual context
+            user_content: list | str = [
+                {"type": "text", "text": f"Текст слайда:\n{text}\n\nВизуальное содержимое слайда:"},
+                img_part,
+            ]
+        else:
+            # No text — vision only
+            user_content = [
+                {"type": "text", "text": "Проанализируй этот слайд:"},
+                img_part,
+            ]
+    elif has_text:
+        user_content = f"Текст слайда:\n{text}"
     else:
         user_content = "Пустой слайд без текста и изображения."
 
@@ -95,6 +107,9 @@ async def _extract_single_metadata(
         return {}
 
 
+VALID_TOPICS = {"finance", "strategy", "product", "team", "market", "operations", "legal", "other"}
+
+
 def _safe_metadata(raw: dict, slide_text: str, slide_idx: int, pptx_title: str | None = None) -> dict:
     ai_title = str(raw.get("title", "") or "").strip()
 
@@ -107,9 +122,16 @@ def _safe_metadata(raw: dict, slide_text: str, slide_idx: int, pptx_title: str |
     else:
         title = f"Слайд {slide_idx + 1}"
 
+    key_message = str(raw.get("key_message", "") or "").strip()
+    topic = str(raw.get("topic", "") or "").strip().lower()
+    if topic not in VALID_TOPICS:
+        topic = "other"
+
     return {
         "title": title[:120],
-        "summary": str(raw.get("summary", "") or slide_text[:200]),
+        "summary": str(raw.get("summary", "") or slide_text[:300]),
+        "key_message": key_message[:200] if key_message else None,
+        "topic": topic,
         "tags": raw.get("tags", []) if isinstance(raw.get("tags"), list) else [],
         "layout_type": raw.get("layout_type", "content"),
         "language": raw.get("language", "ru"),
@@ -201,7 +223,7 @@ async def index_presentation(source_id: int, ws_token: str):
                 _extract_single_metadata(
                     client,
                     sd.text,
-                    sd.thumbnail_bytes if not (sd.text and sd.text.strip()) else None,
+                    sd.thumbnail_bytes,  # always pass thumbnail for visual context
                 )
                 for sd in batch
             ]
@@ -223,7 +245,13 @@ async def index_presentation(source_id: int, ws_token: str):
 
         # --- Step 4: Generate embeddings ---
         embed_texts_list = [
-            build_slide_embed_text(meta["title"], meta["summary"], meta["tags"])
+            build_slide_embed_text(
+                meta["title"],
+                meta["summary"],
+                meta["tags"],
+                key_message=meta.get("key_message"),
+                topic=meta.get("topic"),
+            )
             for meta in all_metadata
         ]
         embeddings = await embed_texts(embed_texts_list)
@@ -242,9 +270,12 @@ async def index_presentation(source_id: int, ws_token: str):
                 slide_json=sd.slide_json,
                 title=meta["title"],
                 summary=meta["summary"],
+                key_message=meta.get("key_message"),
+                topic=meta.get("topic"),
                 tags_json=json.dumps(meta["tags"], ensure_ascii=False),
                 layout_type=meta["layout_type"],
                 language=meta["language"],
+                text_content=sd.text[:5000] if sd.text else None,
                 embedding_json=json.dumps(emb),
                 has_media=getattr(sd, "has_video", False) or getattr(sd, "has_gif", False),
                 gif_path=getattr(sd, '_gif_path', None),

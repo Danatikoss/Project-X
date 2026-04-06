@@ -62,13 +62,23 @@ async def embed_single(text: str) -> list[float]:
     return results[0] if results else [0.0] * 1536
 
 
-def build_slide_embed_text(title: str, summary: str, tags: list[str]) -> str:
+def build_slide_embed_text(
+    title: str,
+    summary: str,
+    tags: list[str],
+    key_message: str | None = None,
+    topic: str | None = None,
+) -> str:
     """Build the canonical text used for slide embedding."""
     parts = []
     if title:
         parts.append(title)
-    if summary:
+    if key_message:
+        parts.append(key_message)
+    elif summary:
         parts.append(summary)
+    if topic and topic != "other":
+        parts.append(f"Тема: {topic}")
     if tags:
-        parts.append("Темы: " + ", ".join(tags))
+        parts.append("Ключевые слова: " + ", ".join(tags))
     return ". ".join(parts) if parts else "пустой слайд"

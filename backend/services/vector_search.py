@@ -1,5 +1,5 @@
 """
-Vector similarity search.
+Vector similarity search with hybrid scoring and MMR diversity reranking.
 Auto-detects backend:
   - sqlite_vec if installed (fast, SQL-integrated)
   - numpy fallback (pure Python cosine similarity)
@@ -68,40 +68,37 @@ def search_slides(
     if not slides:
         return []
 
-    # Compute similarities
-    results: list[tuple["SlideLibraryEntry", float]] = []
+    # Batch computation via numpy matrix operations
+    embeddings = []
+    valid_slides = []
+    for slide in slides:
+        try:
+            emb = json.loads(slide.embedding_json)
+            embeddings.append(emb)
+            valid_slides.append(slide)
+        except Exception:
+            continue
 
-    if VECTOR_BACKEND == "numpy":
-        # Batch computation via numpy matrix operations
-        embeddings = []
-        valid_slides = []
-        for slide in slides:
-            try:
-                emb = json.loads(slide.embedding_json)
-                embeddings.append(emb)
-                valid_slides.append(slide)
-            except Exception:
-                continue
+    if not embeddings:
+        return []
 
-        if not embeddings:
-            return []
+    matrix = np.array(embeddings, dtype=np.float32)  # shape: (N, 1536)
+    query_vec = np.array(query_embedding, dtype=np.float32)  # shape: (1536,)
 
-        matrix = np.array(embeddings, dtype=np.float32)  # shape: (N, 1536)
-        query_vec = np.array(query_embedding, dtype=np.float32)  # shape: (1536,)
+    # Normalize
+    matrix_norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    query_norm = np.linalg.norm(query_vec)
+    matrix_norms = np.where(matrix_norms == 0, 1e-10, matrix_norms)
+    query_norm = max(query_norm, 1e-10)
 
-        # Normalize
-        matrix_norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-        query_norm = np.linalg.norm(query_vec)
-        matrix_norms = np.where(matrix_norms == 0, 1e-10, matrix_norms)
-        query_norm = max(query_norm, 1e-10)
+    matrix_normalized = matrix / matrix_norms
+    query_normalized = query_vec / query_norm
 
-        matrix_normalized = matrix / matrix_norms
-        query_normalized = query_vec / query_norm
+    similarities = matrix_normalized @ query_normalized  # shape: (N,)
 
-        similarities = matrix_normalized @ query_normalized  # shape: (N,)
-
-        for slide, sim in zip(valid_slides, similarities.tolist()):
-            results.append((slide, float(sim)))
+    results: list[tuple["SlideLibraryEntry", float]] = [
+        (slide, float(sim)) for slide, sim in zip(valid_slides, similarities.tolist())
+    ]
 
     # Sort by similarity descending, return top_k
     results.sort(key=lambda x: x[1], reverse=True)
@@ -113,33 +110,160 @@ def keyword_search(
     query: str,
     top_k: int = 20,
     user_id: int | None = None,
-) -> list["SlideLibraryEntry"]:
+) -> list[tuple["SlideLibraryEntry", float]]:
     """
-    BM25-like fallback: keyword search on title, summary, tags.
-    Uses SQLite LIKE for simplicity.
+    Keyword search on title, summary, key_message, tags, text_content.
+    Uses OR logic with simple term-frequency scoring.
+    Returns list of (slide, keyword_score) sorted by score descending.
     """
     from models.slide import SlideLibraryEntry, SourcePresentation
+    from sqlalchemy import or_
 
-    keywords = query.lower().split()
+    keywords = [kw for kw in query.lower().split() if len(kw) > 1]
     if not keywords:
         return []
 
-    results = db.query(SlideLibraryEntry).filter(
+    base_query = db.query(SlideLibraryEntry).filter(
         SlideLibraryEntry.is_outdated == False  # noqa: E712
     )
     if user_id is not None:
-        results = results.join(SourcePresentation).filter(SourcePresentation.owner_id == user_id)
+        base_query = base_query.join(SourcePresentation).filter(SourcePresentation.owner_id == user_id)
 
-    # Filter by each keyword (AND logic)
-    from sqlalchemy import or_
-    for kw in keywords[:5]:  # limit to 5 keywords
+    # OR across keywords and fields — find any slide that matches any keyword
+    keyword_filters = []
+    for kw in keywords[:8]:
         pattern = f"%{kw}%"
-        results = results.filter(
-            or_(
-                SlideLibraryEntry.title.ilike(pattern),
-                SlideLibraryEntry.summary.ilike(pattern),
-                SlideLibraryEntry.tags_json.ilike(pattern),
-            )
-        )
+        keyword_filters.append(or_(
+            SlideLibraryEntry.title.ilike(pattern),
+            SlideLibraryEntry.summary.ilike(pattern),
+            SlideLibraryEntry.key_message.ilike(pattern),
+            SlideLibraryEntry.tags_json.ilike(pattern),
+            SlideLibraryEntry.text_content.ilike(pattern),
+        ))
 
-    return results.limit(top_k).all()
+    candidates = base_query.filter(or_(*keyword_filters)).limit(top_k * 3).all()
+
+    # Score by how many keywords match across fields (simple TF proxy)
+    scored: list[tuple["SlideLibraryEntry", float]] = []
+    for slide in candidates:
+        haystack = " ".join(filter(None, [
+            slide.title or "",
+            slide.summary or "",
+            slide.key_message or "",
+            slide.tags_json or "",
+            slide.text_content or "",
+        ])).lower()
+        score = sum(1.0 for kw in keywords if kw in haystack)
+        # Boost title matches (author-intended label is most reliable)
+        title_lower = (slide.title or "").lower()
+        score += sum(0.5 for kw in keywords if kw in title_lower)
+        scored.append((slide, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored[:top_k]
+
+
+def mmr_rerank(
+    candidates: list[tuple["SlideLibraryEntry", float]],
+    top_k: int,
+    lambda_param: float = 0.7,
+) -> list[tuple["SlideLibraryEntry", float]]:
+    """
+    Maximal Marginal Relevance reranking.
+    Balances relevance (lambda_param) vs diversity (1 - lambda_param).
+    Prevents returning semantically identical slides.
+    """
+    if len(candidates) <= top_k:
+        return candidates
+
+    # Build embedding matrix for candidates
+    embeddings: list[np.ndarray] = []
+    for slide, _ in candidates:
+        if slide.embedding_json:
+            try:
+                emb = np.array(json.loads(slide.embedding_json), dtype=np.float32)
+                norm = np.linalg.norm(emb)
+                embeddings.append(emb / norm if norm > 1e-10 else emb)
+            except Exception:
+                embeddings.append(np.zeros(1536, dtype=np.float32))
+        else:
+            embeddings.append(np.zeros(1536, dtype=np.float32))
+
+    scores = [score for _, score in candidates]
+    max_score = max(scores) if scores else 1.0
+
+    selected_indices: list[int] = []
+    remaining = list(range(len(candidates)))
+
+    while len(selected_indices) < top_k and remaining:
+        best_idx = None
+        best_mmr = -float("inf")
+
+        for i in remaining:
+            relevance = scores[i] / max_score if max_score > 0 else 0.0
+
+            if not selected_indices:
+                redundancy = 0.0
+            else:
+                # Max similarity to already-selected slides
+                sims = [
+                    float(np.dot(embeddings[i], embeddings[j]))
+                    for j in selected_indices
+                ]
+                redundancy = max(sims)
+
+            mmr_score = lambda_param * relevance - (1 - lambda_param) * redundancy
+            if mmr_score > best_mmr:
+                best_mmr = mmr_score
+                best_idx = i
+
+        if best_idx is None:
+            break
+        selected_indices.append(best_idx)
+        remaining.remove(best_idx)
+
+    return [candidates[i] for i in selected_indices]
+
+
+def hybrid_search(
+    db: "Session",
+    query_embedding: list[float],
+    query_text: str,
+    top_k: int = 50,
+    user_id: int | None = None,
+    mmr_lambda: float = 0.7,
+) -> list[tuple["SlideLibraryEntry", float]]:
+    """
+    Full hybrid retrieval: vector search + keyword search → score fusion → MMR rerank.
+    Returns top_k diverse, relevant slides.
+    """
+    # 1. Vector search
+    vector_results = search_slides(
+        db, query_embedding, top_k=min(100, top_k * 4), user_id=user_id
+    )
+
+    # 2. Keyword search
+    keyword_results = keyword_search(db, query_text, top_k=30, user_id=user_id)
+
+    # 3. Score fusion — normalize vector scores, add keyword bonus
+    seen_ids: dict[int, tuple["SlideLibraryEntry", float]] = {}
+
+    for slide, vscore in vector_results:
+        seen_ids[slide.id] = (slide, vscore)
+
+    max_kw_score = max((s for _, s in keyword_results), default=1.0)
+    for slide, kscore in keyword_results:
+        normalized_kw = (kscore / max_kw_score) * 0.35  # keyword bonus up to +0.35
+        if slide.id in seen_ids:
+            existing_slide, existing_score = seen_ids[slide.id]
+            seen_ids[slide.id] = (existing_slide, existing_score + normalized_kw)
+        else:
+            # Keyword-only hit — treat as moderate relevance
+            seen_ids[slide.id] = (slide, 0.4 + normalized_kw)
+
+    merged = list(seen_ids.values())
+    merged.sort(key=lambda x: x[1], reverse=True)
+
+    # 4. MMR diversity reranking on top-60 candidates
+    candidates = merged[:60]
+    return mmr_rerank(candidates, top_k=top_k, lambda_param=mmr_lambda)
