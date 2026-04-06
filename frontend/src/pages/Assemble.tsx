@@ -98,19 +98,19 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-white/10 space-y-2">
+      <div className="p-3 border-b border-gray-200 space-y-2">
         <div className="flex items-center gap-1.5">
           <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Поиск слайдов..."
-              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-white/10 bg-white/5 text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-gray-200 bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-brand-400 focus:border-brand-400"
             />
             {query && (
-              <button onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70">
+              <button onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -118,11 +118,11 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
           <button
             onClick={() => setSelectMode((v) => !v)}
             className={cn('text-[10px] px-2 py-1.5 rounded-lg border transition-colors whitespace-nowrap shrink-0',
-              selectMode ? 'bg-brand-600 text-white border-brand-600' : 'border-white/20 text-white/50 hover:border-brand-500 hover:text-white')}
+              selectMode ? 'bg-brand-600 text-white border-brand-600' : 'border-gray-200 text-gray-500 hover:border-brand-500 hover:text-gray-900')}
           >{selectMode ? 'Отмена' : 'Выбрать'}</button>
           <button
             onClick={onGenerate}
-            className="p-1.5 rounded-lg border border-white/20 text-white/40 hover:text-brand-400 hover:border-brand-500/50 hover:bg-brand-600/10 transition-colors shrink-0"
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-brand-600 hover:border-brand-300 hover:bg-brand-50 transition-colors shrink-0"
             title="AI-генерация слайда"
           ><Sparkles className="w-3.5 h-3.5" /></button>
         </div>
@@ -131,12 +131,12 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
           <div className="flex flex-wrap gap-1">
             <button onClick={() => setProjectId(undefined)}
               className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors',
-                projectId === undefined ? 'bg-brand-600/30 text-brand-400 border-brand-500/50' : 'border-white/15 text-white/40 hover:border-white/30')}
+                projectId === undefined ? 'bg-brand-50 text-brand-600 border-brand-300' : 'border-gray-200 text-gray-400 hover:border-gray-300')}
             >Все</button>
             {projects.map((p) => (
               <button key={p.id} onClick={() => setProjectId(projectId === p.id ? undefined : p.id)}
                 className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors truncate max-w-[100px]',
-                  projectId === p.id ? 'bg-brand-600/20 text-brand-400 border-brand-500/40' : 'border-white/15 text-white/40 hover:border-white/30')}
+                  projectId === p.id ? 'bg-brand-50 text-brand-600 border-brand-300' : 'border-gray-200 text-gray-400 hover:border-gray-300')}
               >
                 <FolderOpen className="w-2.5 h-2.5 shrink-0" style={{ color: p.color }} />
                 <span className="truncate">{p.name}</span>
@@ -151,8 +151,8 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
           <div className="flex justify-center py-8"><Spinner /></div>
         ) : slides.length === 0 ? (
           <div className="text-center py-8">
-            <Search className="w-8 h-8 mx-auto mb-2 text-white/10" />
-            <p className="text-xs text-white/30">Ничего не найдено</p>
+            <Search className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+            <p className="text-xs text-gray-400">Ничего не найдено</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2">
@@ -170,15 +170,15 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
                     }}
                     className={cn(added && !selectMode && 'opacity-40 cursor-not-allowed')}
                   />
-                  <p className="text-[10px] text-white/40 mt-1 leading-tight line-clamp-1 px-0.5">{slide.title || '(без названия)'}</p>
+                  <p className="text-[10px] text-gray-400 mt-1 leading-tight line-clamp-1 px-0.5">{slide.title || '(без названия)'}</p>
                   {selectMode && !added && (
                     <div
                       className={cn('absolute inset-0 rounded-lg border-2 transition-all cursor-pointer',
-                        isSelected ? 'border-brand-500 bg-brand-600/15' : 'border-transparent hover:border-brand-500/50')}
+                        isSelected ? 'border-brand-500 bg-brand-50' : 'border-transparent hover:border-brand-300')}
                       onClick={() => toggleSelect(slide)}
                     >
                       <div className={cn('absolute top-1.5 left-1.5 w-4 h-4 rounded border-2 flex items-center justify-center',
-                        isSelected ? 'bg-brand-600 border-brand-600' : 'bg-white/10 border-white/30')}>
+                        isSelected ? 'bg-brand-600 border-brand-600' : 'bg-white border-gray-300')}>
                         {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
                       </div>
                     </div>
@@ -192,7 +192,7 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
                   ) : (
                     <button
                       onClick={() => onAdd(slide)}
-                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brand-600/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-brand-500 transition-all"
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-brand-500 transition-all"
                     ><Plus className="w-3 h-3" /></button>
                   ))}
                 </div>
@@ -203,7 +203,7 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
       </div>
 
       {selectMode && selected.size > 0 && (
-        <div className="px-3 py-2 border-t border-white/10 bg-brand-600/10">
+        <div className="px-3 py-2 border-t border-gray-200 bg-brand-50">
           <button
             onClick={() => { onAddMultiple(Array.from(selected.values())); setSelected(new Map()); setSelectMode(false) }}
             className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-500 transition-colors"
@@ -215,15 +215,15 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
       )}
 
       {!isSearching && totalPages > 1 && (
-        <div className="px-3 py-2 border-t border-white/10 flex items-center justify-between">
-          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1 rounded hover:bg-white/10 disabled:opacity-30"><ChevronLeft className="w-4 h-4 text-white/40" /></button>
-          <span className="text-[10px] text-white/30">{page} / {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="p-1 rounded hover:bg-white/10 disabled:opacity-30"><ChevronRight className="w-4 h-4 text-white/40" /></button>
+        <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-between">
+          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronLeft className="w-4 h-4 text-gray-400" /></button>
+          <span className="text-[10px] text-gray-400">{page} / {totalPages}</span>
+          <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronRight className="w-4 h-4 text-gray-400" /></button>
         </div>
       )}
       {!isSearching && (
         <div className="pb-2 text-center">
-          <span className="text-[10px] text-white/25">{total} слайдов в библиотеке</span>
+          <span className="text-[10px] text-gray-400">{total} слайдов в библиотеке</span>
         </div>
       )}
     </div>
@@ -247,11 +247,11 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
   if (isLoading) return <div className="flex justify-center py-8"><Spinner /></div>
   if (!isLoading && assets.length === 0 && folders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-white/30 p-6">
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 p-6">
         <Film className="w-10 h-10 opacity-20" />
         <div className="text-center">
-          <p className="text-xs font-medium text-white/40">Нет медиафайлов</p>
-          <p className="text-[10px] mt-1 text-white/25">Загрузите GIF, видео или фото в разделе «Медиа»</p>
+          <p className="text-xs font-medium text-gray-400">Нет медиафайлов</p>
+          <p className="text-[10px] mt-1 text-gray-400">Загрузите GIF, видео или фото в разделе «Медиа»</p>
         </div>
       </div>
     )
@@ -260,34 +260,34 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
   return (
     <div className="flex flex-col h-full">
       {folders.length > 0 && (
-        <div className="p-2 border-b border-white/10 flex flex-wrap gap-1">
+        <div className="p-2 border-b border-gray-200 flex flex-wrap gap-1">
           {(['all', 'unfoldered'] as const).map((v) => (
             <button key={v} onClick={() => setSelectedFolder(v)}
-              className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors', selectedFolder === v ? 'bg-brand-600/30 text-brand-400 border-brand-500/40' : 'border-white/20 text-white/50 hover:border-brand-400/50')}
+              className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors', selectedFolder === v ? 'bg-brand-50 text-brand-600 border-brand-300' : 'border-gray-200 text-gray-500 hover:border-brand-400')}
             >{v === 'all' ? 'Все' : 'Без папки'}</button>
           ))}
           {folders.map((f) => (
             <button key={f.id} onClick={() => setSelectedFolder(f.id)}
-              className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors truncate max-w-[90px]', selectedFolder === f.id ? 'bg-brand-600/30 text-brand-400 border-brand-500/40' : 'border-white/20 text-white/50 hover:border-brand-400/50')}
+              className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors truncate max-w-[90px]', selectedFolder === f.id ? 'bg-brand-50 text-brand-600 border-brand-300' : 'border-gray-200 text-gray-500 hover:border-brand-400')}
             >
               <span className="truncate">{f.name}</span>
-              {f.asset_count > 0 && <span className="shrink-0 text-white/30">{f.asset_count}</span>}
+              {f.asset_count > 0 && <span className="shrink-0 text-gray-400">{f.asset_count}</span>}
             </button>
           ))}
         </div>
       )}
       {assets.length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-white/30 p-4">
+        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 p-4">
           <Film className="w-8 h-8 opacity-20" />
           <p className="text-xs">Нет файлов в папке</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-2">
-          <p className="text-[10px] text-white/30 px-1 pb-2">Нажмите — добавить на слайд</p>
+          <p className="text-[10px] text-gray-400 px-1 pb-2">Нажмите — добавить на слайд</p>
           <div className="grid grid-cols-2 gap-2">
             {assets.map((asset) => (
               <button key={asset.id} onClick={() => onAdd(asset)}
-                className="relative group rounded-lg overflow-hidden border border-white/10 hover:border-brand-400/60 transition-all bg-white/5 hover:shadow-md"
+                className="relative group rounded-lg overflow-hidden border border-gray-200 hover:border-brand-400 transition-all bg-gray-50 hover:shadow-md"
                 style={{ aspectRatio: '16/9' }} title={asset.name}
               >
                 {asset.file_type === 'video'
@@ -580,20 +580,20 @@ export default function Assemble() {
   const isSaving = updateMutation.isPending
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-gray-950">
+    <div className="flex flex-col h-full overflow-hidden bg-gray-50">
 
       {/* ── Top toolbar ─────────────────────────────────────────────────────── */}
-      <header className="shrink-0 flex items-center gap-3 px-4 h-[52px] bg-gray-900 border-b border-white/10">
+      <header className="shrink-0 flex items-center gap-3 px-4 h-[52px] bg-white border-b border-gray-200">
         {/* Back */}
         <button
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors shrink-0"
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 transition-colors shrink-0"
         >
           <ArrowLeft className="w-4 h-4" />
           <span className="hidden sm:inline">Назад</span>
         </button>
 
-        <div className="w-px h-5 bg-white/10 shrink-0" />
+        <div className="w-px h-5 bg-gray-100 shrink-0" />
 
         {/* Title */}
         <div className="flex-1 min-w-0">
@@ -605,9 +605,9 @@ export default function Assemble() {
                 onChange={(e) => setTitleValue(e.target.value)}
                 onBlur={handleTitleSave}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleTitleSave(); if (e.key === 'Escape') { setEditingTitle(false); setTitleValue(assembly?.title || '') } }}
-                className="flex-1 bg-white/10 text-white text-sm font-medium rounded-lg px-2.5 py-1 border border-white/20 focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-400/50"
+                className="flex-1 bg-white text-gray-900 text-sm font-medium rounded-lg px-2.5 py-1 border border-gray-200 focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30"
               />
-              <button onClick={handleTitleSave} className="p-1 rounded text-brand-400 hover:text-brand-300">
+              <button onClick={handleTitleSave} className="p-1 rounded text-brand-600 hover:text-brand-500">
                 <Check className="w-4 h-4" />
               </button>
             </div>
@@ -616,7 +616,7 @@ export default function Assemble() {
               onClick={() => setEditingTitle(true)}
               className="group flex items-center gap-1.5 max-w-sm text-left"
             >
-              <span className="text-sm font-semibold text-white truncate group-hover:text-gray-200 transition-colors">
+              <span className="text-sm font-semibold text-gray-900 truncate group-hover:text-gray-700 transition-colors">
                 {titleValue || 'Без названия'}
               </span>
               <Edit2 className="w-3 h-3 text-gray-600 group-hover:text-gray-400 shrink-0 transition-colors" />
@@ -638,7 +638,7 @@ export default function Assemble() {
           )}
         </div>
 
-        <div className="w-px h-5 bg-white/10 shrink-0" />
+        <div className="w-px h-5 bg-gray-100 shrink-0" />
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
@@ -646,7 +646,7 @@ export default function Assemble() {
           {localSlides.length > 0 && (
             <button
               onClick={() => setShowSlideshow(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 text-sm transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm transition-colors"
             >
               <Play className="w-4 h-4" />
               <span className="hidden md:inline">Слайд-шоу</span>
@@ -662,7 +662,7 @@ export default function Assemble() {
               finally { setIsCreatingTheses(false) }
             }}
             disabled={isCreatingTheses || localSlides.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 text-sm transition-colors disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm transition-colors disabled:opacity-40"
             title="Тезисы к выступлению"
           >
             {isCreatingTheses ? <Spinner size="sm" className="border-gray-400 border-t-transparent" /> : <FileText className="w-4 h-4" />}
@@ -673,7 +673,7 @@ export default function Assemble() {
           <button
             onClick={handleShare}
             disabled={isSharing || localSlides.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 text-gray-300 hover:text-white hover:border-white/40 text-sm transition-colors disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-400 text-sm transition-colors disabled:opacity-40"
           >
             {isSharing ? <Spinner size="sm" className="border-gray-400 border-t-transparent" /> : <Share2 className="w-4 h-4" />}
             <span className="hidden md:inline">Поделиться</span>
@@ -687,20 +687,20 @@ export default function Assemble() {
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* ── Left: filmstrip (dark) ─────────────────────────────────────── */}
+        {/* ── Left: filmstrip ─────────────────────────────────────── */}
         <aside className={cn(
-          'shrink-0 flex flex-col bg-gray-900 border-r border-white/10 transition-all duration-200',
+          'shrink-0 flex flex-col bg-white border-r border-gray-200 transition-all duration-200',
           filmstripCollapsed ? 'w-[48px]' : 'w-[200px]'
         )}>
           {/* Filmstrip header */}
           <div className={cn(
-            'flex items-center gap-2 px-2 py-2.5 border-b border-white/10 shrink-0',
+            'flex items-center gap-2 px-2 py-2.5 border-b border-gray-200 shrink-0',
             filmstripCollapsed && 'justify-center'
           )}>
             {!filmstripCollapsed && (
               <button
                 onClick={() => { setRightTab('library') }}
-                className="flex-1 flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-white transition-colors px-1"
+                className="flex-1 flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-900 transition-colors px-1"
               >
                 <Plus className="w-3 h-3" />
                 Добавить
@@ -708,7 +708,7 @@ export default function Assemble() {
             )}
             <button
               onClick={() => setFilmstripCollapsed((v) => !v)}
-              className="p-1 rounded hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors shrink-0"
+              className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors shrink-0"
               title={filmstripCollapsed ? 'Развернуть' : 'Свернуть'}
             >
               {filmstripCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
@@ -721,7 +721,7 @@ export default function Assemble() {
               <span className="text-[10px] text-gray-600 font-mono">{localSlides.length}</span>
               <button
                 onClick={() => { setFilmstripCollapsed(false); setRightTab('library') }}
-                className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
+                className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors"
                 title="Добавить слайды"
               >
                 <Plus className="w-4 h-4" />
@@ -735,12 +735,12 @@ export default function Assemble() {
               <div className="flex-1 overflow-y-auto">
                 {localSlides.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
-                    <div className="w-16 h-10 rounded border-2 border-dashed border-white/10 flex items-center justify-center">
-                      <Plus className="w-4 h-4 text-white/20" />
+                    <div className="w-16 h-10 rounded border-2 border-dashed border-gray-200 flex items-center justify-center">
+                      <Plus className="w-4 h-4 text-gray-300" />
                     </div>
                     <button
                       onClick={() => setRightTab('library')}
-                      className="text-[10px] text-brand-400 hover:text-brand-300 transition-colors text-center"
+                      className="text-[10px] text-brand-600 hover:text-brand-500 transition-colors text-center"
                     >
                       Добавить слайды из библиотеки
                     </button>
@@ -752,7 +752,6 @@ export default function Assemble() {
                     onSelect={setSelectedIndex}
                     onReorder={handleReorder}
                     onRemove={handleRemove}
-                    dark
                   />
                 )}
               </div>
@@ -761,15 +760,15 @@ export default function Assemble() {
         </aside>
 
         {/* ── Center: canvas ────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col min-w-0 bg-gray-950">
+        <div className="flex-1 flex flex-col min-w-0 bg-gray-50">
 
           {/* Slide navigation bar */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 shrink-0">
             <div className="flex items-center gap-1">
               <button
                 disabled={selectedIndex === 0}
                 onClick={() => setSelectedIndex(selectedIndex - 1)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-300 hover:bg-white/10 disabled:opacity-30 transition-colors"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
               ><ChevronLeft className="w-4 h-4" /></button>
               <span className="text-xs text-gray-500 min-w-[52px] text-center font-mono">
                 {localSlides.length > 0 ? `${selectedIndex + 1} / ${localSlides.length}` : '—'}
@@ -777,7 +776,7 @@ export default function Assemble() {
               <button
                 disabled={selectedIndex >= localSlides.length - 1}
                 onClick={() => setSelectedIndex(selectedIndex + 1)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-300 hover:bg-white/10 disabled:opacity-30 transition-colors"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
               ><ChevronRight className="w-4 h-4" /></button>
             </div>
 
@@ -791,7 +790,7 @@ export default function Assemble() {
             {selectedSlide && !editingSlideId && (
               <button
                 onClick={() => setEditingSlideId(selectedSlide.id)}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-gray-300 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <Edit2 className="w-3.5 h-3.5" /> Редактировать текст
               </button>
@@ -800,7 +799,7 @@ export default function Assemble() {
 
           {/* Main canvas area */}
           {editingSlideId !== null && selectedSlide ? (
-            <div className="flex-1 overflow-hidden bg-gray-900">
+            <div className="flex-1 overflow-hidden bg-white">
               <SlideTextEditor
                 slideId={editingSlideId}
                 thumbnailUrl={selectedSlide.thumbnail_url}
@@ -829,7 +828,7 @@ export default function Assemble() {
                   {/* Slide frame */}
                   <div
                     ref={containerRef}
-                    className="relative w-full rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
+                    className="relative w-full rounded-2xl overflow-hidden shadow-[0_4px_32px_rgba(0,0,0,0.12)] ring-1 ring-gray-200"
                   >
                     {selectedSlide.video_url ? (
                       <video
@@ -863,7 +862,7 @@ export default function Assemble() {
                   {selectedOverlayId && (
                     <button
                       onClick={() => setSelectedOverlayId(null)}
-                      className="text-[11px] text-gray-500 hover:text-gray-300 px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                      className="text-[11px] text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
                     >
                       Снять выделение
                     </button>
@@ -871,12 +870,12 @@ export default function Assemble() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-5">
-                  <div className="w-32 h-20 rounded-xl border-2 border-dashed border-white/10 flex items-center justify-center">
-                    <Plus className="w-8 h-8 text-white/10" />
+                  <div className="w-32 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
+                    <Plus className="w-8 h-8 text-gray-200" />
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-medium text-gray-500 mb-1">Нет слайдов</p>
-                    <button onClick={() => setRightTab('library')} className="text-sm text-brand-400 hover:text-brand-300 transition-colors">
+                    <button onClick={() => setRightTab('library')} className="text-sm text-brand-600 hover:text-brand-500 transition-colors">
                       Добавить слайды из библиотеки →
                     </button>
                   </div>
@@ -888,24 +887,24 @@ export default function Assemble() {
 
         {/* ── Right panel ──────────────────────────────────────────────────── */}
         <aside className={cn(
-          'shrink-0 flex bg-sidebar border-l border-white/10 transition-all duration-200',
+          'shrink-0 flex bg-white border-l border-gray-200 transition-all duration-200',
           rightCollapsed ? 'w-[48px] flex-col' : cn('flex-col', rightTab === 'library' ? 'w-[340px]' : 'w-[300px]')
         )}>
           {/* Header: tabs + collapse toggle */}
           <div className={cn(
-            'border-b border-white/10 shrink-0',
+            'border-b border-gray-200 shrink-0',
             rightCollapsed ? 'flex flex-col items-center gap-1 py-2 px-1' : 'flex items-center'
           )}>
             {rightCollapsed ? (
               <>
                 <button
                   onClick={() => setRightCollapsed(false)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/10 transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                   title="Развернуть панель"
                 >
                   <PanelLeftOpen className="w-4 h-4 rotate-180" />
                 </button>
-                <div className="w-full h-px bg-white/10 my-1" />
+                <div className="w-full h-px bg-gray-100 my-1" />
                 {([
                   { key: 'library' as const, icon: BookImage, label: 'Библиотека' },
                   { key: 'media' as const, icon: Film, label: 'Медиа' },
@@ -916,7 +915,7 @@ export default function Assemble() {
                     title={label}
                     className={cn(
                       'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
-                      rightTab === key ? 'bg-brand-600/30 text-brand-400' : 'text-white/30 hover:bg-white/10 hover:text-white/70'
+                      rightTab === key ? 'bg-brand-50 text-brand-600' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
                     )}
                   >
                     <Icon className="w-4 h-4" />
@@ -938,8 +937,8 @@ export default function Assemble() {
                     className={cn(
                       'relative flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors border-b-2',
                       rightTab === key
-                        ? 'text-brand-400 border-brand-500'
-                        : 'text-white/40 hover:text-white/70 border-transparent'
+                        ? 'text-brand-600 border-brand-500'
+                        : 'text-gray-400 hover:text-gray-600 border-transparent'
                     )}
                   >
                     <Icon className="w-3.5 h-3.5" />
@@ -953,7 +952,7 @@ export default function Assemble() {
                 ))}
                 <button
                   onClick={() => setRightCollapsed(true)}
-                  className="shrink-0 w-8 h-8 mx-1 rounded-lg flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/10 transition-colors"
+                  className="shrink-0 w-8 h-8 mx-1 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                   title="Свернуть панель"
                 >
                   <PanelLeftClose className="w-4 h-4 rotate-180" />
@@ -978,14 +977,14 @@ export default function Assemble() {
                 <div className="flex flex-col h-full overflow-hidden">
                   {!selectedSlide ? (
                     <div className="flex flex-col items-center justify-center flex-1 gap-2 p-6">
-                      <Image className="w-8 h-8 text-white/10" />
-                      <p className="text-xs text-center text-white/30">Выберите слайд, чтобы добавить медиа</p>
+                      <Image className="w-8 h-8 text-gray-200" />
+                      <p className="text-xs text-center text-gray-400">Выберите слайд, чтобы добавить медиа</p>
                     </div>
                   ) : (
                     <>
                       {currentOverlays.length > 0 && (
-                        <div className="p-3 border-b border-white/10 shrink-0">
-                          <p className="text-[10px] text-white/30 uppercase tracking-wider font-medium mb-2">
+                        <div className="p-3 border-b border-gray-200 shrink-0">
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-2">
                             На слайде ({currentOverlays.length})
                           </p>
                           <div className="flex flex-col gap-1">
@@ -995,21 +994,21 @@ export default function Assemble() {
                                 className={cn(
                                   'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors',
                                   selectedOverlayId === overlay.id
-                                    ? 'bg-brand-600/20 border border-brand-500/40'
-                                    : 'border border-transparent hover:bg-white/5'
+                                    ? 'bg-brand-50 border border-brand-300'
+                                    : 'border border-transparent hover:bg-gray-50'
                                 )}
                                 onClick={() => setSelectedOverlayId(selectedOverlayId === overlay.id ? null : overlay.id)}
                               >
-                                <div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-white/10">
+                                <div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-gray-100">
                                   {overlay.file_type === 'video'
                                     ? <video src={overlay.url} className="w-full h-full object-cover" muted />
                                     : <img src={overlay.url} alt="" className="w-full h-full object-cover" />
                                   }
                                 </div>
-                                <span className="text-[10px] text-white/50 flex-1 uppercase font-medium">{overlay.file_type}</span>
+                                <span className="text-[10px] text-gray-500 flex-1 uppercase font-medium">{overlay.file_type}</span>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); deleteOverlay(currentSlideId!, overlay.id) }}
-                                  className="p-1 rounded text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                                  className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-400/10 transition-colors"
                                 ><Trash2 className="w-3 h-3" /></button>
                               </div>
                             ))}
