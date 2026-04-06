@@ -103,6 +103,17 @@ export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
     onError: () => toast.error('Не удалось удалить источники'),
   })
 
+  const deleteSelectedSourcesMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => libraryApi.deleteSource(id))),
+    onSuccess: (_, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+      queryClient.invalidateQueries({ queryKey: ['slides'] })
+      onChange({ ...filters, source_ids: undefined })
+      toast.success(`Удалено источников: ${ids.length}`)
+    },
+    onError: () => toast.error('Не удалось удалить источники'),
+  })
+
   const [extractingId, setExtractingId] = useState<number | null>(null)
   async function handleExtractMedia(sourceId: number) {
     setExtractingId(sourceId)
@@ -257,15 +268,30 @@ export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Источники</p>
-          {sources.length > 0 && (
-            <button
-              onClick={() => setConfirmDeleteAllSources(true)}
-              className="text-gray-400 hover:text-red-500 transition-colors"
-              title="Удалить все источники"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {(filters.source_ids?.length ?? 0) > 0 && (
+              <button
+                onClick={() => {
+                  if (!confirm(`Удалить ${filters.source_ids!.length} источников и все их слайды?`)) return
+                  deleteSelectedSourcesMutation.mutate(filters.source_ids!)
+                }}
+                disabled={deleteSelectedSourcesMutation.isPending}
+                className="text-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                title="Удалить выбранные источники"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {sources.length > 0 && (filters.source_ids?.length ?? 0) === 0 && (
+              <button
+                onClick={() => setConfirmDeleteAllSources(true)}
+                className="text-gray-400 hover:text-red-500 transition-colors"
+                title="Удалить все источники"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex flex-col gap-1">
           {visibleSources.map((s) => {
