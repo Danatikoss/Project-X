@@ -7,11 +7,11 @@ import { libraryApi, projectsApi } from '../../api/client'
 import type { SourcePresentation, Project } from '../../types'
 
 export interface Filters {
-  source_id?: number
+  source_ids?: number[]
   layout_type?: string
   language?: string
   is_outdated?: boolean
-  project_id?: number
+  project_ids?: number[]
   label?: string
 }
 
@@ -61,12 +61,13 @@ function CollapseToggle({ expanded, total, visible, onToggle }: {
 
 export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
   const queryClient = useQueryClient()
-  const hasFilters = Object.values(filters).some((v) => v !== undefined)
+  const hasFilters = Object.values(filters).some((v) => v !== undefined && (Array.isArray(v) ? v.length > 0 : true))
   const [newProjectName, setNewProjectName] = useState('')
   const [showNewProject, setShowNewProject] = useState(false)
   const [sourcesExpanded, setSourcesExpanded] = useState(false)
   const [projectsExpanded, setProjectsExpanded] = useState(false)
   const [labelsExpanded, setLabelsExpanded] = useState(false)
+  const [confirmDeleteAllSources, setConfirmDeleteAllSources] = useState(false)
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -80,13 +81,26 @@ export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
 
   const deleteSourceMutation = useMutation({
     mutationFn: libraryApi.deleteSource,
-    onSuccess: () => {
+    onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['sources'] })
       queryClient.invalidateQueries({ queryKey: ['slides'] })
-      onChange({ ...filters, source_id: undefined })
+      const remaining = (filters.source_ids || []).filter((id) => id !== deletedId)
+      onChange({ ...filters, source_ids: remaining.length ? remaining : undefined })
       toast.success('Источник удалён')
     },
     onError: () => toast.error('Не удалось удалить источник'),
+  })
+
+  const deleteAllSourcesMutation = useMutation({
+    mutationFn: libraryApi.deleteAllSources,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+      queryClient.invalidateQueries({ queryKey: ['slides'] })
+      onChange({ ...filters, source_ids: undefined })
+      setConfirmDeleteAllSources(false)
+      toast.success(`Удалено источников: ${data.deleted}`)
+    },
+    onError: () => toast.error('Не удалось удалить источники'),
   })
 
   const [extractingId, setExtractingId] = useState<number | null>(null)
@@ -116,13 +130,26 @@ export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
 
   const deleteProjectMutation = useMutation({
     mutationFn: projectsApi.delete,
-    onSuccess: () => {
+    onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['slides'] })
-      if (filters.project_id) onChange({ ...filters, project_id: undefined })
+      const remaining = (filters.project_ids || []).filter((id) => id !== deletedId)
+      onChange({ ...filters, project_ids: remaining.length ? remaining : undefined })
       toast.success('Папка удалена')
     },
   })
+
+  const toggleSourceId = (id: number) => {
+    const current = filters.source_ids || []
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+    onChange({ ...filters, source_ids: next.length ? next : undefined })
+  }
+
+  const toggleProjectId = (id: number) => {
+    const current = filters.project_ids || []
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+    onChange({ ...filters, project_ids: next.length ? next : undefined })
+  }
 
   const visibleProjects = projectsExpanded ? projects : projects.slice(0, VISIBLE_COUNT)
   const visibleSources = sourcesExpanded ? sources : sources.slice(0, VISIBLE_COUNT)
@@ -179,32 +206,41 @@ export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
         )}
 
         <div className="flex flex-col gap-1">
-          {visibleProjects.map((p) => (
-            <div key={p.id} className="group flex items-center gap-1">
-              <button
-                onClick={() => onChange({ ...filters, project_id: filters.project_id === p.id ? undefined : p.id })}
-                className={cn(
-                  'flex-1 flex items-center gap-1.5 text-left text-xs px-2 py-1.5 rounded-md transition-colors truncate',
-                  filters.project_id === p.id
-                    ? 'bg-brand-100 text-brand-800 font-medium'
-                    : 'text-gray-600 hover:bg-gray-100'
-                )}
-              >
-                <FolderOpen className="w-3.5 h-3.5 shrink-0" style={{ color: p.color }} />
-                <span className="truncate">{p.name}</span>
-                <span className="ml-auto text-gray-400 font-normal">{p.slide_count}</span>
-              </button>
-              <button
-                onClick={() => {
-                  if (!confirm(`Удалить папку "${p.name}"?`)) return
-                  deleteProjectMutation.mutate(p.id)
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+          {visibleProjects.map((p) => {
+            const isChecked = (filters.project_ids || []).includes(p.id)
+            return (
+              <div key={p.id} className="group flex items-center gap-1">
+                <button
+                  onClick={() => toggleProjectId(p.id)}
+                  className={cn(
+                    'flex-1 flex items-center gap-1.5 text-left text-xs px-2 py-1.5 rounded-md transition-colors truncate',
+                    isChecked
+                      ? 'bg-brand-100 text-brand-800 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  )}
+                >
+                  <div className={cn(
+                    'w-3 h-3 rounded border shrink-0 flex items-center justify-center transition-colors',
+                    isChecked ? 'bg-brand-600 border-brand-600' : 'border-gray-300'
+                  )}>
+                    {isChecked && <svg className="w-2 h-2 text-white" viewBox="0 0 8 8"><path d="M1 4l2 2 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>}
+                  </div>
+                  <FolderOpen className="w-3.5 h-3.5 shrink-0" style={{ color: p.color }} />
+                  <span className="truncate">{p.name}</span>
+                  <span className="ml-auto text-gray-400 font-normal">{p.slide_count}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (!confirm(`Удалить папку "${p.name}"?`)) return
+                    deleteProjectMutation.mutate(p.id)
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            )
+          })}
           {projects.length === 0 && (
             <p className="text-xs text-gray-400 italic px-2">Папок нет</p>
           )}
@@ -219,44 +255,67 @@ export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
 
       {/* Sources */}
       <div>
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Источник</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Источники</p>
+          {sources.length > 0 && (
+            <button
+              onClick={() => setConfirmDeleteAllSources(true)}
+              className="text-gray-400 hover:text-red-500 transition-colors"
+              title="Удалить все источники"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
         <div className="flex flex-col gap-1">
-          {visibleSources.map((s) => (
-            <div key={s.id} className="group flex items-center gap-1">
-              <button
-                onClick={() => onChange({ ...filters, source_id: filters.source_id === s.id ? undefined : s.id })}
-                className={cn(
-                  'flex-1 text-left text-xs px-2 py-1.5 rounded-md transition-colors truncate',
-                  filters.source_id === s.id
-                    ? 'bg-brand-100 text-brand-800 font-medium'
-                    : 'text-gray-600 hover:bg-gray-100'
-                )}
-              >
-                {s.filename}
-              </button>
-              {s.file_type === 'pptx' && (
+          {visibleSources.map((s) => {
+            const isChecked = (filters.source_ids || []).includes(s.id)
+            return (
+              <div key={s.id} className="group flex items-center gap-1">
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleExtractMedia(s.id) }}
-                  disabled={extractingId === s.id}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-brand-600 transition-all disabled:opacity-50"
-                  title="Извлечь GIF и видео"
+                  onClick={() => toggleSourceId(s.id)}
+                  className={cn(
+                    'flex-1 flex items-center gap-1.5 text-left text-xs px-2 py-1.5 rounded-md transition-colors truncate',
+                    isChecked
+                      ? 'bg-brand-100 text-brand-800 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  )}
                 >
-                  <RefreshCw className={cn('w-3 h-3', extractingId === s.id && 'animate-spin')} />
+                  <div className={cn(
+                    'w-3 h-3 rounded border shrink-0 flex items-center justify-center transition-colors',
+                    isChecked ? 'bg-brand-600 border-brand-600' : 'border-gray-300'
+                  )}>
+                    {isChecked && <svg className="w-2 h-2 text-white" viewBox="0 0 8 8"><path d="M1 4l2 2 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>}
+                  </div>
+                  <span className="truncate">{s.filename}</span>
                 </button>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (!confirm('Удалить источник и все его слайды?')) return
-                  deleteSourceMutation.mutate(s.id)
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
-                title="Удалить"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+                {s.file_type === 'pptx' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleExtractMedia(s.id) }}
+                    disabled={extractingId === s.id}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-brand-600 transition-all disabled:opacity-50"
+                    title="Извлечь GIF и видео"
+                  >
+                    <RefreshCw className={cn('w-3 h-3', extractingId === s.id && 'animate-spin')} />
+                  </button>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (!confirm('Удалить источник и все его слайды?')) return
+                    deleteSourceMutation.mutate(s.id)
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
+                  title="Удалить"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            )
+          })}
+          {sources.length === 0 && (
+            <p className="text-xs text-gray-400 italic px-2">Источников нет</p>
+          )}
         </div>
         <CollapseToggle
           expanded={sourcesExpanded}
@@ -265,6 +324,42 @@ export function FilterPanel({ filters, onChange, sources }: FilterPanelProps) {
           onToggle={() => setSourcesExpanded((v) => !v)}
         />
       </div>
+
+      {/* Confirm delete all sources modal */}
+      {confirmDeleteAllSources && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConfirmDeleteAllSources(false)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Удалить все источники?</p>
+                <p className="text-sm text-gray-500 mt-0.5">{sources.length} источников</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">
+              Все источники и их слайды будут безвозвратно удалены из библиотеки.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteAllSources(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => deleteAllSourcesMutation.mutate()}
+                disabled={deleteAllSourcesMutation.isPending}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+              >
+                <Trash2 className="w-4 h-4" />
+                Удалить все
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Labels */}
       {allLabels.length > 0 && (

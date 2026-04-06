@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../store'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, Upload, SlidersHorizontal, Play, X, Trash2, CheckSquare, Square } from 'lucide-react'
+import { Search, Upload, SlidersHorizontal, Play, X, Trash2, CheckSquare, Square, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { libraryApi, searchApi } from '../api/client'
 import { SlideCard } from '../components/common/SlideCard'
@@ -34,6 +34,7 @@ export default function Library() {
   const [previewSlide, setPreviewSlide] = useState<Slide | null>(null)
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null)
   const [slideToDelete, setSlideToDelete] = useState<Slide | null>(null)
+  const [deleteAllSlidesConfirm, setDeleteAllSlidesConfirm] = useState(false)
 
   // ── Multi-select & drag-to-select ─────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -66,6 +67,18 @@ export default function Library() {
       setSelectedIds(new Set())
       setBatchDeleteConfirm(false)
       toast.success(`${ids.length} слайдов удалено из библиотеки`)
+    },
+    onError: () => toast.error('Не удалось удалить слайды'),
+  })
+
+  // ── Delete-all-slides mutation ────────────────────────────────────────────
+  const deleteAllSlidesMutation = useMutation({
+    mutationFn: libraryApi.deleteAllSlides,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['slides'] })
+      queryClient.invalidateQueries({ queryKey: ['search'] })
+      setDeleteAllSlidesConfirm(false)
+      toast.success(`Удалено слайдов: ${data.deleted}`)
     },
     onError: () => toast.error('Не удалось удалить слайды'),
   })
@@ -172,11 +185,11 @@ export default function Library() {
   const { data: libraryData, isFetching: libraryFetching } = useQuery({
     queryKey: ['slides', filters, page],
     queryFn: () => libraryApi.listSlides({
-      source_id: filters.source_id,
+      source_ids: filters.source_ids,
       layout_type: filters.layout_type,
       language: filters.language,
       is_outdated: filters.is_outdated,
-      project_id: filters.project_id,
+      project_ids: filters.project_ids,
       label: filters.label,
       page,
       page_size: PAGE_SIZE,
@@ -191,7 +204,7 @@ export default function Library() {
   const total = isSearching ? (searchResults?.total || 0) : (libraryData?.total || 0)
   const isFetching = isSearching ? searchFetching : libraryFetching
 
-  const activeFiltersCount = Object.values(filters).filter(Boolean).length
+  const activeFiltersCount = Object.values(filters).filter((v) => Array.isArray(v) ? v.length > 0 : Boolean(v)).length
   const hasSelection = selectedIds.size > 0
 
   return (
@@ -269,6 +282,19 @@ export default function Library() {
                 </span>
               ) : `${total} слайдов`}
             </span>
+            {total > 0 && !isSearching && (
+              <button
+                onClick={() => setDeleteAllSlidesConfirm(true)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-red-500 text-sm font-medium',
+                  'hover:border-red-300 hover:bg-red-50 transition-all'
+                )}
+                title="Удалить все слайды"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Удалить все</span>
+              </button>
+            )}
             {slides.length > 0 && (
               <button
                 onClick={() => setSlideshowIndex(0)}
@@ -490,6 +516,45 @@ export default function Library() {
             >
               {deleteMutation.isPending ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
               Удалить
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Delete all slides confirmation */}
+    {deleteAllSlidesConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteAllSlidesConfirm(false)}>
+        <div
+          className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Удалить все слайды?</p>
+              <p className="text-sm text-gray-500 mt-0.5">{total} слайдов в библиотеке</p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            Все слайды будут безвозвратно удалены из библиотеки. Это действие нельзя отменить.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setDeleteAllSlidesConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={() => deleteAllSlidesMutation.mutate()}
+              disabled={deleteAllSlidesMutation.isPending}
+              className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+            >
+              {deleteAllSlidesMutation.isPending ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
+              Удалить все
             </button>
           </div>
         </div>

@@ -113,12 +113,14 @@ def list_slides(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, ge=1, le=100),
     source_id: int | None = Query(default=None),
+    source_ids: list[int] = Query(default=[]),
     layout_type: str | None = Query(default=None),
     language: str | None = Query(default=None),
     tag: str | None = Query(default=None),
     label: str | None = Query(default=None),
     is_outdated: bool | None = Query(default=None),
     project_id: int | None = Query(default=None),
+    project_ids: list[int] = Query(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -128,8 +130,13 @@ def list_slides(
         SlideLibraryEntry.is_generated == False,  # noqa: E712
     )
 
-    if source_id is not None:
-        query = query.filter(SlideLibraryEntry.source_id == source_id)
+    # Support both single and multi-select source filters
+    effective_source_ids = list(source_ids)
+    if source_id is not None and source_id not in effective_source_ids:
+        effective_source_ids.append(source_id)
+    if effective_source_ids:
+        query = query.filter(SlideLibraryEntry.source_id.in_(effective_source_ids))
+
     if layout_type:
         query = query.filter(SlideLibraryEntry.layout_type == layout_type)
     if language:
@@ -140,8 +147,13 @@ def list_slides(
         query = query.filter(SlideLibraryEntry.tags_json.ilike(f'%"{tag}"%'))
     if label:
         query = query.filter(SlideLibraryEntry.labels_json.ilike(f'%"{label}"%'))
-    if project_id is not None:
-        query = query.filter(SlideLibraryEntry.project_id == project_id)
+
+    # Support both single and multi-select project filters
+    effective_project_ids = list(project_ids)
+    if project_id is not None and project_id not in effective_project_ids:
+        effective_project_ids.append(project_id)
+    if effective_project_ids:
+        query = query.filter(SlideLibraryEntry.project_id.in_(effective_project_ids))
 
     total = query.count()
     slides = query.options(joinedload(SlideLibraryEntry.source)) \
@@ -214,6 +226,34 @@ def delete_slide(slide_id: int, db: Session = Depends(get_db), user: User = Depe
     _check_slide_owner(slide, user.id)
     db.delete(slide)
     db.commit()
+
+
+@router.delete("/slides/all", status_code=200)
+def delete_all_slides(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Delete all library slides belonging to this user (non-generated only)."""
+    owned = _owned_source_ids(db, user.id)
+    result = db.query(SlideLibraryEntry).filter(
+        SlideLibraryEntry.source_id.in_(owned),
+        SlideLibraryEntry.is_generated == False,  # noqa: E712
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": result}
+
+
+@router.delete("/sources/all", status_code=200)
+def delete_all_sources(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Delete all sources (and their slides) belonging to this user."""
+    sources = db.query(SourcePresentation).filter(
+        SourcePresentation.owner_id == user.id
+    ).all()
+    count = len(sources)
+    for source in sources:
+        thumb_dir = Path(settings.thumbnail_dir) / str(source.id)
+        if thumb_dir.exists():
+            shutil.rmtree(thumb_dir)
+        db.delete(source)
+    db.commit()
+    return {"deleted": count}
 
 
 from pydantic import BaseModel as _BaseModel

@@ -107,12 +107,14 @@ export interface ListSlidesParams {
   page?: number
   page_size?: number
   source_id?: number
+  source_ids?: number[]
   layout_type?: string
   language?: string
   tag?: string
   label?: string
   is_outdated?: boolean
   project_id?: number
+  project_ids?: number[]
 }
 
 export const libraryApi = {
@@ -139,7 +141,21 @@ export const libraryApi = {
   },
 
   listSlides: async (params: ListSlidesParams = {}): Promise<SlideListResponse> => {
-    const res = await api.get<SlideListResponse>('/library/slides', { params })
+    const res = await api.get<SlideListResponse>('/library/slides', {
+      params,
+      paramsSerializer: (p) => {
+        const sp = new URLSearchParams()
+        for (const [k, v] of Object.entries(p)) {
+          if (v === undefined || v === null) continue
+          if (Array.isArray(v)) {
+            v.forEach((item) => sp.append(k, String(item)))
+          } else {
+            sp.append(k, String(v))
+          }
+        }
+        return sp.toString()
+      },
+    })
     return res.data
   },
 
@@ -184,6 +200,16 @@ export const libraryApi = {
 
   deleteSource: async (id: number): Promise<void> => {
     await api.delete(`/library/sources/${id}`)
+  },
+
+  deleteAllSlides: async (): Promise<{ deleted: number }> => {
+    const res = await api.delete<{ deleted: number }>('/library/slides/all')
+    return res.data
+  },
+
+  deleteAllSources: async (): Promise<{ deleted: number }> => {
+    const res = await api.delete<{ deleted: number }>('/library/sources/all')
+    return res.data
   },
 
   extractMedia: async (id: number): Promise<{ updated: number; total: number }> => {
