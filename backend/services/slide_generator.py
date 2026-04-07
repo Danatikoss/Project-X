@@ -865,6 +865,11 @@ def render_slide_pptx(blueprint: dict, colors: BrandColors,
         sldIdLst = prs.slides._sldIdLst
         for sld_id in list(sldIdLst):
             sldIdLst.remove(sld_id)
+        # Force 16:9 widescreen dimensions — our content uses these constants.
+        # Templates uploaded in other sizes (10"×5.62", 4:3, A4, etc.) would
+        # otherwise push content outside the visible slide area.
+        prs.slide_width  = W
+        prs.slide_height = H
     else:
         prs = Presentation()
         prs.slide_width  = W
