@@ -12,6 +12,7 @@ from api.theses import router as theses_router
 from api.presentations import router as presentations_router
 from api.admin import router as admin_router
 from api.wopi import api_router as wopi_api_router
+from api.training import router as training_router
 
 router = APIRouter()
 
@@ -29,3 +30,4 @@ router.include_router(presentations_router, prefix="/presentations", tags=["Pres
 router.include_router(admin_router, prefix="/admin", tags=["Admin"])
 # Collabora WOPI token endpoint (authenticated, feature-flagged)
 router.include_router(wopi_api_router, prefix="/wopi", tags=["WOPI"])
+router.include_router(training_router, prefix="/training", tags=["Training"])
