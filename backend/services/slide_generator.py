@@ -339,12 +339,15 @@ def _add_circle_label(slide, cx, cy, r, fill: RGBColor, text: str, size: int = 1
 
 
 def _header(slide, title: str, c: BrandColors, h: float = 1.45):
-    """Full-width primary header bar with white title — Gamma style."""
-    _add_rect(slide, Inches(0), Inches(0), W, Inches(h),
-              fill=c.shape_rgb, opacity=c.shape_opacity)
-    # Thin secondary accent at bottom of header
-    _add_rect(slide, Inches(0), Inches(h), W, Inches(0.055),
-              fill=c.secondary_rgb, opacity=c.shape_opacity)
+    """Full-width primary header bar with white title — Gamma style.
+    When a background image is set, skips colored rectangles (bg already has them)
+    and only renders the title text."""
+    if not c.background_image_path:
+        _add_rect(slide, Inches(0), Inches(0), W, Inches(h),
+                  fill=c.shape_rgb, opacity=c.shape_opacity)
+        # Thin secondary accent at bottom of header
+        _add_rect(slide, Inches(0), Inches(h), W, Inches(0.055),
+                  fill=c.secondary_rgb, opacity=c.shape_opacity)
     _add_text(slide, title,
               Inches(0.5), Inches(0), W - Inches(0.6), Inches(h),
               bold=True, size=c.title_font_size, color=c.title_color_rgb,

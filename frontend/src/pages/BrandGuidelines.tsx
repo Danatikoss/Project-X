@@ -27,21 +27,26 @@ function SlidePreview({ tmpl }: { tmpl: Partial<BrandTemplate> & { background_im
     ? { backgroundImage: `url(${tmpl.background_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : { backgroundColor: '#FFFFFF' }
 
+  const hasBg = !!tmpl.background_image_url
+
   return (
     <div
       className="relative w-full overflow-hidden rounded-2xl border border-slate-200 shadow-lg select-none"
       style={{ aspectRatio: '16/9', ...bgStyle }}
     >
-      {/* Header bar */}
-      <div
-        className="absolute inset-x-0 top-0 flex items-center px-4"
-        style={{
-          height: '28%',
-          backgroundColor: shapeColor,
-          opacity,
-        }}
-      />
-      {/* Header title on top */}
+      {/* Header bar — hidden when background image is set (bg already contains it) */}
+      {!hasBg && (
+        <div
+          className="absolute inset-x-0 top-0 flex items-center px-4"
+          style={{
+            height: '28%',
+            backgroundColor: shapeColor,
+            opacity,
+          }}
+        />
+      )}
+
+      {/* Header title */}
       <div
         className="absolute inset-x-0 top-0 flex items-center px-4"
         style={{ height: '28%', zIndex: 1 }}
@@ -54,16 +59,18 @@ function SlidePreview({ tmpl }: { tmpl: Partial<BrandTemplate> & { background_im
         </span>
       </div>
 
-      {/* Accent strip */}
-      <div
-        className="absolute inset-x-0"
-        style={{
-          top: '28%',
-          height: '2.5%',
-          backgroundColor: shapeColor,
-          opacity: opacity * 0.7,
-        }}
-      />
+      {/* Accent strip — hidden when background image is set */}
+      {!hasBg && (
+        <div
+          className="absolute inset-x-0"
+          style={{
+            top: '28%',
+            height: '2.5%',
+            backgroundColor: shapeColor,
+            opacity: opacity * 0.7,
+          }}
+        />
+      )}
 
       {/* Body content */}
       <div
@@ -74,25 +81,27 @@ function SlidePreview({ tmpl }: { tmpl: Partial<BrandTemplate> & { background_im
           <div key={i} className="flex items-center gap-2">
             <div
               className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: shapeColor, opacity }}
+              style={{ backgroundColor: hasBg ? titleColor : shapeColor, opacity }}
             />
-            <span style={{ fontSize: bodySize, color: bodyColor }}>{item}</span>
+            <span style={{ fontSize: bodySize, color: hasBg ? titleColor : bodyColor }}>{item}</span>
           </div>
         ))}
       </div>
 
-      {/* Decorative circle */}
-      <div
-        className="absolute rounded-full"
-        style={{
-          width: '30%',
-          aspectRatio: '1',
-          right: '-8%',
-          bottom: '-15%',
-          backgroundColor: shapeColor,
-          opacity: opacity * 0.2,
-        }}
-      />
+      {/* Decorative circle — hidden when background image is set */}
+      {!hasBg && (
+        <div
+          className="absolute rounded-full"
+          style={{
+            width: '30%',
+            aspectRatio: '1',
+            right: '-8%',
+            bottom: '-15%',
+            backgroundColor: shapeColor,
+            opacity: opacity * 0.2,
+          }}
+        />
+      )}
     </div>
   )
 }
