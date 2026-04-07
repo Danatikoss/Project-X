@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     collabora_url: str = Field(default="", env="COLLABORA_URL")
     wopi_base_url: str = Field(default="", env="WOPI_BASE_URL")
 
+    # ── Fixed brand overrides (always applied to every generated slide) ──────
+    # Set FIXED_BG_IMAGE to an absolute filesystem path to lock the background.
+    fixed_bg_image: str = Field(default="", env="FIXED_BG_IMAGE")
+    # Hex color without '#', e.g. "1E3A8A". Empty = use template or default.
+    fixed_shape_color: str = Field(default="", env="FIXED_SHAPE_COLOR")
+    # 0 = use template/default; >0 overrides title font size (pt)
+    fixed_title_font_size: int = Field(default=0, env="FIXED_TITLE_FONT_SIZE")
+    # 0 = use template/default; >0 overrides body font size (pt)
+    fixed_body_font_size: int = Field(default=0, env="FIXED_BODY_FONT_SIZE")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

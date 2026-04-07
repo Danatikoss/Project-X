@@ -421,7 +421,8 @@ def _render_big_stat(slide, bp: dict, c: BrandColors):
 
 
 def _render_section_divider(slide, bp: dict, c: BrandColors):
-    _set_bg(slide, c.shape_rgb)
+    if not c.background_image_path:
+        _set_bg(slide, c.shape_rgb)
 
     # Decorative large circle (upper-right, partially off-screen — lighter shade)
     r_big = Inches(4.0)
@@ -456,7 +457,8 @@ def _render_section_divider(slide, bp: dict, c: BrandColors):
 
 def _render_quote(slide, bp: dict, c: BrandColors):
     content = bp.get("content", {})
-    _set_bg(slide, c.shape_rgb)
+    if not c.background_image_path:
+        _set_bg(slide, c.shape_rgb)
 
     # Decorative circle accent (slightly lighter shade)
     pr, pg, pb = c.shape_rgb[0], c.shape_rgb[1], c.shape_rgb[2]
@@ -626,7 +628,8 @@ def _render_key_message(slide, bp: dict, c: BrandColors):
     subtext = content.get("subtext", "")
     label   = bp.get("title", "")
 
-    _set_bg(slide, RGBColor(255, 255, 255))
+    if not c.background_image_path:
+        _set_bg(slide, RGBColor(255, 255, 255))
 
     # Thin accent bar at top
     _add_rect(slide, Inches(0), Inches(0), W, Inches(0.12),
@@ -940,6 +943,17 @@ async def generate_slide(
                 colors.shape_opacity = tmpl.shape_opacity
             if tmpl.background_image_path and os.path.exists(tmpl.background_image_path):
                 colors.background_image_path = tmpl.background_image_path
+
+    # ── Fixed brand overrides (from env/settings — always win over templates) ─
+    if settings.fixed_bg_image and os.path.exists(settings.fixed_bg_image):
+        colors.background_image_path = settings.fixed_bg_image
+    if settings.fixed_shape_color:
+        colors.shape_color = settings.fixed_shape_color
+        colors.primary     = settings.fixed_shape_color
+    if settings.fixed_title_font_size > 0:
+        colors.title_font_size = settings.fixed_title_font_size
+    if settings.fixed_body_font_size > 0:
+        colors.body_font_size = settings.fixed_body_font_size
 
     # 2. Generate blueprint
     blueprint = await generate_blueprint(prompt, context)
