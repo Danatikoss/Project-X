@@ -103,6 +103,14 @@ def migrate_db():
             _add_column_if_missing(conn, "brand_templates", "body_font_size", "INTEGER DEFAULT 18")
             _add_column_if_missing(conn, "brand_templates", "shape_color", "TEXT DEFAULT '1E3A8A'")
             _add_column_if_missing(conn, "brand_templates", "shape_opacity", "INTEGER DEFAULT 100")
+            _add_column_if_missing(conn, "brand_templates", "title_x", "REAL DEFAULT 0.038")
+            _add_column_if_missing(conn, "brand_templates", "title_y", "REAL DEFAULT 0.00")
+            _add_column_if_missing(conn, "brand_templates", "title_w", "REAL DEFAULT 0.924")
+            _add_column_if_missing(conn, "brand_templates", "title_h", "REAL DEFAULT 0.193")
+            _add_column_if_missing(conn, "brand_templates", "body_x",  "REAL DEFAULT 0.038")
+            _add_column_if_missing(conn, "brand_templates", "body_y",  "REAL DEFAULT 0.220")
+            _add_column_if_missing(conn, "brand_templates", "body_w",  "REAL DEFAULT 0.924")
+            _add_column_if_missing(conn, "brand_templates", "body_h",  "REAL DEFAULT 0.760")
 
 
 def create_tables():

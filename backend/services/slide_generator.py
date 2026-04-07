@@ -62,6 +62,15 @@ class BrandColors:
     shape_color: str = "1E3A8A"         # color for decorative shapes
     shape_opacity: int = 100            # 0-100
     background_image_path: str | None = None  # filesystem path to bg image
+    # ── Text zone positions (fraction 0-1 of slide dimensions) ───────────────
+    title_x: float = 0.038
+    title_y: float = 0.00
+    title_w: float = 0.924
+    title_h: float = 0.193   # ≈ 1.45" of 7.5"
+    body_x: float = 0.038
+    body_y: float = 0.220    # ≈ 1.65" of 7.5"
+    body_w: float = 0.924
+    body_h: float = 0.760
 
     def _rgb(self, h: str) -> RGBColor:
         h = h.lstrip("#")
@@ -87,6 +96,17 @@ class BrandColors:
     def shape_rgb(self): return self._rgb(self.shape_color)
     @property
     def title_color_rgb(self): return self._rgb(self.title_font_color)
+
+    def content_area(self, header_h_in: float = 1.45):
+        """
+        Returns (left, top, width, height) in python-pptx units for body content.
+        When a background image is set, uses custom body_x/y/w/h positions.
+        Otherwise falls back to the standard position below the header bar.
+        """
+        if self.background_image_path:
+            return (W * self.body_x, H * self.body_y, W * self.body_w, H * self.body_h)
+        content_top = Inches(header_h_in + 0.15)
+        return (Inches(0.55), content_top, W - Inches(0.75), H - content_top - Inches(0.2))
 
 
 def _extract_brand_colors(pptx_path: str) -> BrandColors:
@@ -341,18 +361,28 @@ def _add_circle_label(slide, cx, cy, r, fill: RGBColor, text: str, size: int = 1
 def _header(slide, title: str, c: BrandColors, h: float = 1.45):
     """Full-width primary header bar with white title — Gamma style.
     When a background image is set, skips colored rectangles (bg already has them)
-    and only renders the title text."""
+    and places the title text at the custom title_x/y/w/h position."""
     if not c.background_image_path:
         _add_rect(slide, Inches(0), Inches(0), W, Inches(h),
                   fill=c.shape_rgb, opacity=c.shape_opacity)
-        # Thin secondary accent at bottom of header
         _add_rect(slide, Inches(0), Inches(h), W, Inches(0.055),
                   fill=c.secondary_rgb, opacity=c.shape_opacity)
-    _add_text(slide, title,
-              Inches(0.5), Inches(0), W - Inches(0.6), Inches(h),
-              bold=True, size=c.title_font_size, color=c.title_color_rgb,
-              font_name=c.font_family)
-    return h
+        _add_text(slide, title,
+                  Inches(0.5), Inches(0), W - Inches(0.6), Inches(h),
+                  bold=True, size=c.title_font_size, color=c.title_color_rgb,
+                  font_name=c.font_family)
+        return h
+    else:
+        # Use custom title zone position from brand guidelines
+        tx = W * c.title_x
+        ty = H * c.title_y
+        tw = W * c.title_w
+        th = H * c.title_h
+        _add_text(slide, title, tx, ty, tw, th,
+                  bold=True, size=c.title_font_size, color=c.title_color_rgb,
+                  font_name=c.font_family)
+        # Return the bottom of the title zone in inches so renderers can place content below
+        return (c.title_y + c.title_h) * 7.5
 
 
 # ─── Layout renderers ─────────────────────────────────────────────────────────
@@ -362,13 +392,13 @@ def _render_title_content(slide, bp: dict, c: BrandColors):
     body_txt = bp.get("content", {}).get("text", "")
 
     hh = _header(slide, bp.get("title", ""), c, h=1.45)
-    content_top = Inches(hh + 0.15)
+    bx, by, bw, bh = c.content_area(hh)
 
     if items:
-        _add_bullets(slide, items, Inches(0.55), content_top, W - Inches(0.75), H - content_top - Inches(0.2),
+        _add_bullets(slide, items, bx, by, bw, bh,
                      size=c.body_font_size, color=c.text_body_rgb, font_name=c.font_family)
     elif body_txt:
-        _add_text(slide, body_txt, Inches(0.55), content_top, W - Inches(0.75), H - content_top - Inches(0.2),
+        _add_text(slide, body_txt, bx, by, bw, bh,
                   size=c.body_font_size, color=c.text_body_rgb, font_name=c.font_family)
 
 
@@ -377,11 +407,12 @@ def _render_two_column(slide, bp: dict, c: BrandColors):
     rc = bp.get("content", {}).get("right", {})
 
     hh = _header(slide, bp.get("title", ""), c, h=1.3)
-    col_top = Inches(hh + 0.2)
-    col_h   = H - col_top - Inches(0.2)
-    col_w   = (W - Inches(0.5)) / 2 - Inches(0.15)
-    lx = Inches(0.35)
-    rx = Inches(0.35) + col_w + Inches(0.3)
+    bx, by, bw, bh = c.content_area(hh)
+    col_top = by
+    col_h   = bh
+    col_w   = (bw - Inches(0.3)) / 2
+    lx = bx
+    rx = bx + col_w + Inches(0.3)
 
     # Vertical divider
     _add_rect(slide, W / 2 - Inches(0.025), col_top, Inches(0.05), col_h,
@@ -406,20 +437,23 @@ def _render_big_stat(slide, bp: dict, c: BrandColors):
     content = bp.get("content", {})
 
     hh = _header(slide, bp.get("title", ""), c, h=1.1)
-    # Huge value
+    bx, by, bw, bh = c.content_area(hh)
+
+    stat_w = bw * 0.55
     _add_text(slide, content.get("value", ""),
-              Inches(0.5), Inches(hh + 0.05), Inches(7), Inches(3.5),
+              bx, by, stat_w, bh * 0.65,
               bold=True, size=100, color=c.shape_rgb, word_wrap=False, font_name=c.font_family)
-    # Label under value
     _add_text(slide, content.get("label", ""),
-              Inches(0.5), Inches(hh + 3.6), Inches(6), Inches(0.75),
+              bx, by + bh * 0.65, stat_w, bh * 0.2,
               size=22, color=c.text_muted_rgb, font_name=c.font_family)
 
     ctx = content.get("context", [])
     if ctx:
-        _add_rect(slide, Inches(7.6), Inches(hh + 0.15), Inches(0.05), H - Inches(hh + 0.35),
+        divider_x = bx + stat_w + Inches(0.2)
+        _add_rect(slide, divider_x, by, Inches(0.05), bh,
                   fill=c.divider_rgb, opacity=c.shape_opacity)
-        _add_bullets(slide, ctx, Inches(7.85), Inches(hh + 0.4), Inches(5.1), H - Inches(hh + 0.6),
+        _add_bullets(slide, ctx, divider_x + Inches(0.25), by + Inches(0.15),
+                     bw - stat_w - Inches(0.6), bh - Inches(0.2),
                      size=c.body_font_size - 1, color=c.text_body_rgb, font_name=c.font_family)
 
 
@@ -574,15 +608,16 @@ def _render_icon_grid(slide, bp: dict, c: BrandColors):
         return
 
     hh = _header(slide, bp.get("title", ""), c, h=1.35)
+    bx, by, bw, bh = c.content_area(hh)
 
     n       = len(cards)
     cols    = 2 if n > 2 else n
     rows    = (n + cols - 1) // cols
     pad     = Inches(0.22)
-    x0      = Inches(0.3)
-    y0      = Inches(hh + 0.15)
-    avail_w = W - x0 - Inches(0.25)
-    avail_h = H - y0 - Inches(0.15)
+    x0      = bx
+    y0      = by
+    avail_w = bw
+    avail_h = bh
     card_w  = (avail_w - pad * (cols - 1)) / cols
     card_h  = (avail_h - pad * (rows - 1)) / rows
 
@@ -670,12 +705,13 @@ def _render_process_flow(slide, bp: dict, c: BrandColors):
         return
 
     hh = _header(slide, bp.get("title", ""), c, h=1.3)
+    bx, by, bw, bh = c.content_area(hh)
 
     n       = len(steps)
-    x0      = Inches(0.35)
-    x1      = W - Inches(0.2)
+    x0      = bx
+    x1      = bx + bw
     step_w  = (x1 - x0) / n
-    circle_y = Inches(3.2)
+    circle_y = by + bh * 0.42   # vertically centered in body area
     r        = Inches(0.42)
 
     # Connecting line
@@ -721,6 +757,7 @@ def _render_chart_bar(slide, bp: dict, c: BrandColors):
     series_data = content.get("series", [])
 
     hh = _header(slide, bp.get("title", ""), c, h=1.3)
+    bx, by, bw, bh = c.content_area(hh)
 
     if not categories or not series_data:
         return
@@ -733,7 +770,7 @@ def _render_chart_bar(slide, bp: dict, c: BrandColors):
 
         chart_frame = slide.shapes.add_chart(
             XL_CHART_TYPE.COLUMN_CLUSTERED,
-            Inches(0.4), Inches(hh + 0.1), W - Inches(0.6), H - Inches(hh + 0.3),
+            bx, by, bw, bh,
             chart_data
         )
         chart = chart_frame.chart
@@ -768,6 +805,7 @@ def _render_chart_pie(slide, bp: dict, c: BrandColors):
     slices  = content.get("slices", [])
 
     hh = _header(slide, bp.get("title", ""), c, h=1.3)
+    bx, by, bw, bh = c.content_area(hh)
 
     if not slices:
         return
@@ -779,7 +817,7 @@ def _render_chart_pie(slide, bp: dict, c: BrandColors):
 
         chart_frame = slide.shapes.add_chart(
             XL_CHART_TYPE.PIE,
-            Inches(0.4), Inches(hh + 0.1), W - Inches(0.6), H - Inches(hh + 0.3),
+            bx, by, bw, bh,
             chart_data
         )
         chart = chart_frame.chart
@@ -946,6 +984,13 @@ async def generate_slide(
                 colors.shape_opacity = tmpl.shape_opacity
             if tmpl.background_image_path and os.path.exists(tmpl.background_image_path):
                 colors.background_image_path = tmpl.background_image_path
+
+            # Custom text zone positions
+            for field in ("title_x", "title_y", "title_w", "title_h",
+                          "body_x",  "body_y",  "body_w",  "body_h"):
+                val = getattr(tmpl, field, None)
+                if val is not None:
+                    setattr(colors, field, val)
 
     # ── Fixed brand overrides (from env/settings — always win over templates) ─
     if settings.fixed_bg_image and os.path.exists(settings.fixed_bg_image):

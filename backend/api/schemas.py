@@ -170,6 +170,15 @@ class BrandTemplateResponse(BaseModel):
     body_font_size: int = 18
     shape_color: str = "1E3A8A"
     shape_opacity: int = 100
+    # Text zone positions (fraction of slide 0-1)
+    title_x: float = 0.038
+    title_y: float = 0.00
+    title_w: float = 0.924
+    title_h: float = 0.193
+    body_x: float = 0.038
+    body_y: float = 0.220
+    body_w: float = 0.924
+    body_h: float = 0.760
 
     class Config:
         from_attributes = True
@@ -184,6 +193,15 @@ class BrandGuidelinesUpdate(BaseModel):
     shape_color: Optional[str] = None
     shape_opacity: Optional[int] = None
     clear_background_image: bool = False
+    # Text zone positions
+    title_x: Optional[float] = None
+    title_y: Optional[float] = None
+    title_w: Optional[float] = None
+    title_h: Optional[float] = None
+    body_x: Optional[float] = None
+    body_y: Optional[float] = None
+    body_w: Optional[float] = None
+    body_h: Optional[float] = None
 
 
 class GenerateSlideRequest(BaseModel):

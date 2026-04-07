@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Upload, Trash2, ShieldCheck, Users, Save,
-  Image, Type, Palette, Sliders, AlertCircle,
+  Image, Type, Palette, Sliders, AlertCircle, Move,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { brandApi, adminApi } from '../api/client'
@@ -12,95 +12,231 @@ import { Spinner } from '../components/common/Spinner'
 import { cn } from '../utils/cn'
 import type { BrandTemplate, AdminUser } from '../types'
 
-// ─── Live slide preview ───────────────────────────────────────────────────────
+// ─── Zone position type ───────────────────────────────────────────────────────
 
-function SlidePreview({ tmpl }: { tmpl: Partial<BrandTemplate> & { background_image_url?: string | null } }) {
-  const shapeColor   = `#${tmpl.shape_color ?? '1E3A8A'}`
-  const titleColor   = `#${tmpl.title_font_color ?? 'FFFFFF'}`
-  const bodyColor    = `#${tmpl.body_font_color ?? '1E293B'}`
-  const opacity      = (tmpl.shape_opacity ?? 100) / 100
-  const font         = tmpl.font_family ?? 'Montserrat'
-  const titleSize    = Math.round((tmpl.title_font_size ?? 30) * 0.42)   // scale to preview
-  const bodySize     = Math.round((tmpl.body_font_size ?? 18) * 0.42)
+interface ZonePos { x: number; y: number; w: number; h: number }
 
-  const bgStyle: React.CSSProperties = tmpl.background_image_url
+// ─── Live slide preview with optional draggable zones ────────────────────────
+
+interface SlidePreviewProps {
+  tmpl: Partial<BrandTemplate> & { background_image_url?: string | null }
+  titleZone?: ZonePos
+  bodyZone?: ZonePos
+  onTitleZoneChange?: (z: ZonePos) => void
+  onBodyZoneChange?: (z: ZonePos) => void
+  editZones?: boolean
+}
+
+function SlidePreview({ tmpl, titleZone, bodyZone, onTitleZoneChange, onBodyZoneChange, editZones }: SlidePreviewProps) {
+  const shapeColor = `#${tmpl.shape_color ?? '1E3A8A'}`
+  const titleColor = `#${tmpl.title_font_color ?? 'FFFFFF'}`
+  const bodyColor  = `#${tmpl.body_font_color ?? '1E293B'}`
+  const opacity    = (tmpl.shape_opacity ?? 100) / 100
+  const font       = tmpl.font_family ?? 'Montserrat'
+  const titleSize  = Math.round((tmpl.title_font_size ?? 30) * 0.42)
+  const bodySize   = Math.round((tmpl.body_font_size ?? 18) * 0.42)
+  const hasBg      = !!tmpl.background_image_url
+
+  const bgStyle: React.CSSProperties = hasBg
     ? { backgroundImage: `url(${tmpl.background_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : { backgroundColor: '#FFFFFF' }
 
-  const hasBg = !!tmpl.background_image_url
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Default zones matching backend defaults
+  const tz = titleZone ?? { x: 0.038, y: 0.00,  w: 0.924, h: 0.193 }
+  const bz = bodyZone  ?? { x: 0.038, y: 0.220, w: 0.924, h: 0.760 }
+
+  // Dragging state: which zone + which handle
+  // handle: 'move' | 'se' | 'sw' | 'ne' | 'nw'
+  const drag = useRef<{
+    zone: 'title' | 'body'
+    handle: string
+    startMouse: { x: number; y: number }
+    startZone: ZonePos
+  } | null>(null)
+
+  const startDrag = useCallback((
+    e: React.MouseEvent,
+    zone: 'title' | 'body',
+    handle: string,
+  ) => {
+    if (!editZones) return
+    e.preventDefault()
+    e.stopPropagation()
+    drag.current = {
+      zone, handle,
+      startMouse: { x: e.clientX, y: e.clientY },
+      startZone: zone === 'title' ? { ...tz } : { ...bz },
+    }
+
+    const onMove = (ev: MouseEvent) => {
+      if (!drag.current || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const dx = (ev.clientX - drag.current.startMouse.x) / rect.width
+      const dy = (ev.clientY - drag.current.startMouse.y) / rect.height
+      const sz = drag.current.startZone
+      let z = { ...sz }
+
+      if (drag.current.handle === 'move') {
+        z.x = Math.max(0, Math.min(1 - sz.w, sz.x + dx))
+        z.y = Math.max(0, Math.min(1 - sz.h, sz.y + dy))
+      } else {
+        if (drag.current.handle.includes('e')) z.w = Math.max(0.05, Math.min(1 - sz.x, sz.w + dx))
+        if (drag.current.handle.includes('s')) z.h = Math.max(0.03, Math.min(1 - sz.y, sz.h + dy))
+        if (drag.current.handle.includes('w')) {
+          const newX = Math.max(0, Math.min(sz.x + sz.w - 0.05, sz.x + dx))
+          z.w = sz.x + sz.w - newX; z.x = newX
+        }
+        if (drag.current.handle.includes('n')) {
+          const newY = Math.max(0, Math.min(sz.y + sz.h - 0.03, sz.y + dy))
+          z.h = sz.y + sz.h - newY; z.y = newY
+        }
+      }
+
+      if (drag.current.zone === 'title') onTitleZoneChange?.(z)
+      else onBodyZoneChange?.(z)
+    }
+
+    const onUp = () => {
+      drag.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [editZones, tz, bz, onTitleZoneChange, onBodyZoneChange])
+
+  const ZoneBox = ({ zone, zonePos, color, label, onStart }: {
+    zone: 'title' | 'body'
+    zonePos: ZonePos
+    color: string
+    label: string
+    onStart: (e: React.MouseEvent, h: string) => void
+  }) => (
+    <div
+      className="absolute"
+      style={{
+        left:   `${zonePos.x * 100}%`,
+        top:    `${zonePos.y * 100}%`,
+        width:  `${zonePos.w * 100}%`,
+        height: `${zonePos.h * 100}%`,
+        border: `2px dashed ${color}`,
+        backgroundColor: `${color}22`,
+        cursor: 'move',
+        zIndex: 10,
+      }}
+      onMouseDown={(e) => onStart(e, 'move')}
+    >
+      {/* Label */}
+      <span
+        className="absolute top-0.5 left-1 text-[9px] font-bold select-none"
+        style={{ color }}
+      >{label}</span>
+      {/* SE resize handle */}
+      <div
+        className="absolute w-3 h-3 rounded-sm"
+        style={{ right: -4, bottom: -4, backgroundColor: color, cursor: 'se-resize' }}
+        onMouseDown={(e) => { e.stopPropagation(); onStart(e, 'se') }}
+      />
+      {/* SW resize handle */}
+      <div
+        className="absolute w-3 h-3 rounded-sm"
+        style={{ left: -4, bottom: -4, backgroundColor: color, cursor: 'sw-resize' }}
+        onMouseDown={(e) => { e.stopPropagation(); onStart(e, 'sw') }}
+      />
+      {/* NE resize handle */}
+      <div
+        className="absolute w-3 h-3 rounded-sm"
+        style={{ right: -4, top: -4, backgroundColor: color, cursor: 'ne-resize' }}
+        onMouseDown={(e) => { e.stopPropagation(); onStart(e, 'ne') }}
+      />
+      {/* NW resize handle */}
+      <div
+        className="absolute w-3 h-3 rounded-sm"
+        style={{ left: -4, top: -4, backgroundColor: color, cursor: 'nw-resize' }}
+        onMouseDown={(e) => { e.stopPropagation(); onStart(e, 'nw') }}
+      />
+    </div>
+  )
 
   return (
     <div
+      ref={containerRef}
       className="relative w-full overflow-hidden rounded-2xl border border-slate-200 shadow-lg select-none"
       style={{ aspectRatio: '16/9', ...bgStyle }}
     >
-      {/* Header bar — hidden when background image is set (bg already contains it) */}
+      {/* Header bar (only when no bg image) */}
       {!hasBg && (
         <div
-          className="absolute inset-x-0 top-0 flex items-center px-4"
-          style={{
-            height: '28%',
-            backgroundColor: shapeColor,
-            opacity,
-          }}
+          className="absolute inset-x-0 top-0"
+          style={{ height: '28%', backgroundColor: shapeColor, opacity }}
         />
       )}
-
-      {/* Header title */}
-      <div
-        className="absolute inset-x-0 top-0 flex items-center px-4"
-        style={{ height: '28%', zIndex: 1 }}
-      >
-        <span
-          className="font-bold leading-tight"
-          style={{ fontFamily: font, fontSize: titleSize, color: titleColor }}
-        >
-          Заголовок слайда
-        </span>
-      </div>
-
-      {/* Accent strip — hidden when background image is set */}
       {!hasBg && (
         <div
           className="absolute inset-x-0"
-          style={{
-            top: '28%',
-            height: '2.5%',
-            backgroundColor: shapeColor,
-            opacity: opacity * 0.7,
-          }}
+          style={{ top: '28%', height: '2.5%', backgroundColor: shapeColor, opacity: opacity * 0.7 }}
         />
       )}
 
-      {/* Body content */}
-      <div
-        className="absolute inset-x-0 px-4 pt-3 space-y-2"
-        style={{ top: '32%', fontFamily: font }}
-      >
-        {['Первый пункт с данными', 'Второй пункт с деталями', 'Третий пункт для примера'].map((item, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <div
-              className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: hasBg ? titleColor : shapeColor, opacity }}
-            />
-            <span style={{ fontSize: bodySize, color: hasBg ? titleColor : bodyColor }}>{item}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Decorative circle — hidden when background image is set */}
-      {!hasBg && (
+      {/* Title text — positioned by zone */}
+      {!editZones && (
         <div
-          className="absolute rounded-full"
+          className="absolute flex items-center"
           style={{
-            width: '30%',
-            aspectRatio: '1',
-            right: '-8%',
-            bottom: '-15%',
-            backgroundColor: shapeColor,
-            opacity: opacity * 0.2,
+            left:   `${tz.x * 100}%`,
+            top:    `${tz.y * 100}%`,
+            width:  `${tz.w * 100}%`,
+            height: `${tz.h * 100}%`,
+            zIndex: 1,
           }}
-        />
+        >
+          <span className="font-bold leading-tight" style={{ fontFamily: font, fontSize: titleSize, color: titleColor }}>
+            Заголовок слайда
+          </span>
+        </div>
+      )}
+
+      {/* Body content — positioned by zone */}
+      {!editZones && (
+        <div
+          className="absolute space-y-1.5"
+          style={{
+            left:    `${bz.x * 100}%`,
+            top:     `${bz.y * 100}%`,
+            width:   `${bz.w * 100}%`,
+            height:  `${bz.h * 100}%`,
+            fontFamily: font,
+            paddingTop: '2%',
+          }}
+        >
+          {['Первый пункт с данными', 'Второй пункт с деталями', 'Третий пункт для примера'].map((item, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: hasBg ? titleColor : shapeColor, opacity }} />
+              <span style={{ fontSize: bodySize, color: hasBg ? titleColor : bodyColor }}>{item}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Decorative circle (only when no bg) */}
+      {!hasBg && !editZones && (
+        <div className="absolute rounded-full"
+          style={{ width: '30%', aspectRatio: '1', right: '-8%', bottom: '-15%',
+            backgroundColor: shapeColor, opacity: opacity * 0.2 }} />
+      )}
+
+      {/* Draggable zone boxes (only in edit mode) */}
+      {editZones && (
+        <>
+          <ZoneBox zone="title" zonePos={tz} color="#3B82F6" label="Заголовок"
+            onStart={(e, h) => startDrag(e, 'title', h)} />
+          <ZoneBox zone="body" zonePos={bz} color="#10B981" label="Контент"
+            onStart={(e, h) => startDrag(e, 'body', h)} />
+        </>
       )}
     </div>
   )
@@ -153,11 +289,27 @@ function GuidelinesEditor({ tmpl, onClose }: { tmpl: BrandTemplate; onClose: () 
     shape_opacity:    tmpl.shape_opacity    ?? 100,
   })
 
+  const [titleZone, setTitleZone] = useState<ZonePos>({
+    x: tmpl.title_x ?? 0.038, y: tmpl.title_y ?? 0.00,
+    w: tmpl.title_w ?? 0.924, h: tmpl.title_h ?? 0.193,
+  })
+  const [bodyZone, setBodyZone] = useState<ZonePos>({
+    x: tmpl.body_x ?? 0.038, y: tmpl.body_y ?? 0.220,
+    w: tmpl.body_w ?? 0.924, h: tmpl.body_h ?? 0.760,
+  })
+  const [editZones, setEditZones] = useState(false)
+
   const [bgUrl, setBgUrl]           = useState<string | null>(tmpl.background_image_url ?? null)
   const [bgPreview, setBgPreview]   = useState<string | null>(tmpl.background_image_url ?? null)
 
   const saveMutation = useMutation({
-    mutationFn: () => brandApi.updateGuidelines(tmpl.id, draft),
+    mutationFn: () => brandApi.updateGuidelines(tmpl.id, {
+      ...draft,
+      title_x: titleZone.x, title_y: titleZone.y,
+      title_w: titleZone.w, title_h: titleZone.h,
+      body_x: bodyZone.x,   body_y: bodyZone.y,
+      body_w: bodyZone.w,   body_h: bodyZone.h,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['brand-templates'] })
       toast.success('Brand guidelines сохранены')
@@ -205,6 +357,10 @@ function GuidelinesEditor({ tmpl, onClose }: { tmpl: BrandTemplate; onClose: () 
   const previewData = {
     ...draft,
     background_image_url: bgPreview,
+    title_x: titleZone.x, title_y: titleZone.y,
+    title_w: titleZone.w, title_h: titleZone.h,
+    body_x: bodyZone.x,   body_y: bodyZone.y,
+    body_w: bodyZone.w,   body_h: bodyZone.h,
   }
 
   return (
@@ -342,6 +498,76 @@ function GuidelinesEditor({ tmpl, onClose }: { tmpl: BrandTemplate; onClose: () 
           </div>
         </section>
 
+        {/* Layout zones */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Move className="w-4 h-4 text-brand-600" />
+              <h3 className="text-sm font-semibold text-slate-700">Расположение зон</h3>
+            </div>
+            <button
+              onClick={() => setEditZones((v) => !v)}
+              className={cn(
+                'text-xs font-semibold px-3 py-1 rounded-lg transition-colors',
+                editZones
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-brand-50 hover:text-brand-700'
+              )}
+            >
+              {editZones ? 'Режим редактирования ON' : 'Редактировать зоны'}
+            </button>
+          </div>
+
+          {editZones && (
+            <p className="text-xs text-slate-400 mb-3">
+              Перетащите синюю рамку (Заголовок) и зелёную (Контент) на превью справа. Уголки — для изменения размера.
+            </p>
+          )}
+
+          {/* Numeric inputs for precision */}
+          <div className="space-y-3 text-xs">
+            {/* Title zone */}
+            <div>
+              <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">
+                ■ Заголовок (синяя зона)
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {(['x','y','w','h'] as const).map((k) => (
+                  <label key={k} className="flex flex-col gap-0.5">
+                    <span className="text-slate-400 uppercase">{k}</span>
+                    <input
+                      type="number" step="0.01" min="0" max="1"
+                      value={Math.round(titleZone[k] * 1000) / 1000}
+                      onChange={(e) => setTitleZone({ ...titleZone, [k]: Math.max(0, Math.min(1, Number(e.target.value))) })}
+                      className="w-full px-2 py-1 border border-slate-200 rounded-lg text-center focus:outline-none focus:border-blue-400"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Body zone */}
+            <div>
+              <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide mb-1.5">
+                ■ Контент (зелёная зона)
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {(['x','y','w','h'] as const).map((k) => (
+                  <label key={k} className="flex flex-col gap-0.5">
+                    <span className="text-slate-400 uppercase">{k}</span>
+                    <input
+                      type="number" step="0.01" min="0" max="1"
+                      value={Math.round(bodyZone[k] * 1000) / 1000}
+                      onChange={(e) => setBodyZone({ ...bodyZone, [k]: Math.max(0, Math.min(1, Number(e.target.value))) })}
+                      className="w-full px-2 py-1 border border-slate-200 rounded-lg text-center focus:outline-none focus:border-emerald-400"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Save */}
         <div className="flex gap-3">
           <button
@@ -368,7 +594,14 @@ function GuidelinesEditor({ tmpl, onClose }: { tmpl: BrandTemplate; onClose: () 
           <h3 className="text-sm font-semibold text-slate-700">Live Preview</h3>
           <span className="text-xs text-slate-400">обновляется мгновенно</span>
         </div>
-        <SlidePreview tmpl={previewData} />
+        <SlidePreview
+          tmpl={previewData}
+          titleZone={titleZone}
+          bodyZone={bodyZone}
+          onTitleZoneChange={setTitleZone}
+          onBodyZoneChange={setBodyZone}
+          editZones={editZones}
+        />
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-500 space-y-1">
           <p className="font-semibold text-slate-600">Применится ко всем макетам:</p>
           <p>• Заголовок: <strong style={{ fontFamily: draft.font_family, color: `#${draft.title_font_color}` === '#FFFFFF' ? '#666' : `#${draft.title_font_color}` }}>{draft.font_family}</strong>, {draft.title_font_size}pt</p>

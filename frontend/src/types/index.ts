@@ -164,6 +164,15 @@ export interface BrandTemplate {
   body_font_size: number
   shape_color: string
   shape_opacity: number
+  // Text zone positions (fraction 0-1 of slide dimensions)
+  title_x: number
+  title_y: number
+  title_w: number
+  title_h: number
+  body_x: number
+  body_y: number
+  body_w: number
+  body_h: number
 }
 
 export interface BrandGuidelinesUpdate {
@@ -175,6 +184,14 @@ export interface BrandGuidelinesUpdate {
   shape_color?: string
   shape_opacity?: number
   clear_background_image?: boolean
+  title_x?: number
+  title_y?: number
+  title_w?: number
+  title_h?: number
+  body_x?: number
+  body_y?: number
+  body_w?: number
+  body_h?: number
 }
 
 export interface AdminUser {
@@ -287,6 +304,14 @@ export interface ThesesSession {
 }
 
 // ─── Text Editing ─────────────────────────────────────────────────────────────
+
+export interface SlideEditVersion {
+  id: number
+  version_number: number
+  created_at: string
+  created_by_name: string | null
+  edit_count: number
+}
 
 export interface TextElement {
   id: string

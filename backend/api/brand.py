@@ -192,6 +192,13 @@ def update_guidelines(
                 pass
         tmpl.background_image_path = None
 
+    # Text zone positions
+    for field in ("title_x", "title_y", "title_w", "title_h",
+                  "body_x",  "body_y",  "body_w",  "body_h"):
+        val = getattr(body, field, None)
+        if val is not None:
+            setattr(tmpl, field, max(0.0, min(1.0, val)))
+
     db.commit()
     db.refresh(tmpl)
     return _tmpl_to_response(tmpl)
@@ -323,4 +330,12 @@ def _tmpl_to_response(t: BrandTemplate) -> BrandTemplateResponse:
         body_font_size   = t.body_font_size or 18,
         shape_color      = t.shape_color or "1E3A8A",
         shape_opacity    = t.shape_opacity if t.shape_opacity is not None else 100,
+        title_x = t.title_x if t.title_x is not None else 0.038,
+        title_y = t.title_y if t.title_y is not None else 0.00,
+        title_w = t.title_w if t.title_w is not None else 0.924,
+        title_h = t.title_h if t.title_h is not None else 0.193,
+        body_x  = t.body_x  if t.body_x  is not None else 0.038,
+        body_y  = t.body_y  if t.body_y  is not None else 0.220,
+        body_w  = t.body_w  if t.body_w  is not None else 0.924,
+        body_h  = t.body_h  if t.body_h  is not None else 0.760,
     )
