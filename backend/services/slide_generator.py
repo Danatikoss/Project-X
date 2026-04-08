@@ -861,10 +861,27 @@ def render_slide_pptx(blueprint: dict, colors: BrandColors,
     """
     if template_pptx_path:
         prs = Presentation(template_pptx_path)
-        # Remove all pre-existing slides, keep theme/master
-        sldIdLst = prs.slides._sldIdLst
+        # Properly remove all pre-existing slides: access slides first (triggers
+        # python-pptx's rename_slide_parts), then drop OPC relationships so the
+        # orphaned slide parts are NOT written to the saved ZIP.  Previously we
+        # only removed entries from sldIdLst, which left the original slide XML
+        # in the package.  python-pptx then wrote *both* the old and new slide1.xml
+        # into the ZIP, producing duplicate entries that confused LibreOffice.
+        _r_ns = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id'
+        _slides = prs.slides  # access first to trigger internal initialisation
+        sldIdLst = _slides._sldIdLst
+        # Collect rIds before clearing
+        _slide_rids = [sld.get(_r_ns) for sld in list(sldIdLst)]
+        # Remove all sldId elements
         for sld_id in list(sldIdLst):
             sldIdLst.remove(sld_id)
+        # Drop OPC relationships — parts without incoming rels won't be written
+        for rId in _slide_rids:
+            if rId:
+                try:
+                    prs.part.drop_rel(rId)
+                except Exception:
+                    pass
         # Force 16:9 widescreen dimensions — our content uses these constants.
         # Templates uploaded in other sizes (10"×5.62", 4:3, A4, etc.) would
         # otherwise push content outside the visible slide area.

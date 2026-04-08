@@ -221,9 +221,36 @@ async def create_assembly_from_plan(
                 template_pptx_path = tmpl.pptx_path
             stored = json.loads(tmpl.colors_json or "{}")
             if stored:
-                colors = BrandColors(**{k: v for k, v in stored.items() if hasattr(BrandColors, k)})
+                colors = BrandColors(**{k: v for k, v in stored.items()
+                                        if k in BrandColors.__dataclass_fields__})
             elif template_pptx_path:
                 colors = _extract_brand_colors(template_pptx_path)
+
+            # Apply strict brand guidelines — same as generate_slide() in slide_generator.py.
+            # Previously this block was missing, so background_image_path, font settings,
+            # shape_color, and text-zone positions were never applied for plan-based generation.
+            if tmpl.font_family:
+                colors.font_family = tmpl.font_family
+            if tmpl.title_font_color:
+                colors.title_font_color = tmpl.title_font_color
+            if tmpl.title_font_size:
+                colors.title_font_size = tmpl.title_font_size
+            if tmpl.body_font_color:
+                colors.body_font_color = tmpl.body_font_color
+            if tmpl.body_font_size:
+                colors.body_font_size = tmpl.body_font_size
+            if tmpl.shape_color:
+                colors.shape_color = tmpl.shape_color
+                colors.primary = tmpl.shape_color
+            if tmpl.shape_opacity is not None:
+                colors.shape_opacity = tmpl.shape_opacity
+            if tmpl.background_image_path and os.path.exists(tmpl.background_image_path):
+                colors.background_image_path = tmpl.background_image_path
+            for field in ("title_x", "title_y", "title_w", "title_h",
+                          "body_x",  "body_y",  "body_w",  "body_h"):
+                val = getattr(tmpl, field, None)
+                if val is not None:
+                    setattr(colors, field, val)
 
     # Render each slide and save to library
     slide_ids: list[int] = []
