@@ -474,8 +474,10 @@ export default function Assemble() {
           o.x = Math.max(0, Math.min(100 - o.w, startOverlay.x + dx))
           o.y = Math.max(0, Math.min(100 - o.h, startOverlay.y + dy))
         } else {
-          o.w = Math.max(10, Math.min(100 - startOverlay.x, startOverlay.w + dx))
-          o.h = Math.max(5, Math.min(100 - startOverlay.y, startOverlay.h + dy))
+          const ratio = startOverlay.h / startOverlay.w
+          const newW = Math.max(10, Math.min(100 - startOverlay.x, startOverlay.w + dx))
+          o.w = newW
+          o.h = Math.max(5, Math.min(100 - startOverlay.y, newW * ratio))
         }
         list[i] = o
         return { ...prev, [slideId]: list }
@@ -573,6 +575,7 @@ export default function Assemble() {
   }
 
   const selectedSlide = localSlides[selectedIndex]
+  const editingSlide = editingSlideId !== null ? localSlides.find((s) => s.id === editingSlideId) : null
   const existingIds = new Set(localSlides.map((s) => s.id))
   const isManual = assembly?.prompt === '(создано вручную)'
   const currentSlideId = selectedSlide ? String(selectedSlide.id) : null
@@ -798,11 +801,11 @@ export default function Assemble() {
           </div>
 
           {/* Main canvas area */}
-          {editingSlideId !== null && selectedSlide ? (
+          {editingSlideId !== null && editingSlide ? (
             <div className="flex-1 overflow-hidden bg-white">
               <SlideTextEditor
                 slideId={editingSlideId}
-                thumbnailUrl={selectedSlide.thumbnail_url}
+                thumbnailUrl={editingSlide.thumbnail_url}
                 onClose={() => setEditingSlideId(null)}
                 onSaved={(thumbVersion) => {
                   setEditingSlideId(null)
