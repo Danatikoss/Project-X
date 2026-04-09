@@ -471,13 +471,14 @@ export default function Assemble() {
         if (i < 0) return prev
         const o = { ...list[i] }
         if (mode === 'move') {
-          o.x = Math.max(0, Math.min(100 - o.w, startOverlay.x + dx))
-          o.y = Math.max(0, Math.min(100 - o.h, startOverlay.y + dy))
+          // Allow free movement — overlay can extend beyond slide bounds
+          o.x = startOverlay.x + dx
+          o.y = startOverlay.y + dy
         } else {
           const ratio = startOverlay.h / startOverlay.w
-          const newW = Math.max(10, Math.min(100 - startOverlay.x, startOverlay.w + dx))
+          const newW = Math.max(10, startOverlay.w + dx)
           o.w = newW
-          o.h = Math.max(5, Math.min(100 - startOverlay.y, newW * ratio))
+          o.h = Math.max(5, newW * ratio)
         }
         list[i] = o
         return { ...prev, [slideId]: list }
@@ -501,8 +502,12 @@ export default function Assemble() {
     const slideId = String(localSlides[selectedIndex]?.id)
     if (!slideId || slideId === 'undefined') { toast.error('Выберите слайд'); return }
     const naturalAR = await getNaturalAR(asset)
-    const w = 35
-    const h = naturalAR ? Math.max(5, Math.min(80, Math.round(w * (16 / 9) / naturalAR))) : 22
+    const w0 = 35
+    const h0 = naturalAR ? Math.round(w0 * (16 / 9) / naturalAR) : 22
+    // Scale down proportionally so the overlay fits within the slide on first placement
+    const scale = Math.min(1, 90 / Math.max(w0, h0))
+    const w = Math.max(10, Math.round(w0 * scale))
+    const h = Math.max(5, Math.round(h0 * scale))
     const newOverlay: SlideOverlay = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       asset_id: asset.id, url: asset.url, file_type: asset.file_type,
@@ -828,16 +833,17 @@ export default function Assemble() {
             >
               {selectedSlide ? (
                 <div className="w-full max-w-4xl flex flex-col items-center gap-4">
-                  {/* Slide frame */}
-                  <div
-                    ref={containerRef}
-                    className="relative w-full rounded-2xl overflow-hidden shadow-[0_4px_32px_rgba(0,0,0,0.12)] ring-1 ring-gray-200"
-                  >
+                  {/* Slide frame — overflow-visible so overlays can extend beyond the slide */}
+                  <div className="relative w-full" style={{ padding: '8% 12%' }}>
+                    <div
+                      ref={containerRef}
+                      className="relative w-full rounded-2xl shadow-[0_4px_32px_rgba(0,0,0,0.12)] ring-1 ring-gray-200"
+                    >
                     {selectedSlide.video_url ? (
                       <video
                         src={selectedSlide.video_url}
                         controls
-                        className="w-full object-contain bg-black"
+                        className="w-full object-contain bg-black rounded-2xl"
                         style={{ aspectRatio: '16/9' }}
                         poster={selectedSlide.thumbnail_url || undefined}
                       />
@@ -854,6 +860,7 @@ export default function Assemble() {
                         onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
                       />
                     ))}
+                  </div>
                   </div>
 
                   {/* Below slide: hints */}
