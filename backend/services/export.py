@@ -58,6 +58,42 @@ def _open_as_pil(path: Path):
         return None
 
 
+def _get_image_size(path: Path) -> tuple[int, int] | None:
+    """Return (width, height) of an image file without fully decoding it."""
+    try:
+        from PIL import Image
+        with Image.open(str(path)) as img:
+            return img.size
+    except Exception:
+        return None
+
+
+def _contain_rect(
+    nat_w: int, nat_h: int,
+    cx: int, cy: int, cw: int, ch: int
+) -> tuple[int, int, int, int]:
+    """
+    Compute object-contain placement of an image inside a container.
+    Returns (x, y, w, h) — the actual rectangle where the image should be drawn,
+    centered inside the container with aspect ratio preserved.
+    """
+    if nat_w <= 0 or nat_h <= 0 or cw <= 0 or ch <= 0:
+        return cx, cy, cw, ch
+    img_ar = nat_w / nat_h
+    container_ar = cw / ch
+    if img_ar > container_ar:
+        # wider image → fit by width
+        dw = cw
+        dh = max(1, round(cw / img_ar))
+    else:
+        # taller image → fit by height
+        dh = ch
+        dw = max(1, round(ch * img_ar))
+    off_x = (cw - dw) // 2
+    off_y = (ch - dh) // 2
+    return cx + off_x, cy + off_y, dw, dh
+
+
 def _add_overlays_pptx(dest_prs, dest_slide, slide_id: str, overlays_map: dict):
     """Add media overlay shapes on top of an already-added PPTX slide."""
     slide_overlays = overlays_map.get(slide_id, [])
@@ -82,16 +118,20 @@ def _add_overlays_pptx(dest_prs, dest_slide, slide_id: str, overlays_map: dict):
             file_type = ov.get("file_type", "")
 
             if file_type in ("gif", "image"):
-                # GIF preserves animation in PPTX; images embed as-is
+                # Apply object-contain sizing: place at actual natural-AR dimensions
+                size = _get_image_size(path)
+                if size:
+                    left, top, w, h = _contain_rect(size[0], size[1], left, top, w, h)
                 dest_slide.shapes.add_picture(str(path), left, top, w, h)
             elif file_type == "video":
                 # Try to get poster frame via PIL; fall back to colored placeholder
                 frame = _open_as_pil(path)
                 if frame:
+                    al, at, aw, ah = _contain_rect(frame.width, frame.height, left, top, w, h)
                     buf = io.BytesIO()
                     frame.convert("RGB").save(buf, "PNG")
                     buf.seek(0)
-                    dest_slide.shapes.add_picture(buf, left, top, w, h)
+                    dest_slide.shapes.add_picture(buf, al, at, aw, ah)
                 else:
                     _add_video_placeholder_pptx(dest_slide, left, top, w, h)
         except Exception as e:
@@ -147,8 +187,10 @@ def _composite_overlays_pil(base_img, slide_id: str, overlays_map: dict):
                 result.paste(placeholder, (x, y), placeholder)
                 continue
 
-            frame_resized = frame.resize((w, h), Image.LANCZOS)
-            result.paste(frame_resized, (x, y), frame_resized)
+            # Apply object-contain sizing to match what the editor shows
+            ax, ay, aw, ah = _contain_rect(frame.width, frame.height, x, y, w, h)
+            frame_resized = frame.resize((aw, ah), Image.LANCZOS)
+            result.paste(frame_resized, (ax, ay), frame_resized)
         except Exception as e:
             logger.debug(f"Overlay PIL composite failed: {e}")
 
