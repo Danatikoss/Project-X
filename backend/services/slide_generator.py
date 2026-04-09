@@ -3,11 +3,14 @@ Slide generation service — Phase 3.
 
 Flow:
   1. Load brand template (optional) → extract colors
-  2. Call Claude Opus via OpenRouter to generate structured blueprint JSON
-  3. Render blueprint → python-pptx slide (brand colors applied)
-  4. Save PPTX, generate PNG thumbnail (LibreOffice → PyMuPDF)
-  5. Create SlideLibraryEntry in DB with embedding
-  6. Return entry
+  2. Call LLM to generate structured blueprint JSON
+  3. validate_and_trim(blueprint) — enforce layout-specific char/count limits
+  4. Render blueprint → python-pptx slide (brand colors applied)
+  5. Save PPTX, generate PNG thumbnail (fitz.open PPTX directly — no LibreOffice)
+  6. vision_validate(thumbnail, blueprint, colors) — GPT-4o Vision QA check
+     • If issues found → re-render with fixed blueprint (one retry)
+  7. Create SlideLibraryEntry in DB with embedding + blueprint_json
+  8. Return entry
 """
 
 import json
@@ -32,6 +35,7 @@ from sqlalchemy.orm import Session
 from config import settings
 from models.brand import BrandTemplate
 from models.slide import SlideLibraryEntry, SourcePresentation
+from services.blueprint_validator import validate_and_trim
 from services.embedding import embed_single
 
 logger = logging.getLogger(__name__)
@@ -957,44 +961,250 @@ def render_slide_pptx(blueprint: dict, colors: BrandColors,
 
 # ─── Thumbnail ───────────────────────────────────────────────────────────────
 
-def _find_libreoffice() -> str:
-    """Find the LibreOffice binary on macOS or Linux."""
-    candidates = [
-        "libreoffice",
-        "/Applications/LibreOffice.app/Contents/MacOS/soffice",
-        "/usr/bin/libreoffice",
-        "/usr/bin/soffice",
-    ]
-    for c in candidates:
-        if subprocess.run(["which", c], capture_output=True).returncode == 0:
-            return c
-        if Path(c).exists():
-            return c
-    return "libreoffice"
+# LibreOffice subprocess intentionally disabled.
+# AI-generated slides use PyMuPDF (fitz) directly — no subprocess, no Dock icon.
+# If fitz cannot render the PPTX correctly the error is raised explicitly so
+# we can diagnose and fix rather than silently hiding it behind a fallback.
+
+# Target thumbnail resolution: 1920×1080 (16:9)
+_THUMB_W = 1920
+_THUMB_H = 1080
 
 
 def _render_thumbnail(pptx_path: str, out_dir: str) -> str | None:
-    """PPTX → PDF via LibreOffice → PNG via PyMuPDF."""
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [_find_libreoffice(), "--headless", "--convert-to", "pdf",
-                 "--outdir", tmp, pptx_path],
-                capture_output=True, timeout=60,
-            )
-            pdfs = list(Path(tmp).glob("*.pdf"))
-            if not pdfs:
-                return None
+    """
+    PPTX → PNG via PyMuPDF (fitz.open on PPTX directly, no LibreOffice).
 
-            doc  = fitz.open(str(pdfs[0]))
-            page = doc[0]
-            pix  = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
-            out  = os.path.join(out_dir, "0.png")
-            pix.save(out)
-            return out
+    Issue: PyMuPDF ≥1.23 can open PPTX natively but its EMU parser reports our
+    13.333"×7.5" widescreen slides as 400×600 pt (portrait) instead of 960×540 pt
+    (landscape).  We compensate by computing per-axis scale factors that map the
+    fitz coordinate space back to the correct 1920×1080 output.
+    """
+    from PIL import Image
+    import io as _io
+
+    SLIDE_PT_W = 960.0   # 13.333" × 72 pt/in
+    SLIDE_PT_H = 540.0   # 7.5"    × 72 pt/in
+
+    try:
+        doc  = fitz.open(pptx_path)
+        page = doc[0]
+        rect = page.rect                           # what fitz thinks the page is
+
+        # Compute per-axis scale so fitz→correct PT→target pixels
+        sx = (_THUMB_W / rect.width)  * (rect.width  / SLIDE_PT_W)
+        sy = (_THUMB_H / rect.height) * (rect.height / SLIDE_PT_H)
+
+        logger.debug(
+            f"fitz page rect {rect.width:.0f}×{rect.height:.0f}pt "
+            f"(correct: {SLIDE_PT_W:.0f}×{SLIDE_PT_H:.0f}pt) → "
+            f"matrix sx={sx:.3f} sy={sy:.3f} → {_THUMB_W}×{_THUMB_H}px"
+        )
+
+        pix = page.get_pixmap(matrix=fitz.Matrix(sx, sy), alpha=False)
+        doc.close()
+
+        # Ensure exact target size (fitz may produce off-by-one due to rounding)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        if img.size != (_THUMB_W, _THUMB_H):
+            img = img.resize((_THUMB_W, _THUMB_H), Image.LANCZOS)
+
+        out = os.path.join(out_dir, "0.png")
+        img.save(out, "PNG")
+        return out
+
     except Exception as e:
-        logger.error(f"Thumbnail render failed: {e}")
-        return None
+        # Raise explicitly so callers can log the real error — no silent fallback.
+        logger.error(f"_render_thumbnail FAILED for {pptx_path}: {type(e).__name__}: {e}")
+        raise
+
+
+def _render_thumbnail_branded(
+    pptx_path: str,
+    out_dir: str,
+    colors: "BrandColors",
+    blueprint: dict,
+) -> str:
+    """
+    Thumbnail renderer for branded slides (background_image_path is set).
+
+    fitz cannot render embedded PPTX background images (renders 400×600 portrait
+    with ~2% non-white pixels).  Instead, we compose the thumbnail from source
+    materials using PIL:
+      1. Background image → resize to 1920×1080
+      2. Semi-transparent title bar overlay (top ~18%)
+      3. Title text drawn over the bar
+      4. Layout badge (bottom-right corner)
+
+    Falls back to the fitz path if anything fails.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import io as _io
+
+    try:
+        bg = Image.open(colors.background_image_path).convert("RGB")
+        bg = bg.resize((_THUMB_W, _THUMB_H), Image.LANCZOS)
+
+        draw = ImageDraw.Draw(bg, "RGBA")
+
+        # Parse shape_color for the overlay bar
+        sc = colors.shape_color.lstrip("#")
+        shape_r = int(sc[0:2], 16)
+        shape_g = int(sc[2:4], 16)
+        shape_b = int(sc[4:6], 16)
+        opacity_pct = max(0, min(100, colors.shape_opacity))
+
+        # Title zone: top 18% of slide with semi-opaque overlay
+        bar_h = int(_THUMB_H * 0.18)
+        bar_alpha = int(opacity_pct / 100 * 200)  # max 200/255
+        draw.rectangle([(0, 0), (_THUMB_W, bar_h)],
+                       fill=(shape_r, shape_g, shape_b, bar_alpha))
+
+        # Thin accent line below bar
+        accent_sc = colors.secondary.lstrip("#")
+        accent_rgb = (int(accent_sc[0:2], 16), int(accent_sc[2:4], 16), int(accent_sc[4:6], 16))
+        draw.rectangle([(0, bar_h), (_THUMB_W, bar_h + 6)],
+                       fill=accent_rgb + (200,))
+
+        # Title text
+        title = (blueprint.get("title") or "")[:80]
+        if title:
+            tc = colors.title_font_color.lstrip("#")
+            title_rgb = (int(tc[0:2], 16), int(tc[2:4], 16), int(tc[4:6], 16))
+            font_size = max(40, min(72, int(_THUMB_H * 0.055)))
+            try:
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+            except Exception:
+                font = ImageFont.load_default()
+            draw.text((48, int(bar_h * 0.15)), title, fill=title_rgb, font=font)
+
+        # Layout badge (bottom-right)
+        layout = blueprint.get("layout", "")
+        if layout:
+            try:
+                badge_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 28)
+            except Exception:
+                badge_font = ImageFont.load_default()
+            draw.text((_THUMB_W - 20, _THUMB_H - 20), layout.upper(),
+                      fill=(255, 255, 255, 140), font=badge_font, anchor="rb")
+
+        out = os.path.join(out_dir, "0.png")
+        bg.save(out, "PNG")
+        logger.debug(f"_render_thumbnail_branded: composed from bg image → {out}")
+        return out
+
+    except Exception as e:
+        logger.warning(f"_render_thumbnail_branded failed ({e}), falling back to fitz")
+        return _render_thumbnail(pptx_path, out_dir)
+
+
+# ─── Vision QA helper ────────────────────────────────────────────────────────
+
+async def _render_with_vision_qa(
+    blueprint: dict,
+    colors: BrandColors,
+    template_pptx_path: str | None,
+    pptx_path: str,
+    thumb_abs: str,
+    gen_dir: Path,
+    thumb_dir: Path,
+    label: str = "",
+) -> dict:
+    """
+    Run GPT-4o Vision on an already-rendered thumbnail and, if issues are found,
+    attempt exactly ONE re-render with the Vision-proposed fix.
+
+    Hard contract:
+    - Maximum 1 Vision call + 1 re-render per slide (no recursion, no loops).
+    - validate_and_trim() is always applied to Vision's fixed_blueprint before
+      re-rendering, so the renderer never receives out-of-bounds content.
+    - If Vision's fix after trimming is byte-for-byte identical to the trimmed
+      original, the re-render is skipped (no-op diff guard).
+    - Returns the blueprint that was actually used for the final PPTX on disk.
+
+    Why exactly 1 retry:
+    - blueprint_validator runs first (deterministic, O(1)) — catches structural
+      overflows before any pixels are generated.
+    - Vision runs after (probabilistic, costs tokens) — catches rendering
+      artefacts that only appear after font metrics are applied (e.g. a 30-char
+      heading that wraps badly in the chosen font).
+    - A second Vision pass would add latency/cost for diminishing returns; the
+      remaining issues would indicate a constraint gap, not a content problem.
+    """
+    from services.vision_validator import vision_validate
+    import json as _json
+
+    try:
+        ok, fixed_bp = await vision_validate(thumb_abs, blueprint, colors)
+    except Exception as e:
+        logger.warning(f"Vision QA ({label}): API error — skipping re-render: {e}")
+        return blueprint
+
+    if ok or not fixed_bp:
+        return blueprint  # slide passed QA
+
+    # Trim Vision's proposal through the same validator the original went through.
+    # This guarantees structural safety regardless of what Vision returns.
+    validate_and_trim(fixed_bp)
+
+    # No-op guard: if trimming produced identical content, skip the re-render.
+    if _json.dumps(fixed_bp, sort_keys=True) == _json.dumps(blueprint, sort_keys=True):
+        logger.info(f"Vision QA ({label}): fix identical to original after trim — skipping")
+        return blueprint
+
+    # Log exactly what Vision changed so we can verify it's applied
+    orig_title   = blueprint.get("title", "")
+    fixed_title  = fixed_bp.get("title", "")
+    orig_layout  = blueprint.get("layout", "")
+    fixed_layout = fixed_bp.get("layout", "")
+    logger.info(
+        f"Vision QA ({label}): re-rendering — "
+        f"layout: {orig_layout}→{fixed_layout}  "
+        f"title: {repr(orig_title)}→{repr(fixed_title)}  "
+        f"colors: font={colors.font_family} title_color=#{colors.title_font_color} "
+        f"shape=#{colors.shape_color} opacity={colors.shape_opacity}% "
+        f"bg_image={bool(colors.background_image_path)}"
+    )
+
+    try:
+        # Re-render using the SAME colors object — brand constraints are preserved
+        prs_fixed   = render_slide_pptx(fixed_bp, colors, template_pptx_path)
+        pptx_fixed  = str(gen_dir / f"gen_{uuid.uuid4()}.pptx")
+        prs_fixed.save(pptx_fixed)
+
+        orig_size  = Path(pptx_path).stat().st_size
+        fixed_size = Path(pptx_fixed).stat().st_size
+        logger.info(
+            f"Vision QA ({label}): PPTX sizes — original={orig_size}B fixed={fixed_size}B"
+        )
+
+        # Render thumbnail to a SEPARATE temp path to avoid overwriting the
+        # original before we confirm success (thumb_dir/0.png is the live file).
+        thumb_tmp = os.path.join(str(thumb_dir), "0_vision_fix.png")
+        try:
+            _render_thumbnail(pptx_fixed, str(thumb_dir))
+            # _render_thumbnail always writes to thumb_dir/0.png — move to temp
+            os.rename(os.path.join(str(thumb_dir), "0.png"), thumb_tmp)
+        except Exception as te:
+            logger.error(f"Vision QA ({label}): fixed thumbnail render failed: {te}")
+            Path(pptx_fixed).unlink(missing_ok=True)
+            return blueprint
+
+        # Atomically replace both PPTX and thumbnail
+        os.replace(pptx_fixed, pptx_path)          # fixed PPTX overwrites original
+        os.replace(thumb_tmp,  thumb_abs)           # fixed thumbnail overwrites original
+
+        logger.info(
+            f"Vision QA ({label}): re-render applied ✓ — "
+            f"pptx={pptx_path} thumb={thumb_abs}"
+        )
+        return fixed_bp
+
+    except Exception as e:
+        logger.warning(f"Vision QA ({label}): re-render error — keeping original: {e}")
+        Path(pptx_fixed).unlink(missing_ok=True)
+
+    return blueprint
 
 
 # ─── Main entry point ─────────────────────────────────────────────────────────
@@ -1067,16 +1277,19 @@ async def generate_slide(
     blueprint.setdefault("title", prompt[:60])
     blueprint.setdefault("content", {"type": "bullets", "items": []})
 
-    # 3. Render PPTX
+    # 3. Validate & trim before rendering (catches LLM overflows without Vision call)
+    validate_and_trim(blueprint)
+
+    # 4. Render PPTX
     prs = render_slide_pptx(blueprint, colors, template_pptx_path)
 
-    # 4. Save PPTX
+    # 5. Save PPTX
     gen_dir = Path(settings.upload_dir) / "generated"
     gen_dir.mkdir(parents=True, exist_ok=True)
     pptx_path = str(gen_dir / f"gen_{uuid.uuid4()}.pptx")
     prs.save(pptx_path)
 
-    # 5. SourcePresentation record
+    # 6. SourcePresentation record
     title = blueprint.get("title", prompt)[:80]
     source = SourcePresentation(
         owner_id=user_id,
@@ -1089,13 +1302,16 @@ async def generate_slide(
     db.add(source)
     db.flush()
 
-    # 6. Thumbnail
+    # 7. Thumbnail — use PIL compositor for branded slides, fitz for plain ones
     thumb_dir = Path(settings.thumbnail_dir) / str(source.id)
     thumb_dir.mkdir(parents=True, exist_ok=True)
-    thumb_abs = _render_thumbnail(pptx_path, str(thumb_dir))
-
-    if not thumb_abs:
-        # Pillow fallback
+    try:
+        if colors.background_image_path and os.path.exists(colors.background_image_path):
+            thumb_abs = _render_thumbnail_branded(pptx_path, str(thumb_dir), colors, blueprint)
+        else:
+            thumb_abs = _render_thumbnail(pptx_path, str(thumb_dir))
+    except Exception as thumb_err:
+        logger.error(f"generate_slide thumbnail failed: {thumb_err}")
         from services.thumbnail import _make_placeholder_thumbnail
         data = _make_placeholder_thumbnail(title, 0)
         thumb_abs = str(thumb_dir / "0.png")
@@ -1103,17 +1319,30 @@ async def generate_slide(
 
     thumbnail_path = f"{source.id}/0.png"
 
-    # 7. XML blob
+    # 8. Vision QA — max 1 re-render (see _render_with_vision_qa for contract)
+    if settings.vision_model:
+        blueprint = await _render_with_vision_qa(
+            blueprint=blueprint,
+            colors=colors,
+            template_pptx_path=template_pptx_path,
+            pptx_path=pptx_path,
+            thumb_abs=thumb_abs,
+            gen_dir=gen_dir,
+            thumb_dir=thumb_dir,
+            label=f"generate_slide/{title[:30]}",
+        )
+
+    # 9. XML blob
     xml_blob: str | None = None
     try:
         from lxml import etree
-        prs2 = Presentation(pptx_path)
-        if prs2.slides:
-            xml_blob = etree.tostring(prs2.slides[0]._element, encoding="unicode")
+        prs_reload = Presentation(pptx_path)
+        if prs_reload.slides:
+            xml_blob = etree.tostring(prs_reload.slides[0]._element, encoding="unicode")
     except Exception:
         pass
 
-    # 8. Embedding
+    # 10. Embedding
     summary = _blueprint_to_summary(blueprint)
     tags    = _blueprint_to_tags(blueprint)
     embedding: list[float] | None = None
@@ -1124,7 +1353,7 @@ async def generate_slide(
     except Exception as e:
         logger.warning(f"Embedding failed: {e}")
 
-    # 9. Save SlideLibraryEntry
+    # 11. Save SlideLibraryEntry (includes blueprint_json for future re-renders)
     entry = SlideLibraryEntry(
         source_id      = source.id,
         slide_index    = 0,
@@ -1137,6 +1366,7 @@ async def generate_slide(
         language       = _detect_language(prompt),
         embedding_json = json.dumps(embedding) if embedding else None,
         has_media      = False,
+        blueprint_json = json.dumps(blueprint, ensure_ascii=False),
     )
     db.add(entry)
     db.commit()
@@ -1163,6 +1393,9 @@ async def save_slide_from_blueprint(
     blueprint.setdefault("title", "")
     blueprint.setdefault("content", {})
 
+    # 0. Validate & trim BEFORE rendering — enforce layout character/count limits
+    validate_and_trim(blueprint)
+
     title = (blueprint.get("title") or "")[:80]
 
     # 1. Render PPTX
@@ -1186,30 +1419,47 @@ async def save_slide_from_blueprint(
     db.add(source)
     db.flush()
 
-    # 4. Thumbnail
+    # 4. Thumbnail — use PIL compositor for branded slides, fitz for plain ones
     thumb_dir = Path(settings.thumbnail_dir) / str(source.id)
     thumb_dir.mkdir(parents=True, exist_ok=True)
-    thumb_abs = _render_thumbnail(pptx_path, str(thumb_dir))
-
-    if not thumb_abs:
+    try:
+        if colors.background_image_path and os.path.exists(colors.background_image_path):
+            thumb_abs = _render_thumbnail_branded(pptx_path, str(thumb_dir), colors, blueprint)
+        else:
+            thumb_abs = _render_thumbnail(pptx_path, str(thumb_dir))
+    except Exception as thumb_err:
+        logger.error(f"save_slide_from_blueprint thumbnail failed: {thumb_err}")
         from services.thumbnail import _make_placeholder_thumbnail
-        data = _make_placeholder_thumbnail(title, 0)
+        data = _make_placeholder_thumbnail(title, slide_index)
         thumb_abs = str(thumb_dir / "0.png")
         Path(thumb_abs).write_bytes(data)
 
     thumbnail_path = f"{source.id}/0.png"
 
-    # 5. XML blob
+    # 5. Vision QA — max 1 re-render (see _render_with_vision_qa for contract)
+    if settings.vision_model:
+        blueprint = await _render_with_vision_qa(
+            blueprint=blueprint,
+            colors=colors,
+            template_pptx_path=template_pptx_path,
+            pptx_path=pptx_path,
+            thumb_abs=thumb_abs,
+            gen_dir=gen_dir,
+            thumb_dir=thumb_dir,
+            label=f"slide_{slide_index}/{(blueprint.get('title') or '')[:30]}",
+        )
+
+    # 6. XML blob
     xml_blob: str | None = None
     try:
         from lxml import etree
-        prs2 = Presentation(pptx_path)
-        if prs2.slides:
-            xml_blob = etree.tostring(prs2.slides[0]._element, encoding="unicode")
+        prs_reload = Presentation(pptx_path)
+        if prs_reload.slides:
+            xml_blob = etree.tostring(prs_reload.slides[0]._element, encoding="unicode")
     except Exception:
         pass
 
-    # 6. Embedding
+    # 7. Embedding
     summary   = _blueprint_to_summary(blueprint)
     tags      = _blueprint_to_tags(blueprint)
     embedding: list[float] | None = None
@@ -1220,7 +1470,7 @@ async def save_slide_from_blueprint(
     except Exception as e:
         logger.warning(f"Embedding failed: {e}")
 
-    # 7. Save SlideLibraryEntry
+    # 8. Save SlideLibraryEntry (blueprint_json stored for future iterative re-render)
     entry = SlideLibraryEntry(
         source_id      = source.id,
         slide_index    = slide_index,
@@ -1234,6 +1484,7 @@ async def save_slide_from_blueprint(
         embedding_json = json.dumps(embedding) if embedding else None,
         has_media      = False,
         is_generated   = True,
+        blueprint_json = json.dumps(blueprint, ensure_ascii=False),
     )
     db.add(entry)
     db.commit()
