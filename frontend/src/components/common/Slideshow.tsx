@@ -31,18 +31,22 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
   const prev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), [])
   const next = useCallback(() => {
     setIndex((i) => {
-      if (i >= slides.length - 1) {
-        setAutoplay(false)
-        return i
-      }
+      if (i >= slides.length - 1) { setAutoplay(false); return i }
       return i + 1
     })
   }, [slides.length])
 
+  // Auto-enter fullscreen when slideshow opens
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    el.requestFullscreen().catch(() => {})
+  }, [])
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') { onClose(); return }
       if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next() }
       if (e.key === 'ArrowLeft') prev()
       if (e.key === 'f' || e.key === 'F') toggleFullscreen()
@@ -61,12 +65,17 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
   }, [])
 
   useEffect(() => {
-    const handler = () => setIsFullscreen(!!document.fullscreenElement)
+    const handler = () => {
+      const fs = !!document.fullscreenElement
+      setIsFullscreen(fs)
+      // Exit slideshow when user presses Esc to leave fullscreen
+      if (!fs) onClose()
+    }
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
-  }, [])
+  }, [onClose])
 
-  // Auto-hide controls on mouse idle
+  // Auto-hide controls
   const showControls = useCallback(() => {
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
@@ -89,11 +98,81 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 bg-black z-50 flex flex-col select-none"
+      className="fixed inset-0 bg-black z-50 flex items-center justify-center select-none"
       onMouseMove={showControls}
       onClick={showControls}
     >
-      {/* Top bar */}
+      {/* Slide — fills the screen maintaining 16:9 */}
+      <div
+        className="relative"
+        style={{
+          width: 'min(100vw, calc(100vh * 16 / 9))',
+          height: 'min(100vh, calc(100vw * 9 / 16))',
+        }}
+      >
+        {slide?.video_url ? (
+          <video
+            src={slide.video_url}
+            controls
+            className="w-full h-full"
+            poster={slide.thumbnail_url || undefined}
+          />
+        ) : slide ? (
+          <div className="w-full h-full overflow-hidden">
+            <SlideThumbnail slide={slide} />
+          </div>
+        ) : null}
+
+        {/* Media overlays */}
+        {slide && overlays && (overlays[String(slide.id)] || []).map((overlay) => (
+          <div
+            key={overlay.id}
+            className="absolute pointer-events-none"
+            style={{
+              left: `${overlay.x}%`,
+              top: `${overlay.y}%`,
+              width: `${overlay.w}%`,
+              height: `${overlay.h}%`,
+            }}
+          >
+            {overlay.file_type === 'video' ? (
+              <video src={overlay.url} autoPlay loop muted playsInline className="w-full h-full object-contain" />
+            ) : (
+              <img src={overlay.url} alt="" className="w-full h-full object-contain" />
+            )}
+          </div>
+        ))}
+
+        {/* Prev / Next arrows — overlaid on the slide */}
+        {hasPrev && (
+          <button
+            onClick={(e) => { e.stopPropagation(); prev() }}
+            className={cn(
+              'absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12',
+              'rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center',
+              'transition-opacity duration-300',
+              controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            )}
+          >
+            <ChevronLeft className="w-7 h-7" />
+          </button>
+        )}
+        {hasNext && (
+          <button
+            onClick={(e) => { e.stopPropagation(); next() }}
+            className={cn(
+              'absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12',
+              'rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center',
+              'transition-opacity duration-300',
+              controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            )}
+          >
+            <ChevronRight className="w-7 h-7" />
+          </button>
+        )}
+      </div>
+
+      {/* Top bar — absolute over everything */}
       <div
         className={cn(
           'absolute top-0 inset-x-0 z-10 flex items-center justify-between px-6 py-4',
@@ -122,80 +201,7 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
         </div>
       </div>
 
-      {/* Slide area */}
-      <div className="flex-1 flex items-center justify-center p-4 md:p-12">
-        <div className="relative w-full" style={{ maxHeight: 'calc(100vh - 140px)', aspectRatio: '16/9', maxWidth: 'calc((100vh - 140px) * 16 / 9)' }}>
-          {slide?.video_url ? (
-            <video
-              src={slide.video_url}
-              controls
-              className="w-full h-full rounded-lg"
-              poster={slide.thumbnail_url || undefined}
-            />
-          ) : slide ? (
-            <div className="w-full h-full rounded-lg overflow-hidden shadow-2xl">
-              <SlideThumbnail slide={slide} />
-            </div>
-          ) : null}
-
-          {/* Media overlays */}
-          {slide && overlays && (overlays[String(slide.id)] || []).map((overlay) => (
-            <div
-              key={overlay.id}
-              className="absolute pointer-events-none"
-              style={{
-                left: `${overlay.x}%`,
-                top: `${overlay.y}%`,
-                width: `${overlay.w}%`,
-                height: `${overlay.h}%`,
-              }}
-            >
-              {overlay.file_type === 'video' ? (
-                <video
-                  src={overlay.url}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <img src={overlay.url} alt="" className="w-full h-full object-contain" />
-              )}
-            </div>
-          ))}
-
-          {/* Side nav arrows */}
-          {hasPrev && (
-            <button
-              onClick={(e) => { e.stopPropagation(); prev() }}
-              className={cn(
-                'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-14 w-11 h-11',
-                'rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center',
-                'transition-all duration-300',
-                controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              )}
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-          )}
-          {hasNext && (
-            <button
-              onClick={(e) => { e.stopPropagation(); next() }}
-              className={cn(
-                'absolute right-0 top-1/2 -translate-y-1/2 translate-x-14 w-11 h-11',
-                'rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center',
-                'transition-all duration-300',
-                controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              )}
-            >
-              <ChevronRight className="w-6 h-6" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom bar */}
+      {/* Bottom bar — absolute over everything */}
       <div
         className={cn(
           'absolute bottom-0 inset-x-0 z-10',
@@ -212,22 +218,16 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
               onClick={() => setIndex(i)}
               className={cn(
                 'rounded-full transition-all duration-200',
-                i === index
-                  ? 'w-4 h-2 bg-white'
-                  : 'w-2 h-2 bg-white/40 hover:bg-white/70'
+                i === index ? 'w-4 h-2 bg-white' : 'w-2 h-2 bg-white/40 hover:bg-white/70'
               )}
             />
           ))}
         </div>
 
         {/* Controls */}
-        <div className="flex items-center justify-between px-6 pb-4">
-          {/* Left: slide info */}
-          <p className="text-white/60 text-sm">
-            {index + 1} / {slides.length}
-          </p>
+        <div className="flex items-center justify-between px-6 pb-5">
+          <p className="text-white/60 text-sm">{index + 1} / {slides.length}</p>
 
-          {/* Center: playback controls */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIndex(0)}
@@ -237,11 +237,7 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
             >
               <SkipBack className="w-4 h-4" />
             </button>
-            <button
-              onClick={prev}
-              disabled={!hasPrev}
-              className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors"
-            >
+            <button onClick={prev} disabled={!hasPrev} className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors">
               <ChevronLeft className="w-5 h-5" />
             </button>
             <button
@@ -254,11 +250,7 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
             >
               {autoplay ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
             </button>
-            <button
-              onClick={next}
-              disabled={!hasNext}
-              className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors"
-            >
+            <button onClick={next} disabled={!hasNext} className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors">
               <ChevronRight className="w-5 h-5" />
             </button>
             <button
@@ -271,7 +263,6 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
             </button>
           </div>
 
-          {/* Right: autoplay speed */}
           <div className="flex items-center gap-2">
             <span className="text-white/40 text-xs">Скорость:</span>
             {[3, 5, 8].map((s) => (
@@ -280,9 +271,7 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
                 onClick={() => setAutoplayIntervalMs(s * 1000)}
                 className={cn(
                   'text-xs px-2 py-0.5 rounded transition-colors',
-                  autoplayInterval === s * 1000
-                    ? 'bg-white/30 text-white'
-                    : 'text-white/40 hover:text-white/70'
+                  autoplayInterval === s * 1000 ? 'bg-white/30 text-white' : 'text-white/40 hover:text-white/70'
                 )}
               >
                 {s}с
