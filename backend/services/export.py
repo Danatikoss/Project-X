@@ -150,25 +150,33 @@ def _add_overlays_pptx(dest_prs, dest_slide, slide_id: str, overlays_map: dict):
                     left, top, w, h = _contain_rect(size[0], size[1], left, top, w, h)
                 dest_slide.shapes.add_picture(str(path), left, top, w, h)
             elif file_type == "video":
-                # Extract first frame via ffmpeg; fall back to PIL (unlikely for mp4),
-                # then to a dark placeholder
+                # Embed video as a proper playable shape using add_movie.
+                # Extract poster frame via ffmpeg to get natural dimensions and preview image.
+                from pptx.opc.constants import CT as _CT
                 frame_buf = _extract_video_frame(path)
+                poster_buf = None
                 if frame_buf:
                     from PIL import Image as _PIL
-                    frame_img = _PIL.open(frame_buf).convert("RGBA")
-                    al, at, aw, ah = _contain_rect(frame_img.width, frame_img.height, left, top, w, h)
-                    out = io.BytesIO()
-                    frame_img.convert("RGB").save(out, "PNG")
-                    out.seek(0)
-                    dest_slide.shapes.add_picture(out, al, at, aw, ah)
+                    frame_img = _PIL.open(frame_buf).convert("RGB")
+                    nat_w, nat_h = frame_img.width, frame_img.height
+                    al, at, aw, ah = _contain_rect(nat_w, nat_h, left, top, w, h)
+                    poster_buf = io.BytesIO()
+                    frame_img.save(poster_buf, "JPEG")
+                    poster_buf.seek(0)
                 else:
-                    frame_pil = _open_as_pil(path)
-                    if frame_pil:
-                        al, at, aw, ah = _contain_rect(frame_pil.width, frame_pil.height, left, top, w, h)
-                        buf = io.BytesIO()
-                        frame_pil.convert("RGB").save(buf, "PNG")
-                        buf.seek(0)
-                        dest_slide.shapes.add_picture(buf, al, at, aw, ah)
+                    al, at, aw, ah = left, top, w, h
+
+                try:
+                    dest_slide.shapes.add_movie(
+                        str(path), al, at, aw, ah,
+                        poster_frame_image=poster_buf,
+                        mime_type=_CT.MP4,
+                    )
+                except Exception as e2:
+                    logger.debug(f"add_movie failed: {e2}")
+                    if poster_buf:
+                        poster_buf.seek(0)
+                        dest_slide.shapes.add_picture(poster_buf, al, at, aw, ah)
                     else:
                         _add_video_placeholder_pptx(dest_slide, left, top, w, h)
         except Exception as e:
