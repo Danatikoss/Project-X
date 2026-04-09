@@ -68,6 +68,32 @@ def _get_image_size(path: Path) -> tuple[int, int] | None:
         return None
 
 
+def _extract_video_frame(path: Path) -> "io.BytesIO | None":
+    """Extract the first frame of a video file as a PNG BytesIO using ffmpeg.
+    Returns None if ffmpeg is unavailable or extraction fails.
+    """
+    import subprocess
+    import shutil
+    if not shutil.which("ffmpeg"):
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(path),
+                "-vframes", "1", "-f", "image2", "-vcodec", "png", "pipe:1",
+            ],
+            capture_output=True,
+            timeout=15,
+        )
+        if result.returncode == 0 and result.stdout:
+            buf = io.BytesIO(result.stdout)
+            buf.seek(0)
+            return buf
+    except Exception as e:
+        logger.debug(f"ffmpeg frame extraction failed: {e}")
+    return None
+
+
 def _contain_rect(
     nat_w: int, nat_h: int,
     cx: int, cy: int, cw: int, ch: int
@@ -124,16 +150,27 @@ def _add_overlays_pptx(dest_prs, dest_slide, slide_id: str, overlays_map: dict):
                     left, top, w, h = _contain_rect(size[0], size[1], left, top, w, h)
                 dest_slide.shapes.add_picture(str(path), left, top, w, h)
             elif file_type == "video":
-                # Try to get poster frame via PIL; fall back to colored placeholder
-                frame = _open_as_pil(path)
-                if frame:
-                    al, at, aw, ah = _contain_rect(frame.width, frame.height, left, top, w, h)
-                    buf = io.BytesIO()
-                    frame.convert("RGB").save(buf, "PNG")
-                    buf.seek(0)
-                    dest_slide.shapes.add_picture(buf, al, at, aw, ah)
+                # Extract first frame via ffmpeg; fall back to PIL (unlikely for mp4),
+                # then to a dark placeholder
+                frame_buf = _extract_video_frame(path)
+                if frame_buf:
+                    from PIL import Image as _PIL
+                    frame_img = _PIL.open(frame_buf).convert("RGBA")
+                    al, at, aw, ah = _contain_rect(frame_img.width, frame_img.height, left, top, w, h)
+                    out = io.BytesIO()
+                    frame_img.convert("RGB").save(out, "PNG")
+                    out.seek(0)
+                    dest_slide.shapes.add_picture(out, al, at, aw, ah)
                 else:
-                    _add_video_placeholder_pptx(dest_slide, left, top, w, h)
+                    frame_pil = _open_as_pil(path)
+                    if frame_pil:
+                        al, at, aw, ah = _contain_rect(frame_pil.width, frame_pil.height, left, top, w, h)
+                        buf = io.BytesIO()
+                        frame_pil.convert("RGB").save(buf, "PNG")
+                        buf.seek(0)
+                        dest_slide.shapes.add_picture(buf, al, at, aw, ah)
+                    else:
+                        _add_video_placeholder_pptx(dest_slide, left, top, w, h)
         except Exception as e:
             logger.debug(f"Overlay PPTX add failed: {e}")
 
@@ -181,6 +218,11 @@ def _composite_overlays_pil(base_img, slide_id: str, overlays_map: dict):
                 continue
 
             frame = _open_as_pil(path)
+            if frame is None:
+                # Try extracting first frame from video via ffmpeg
+                vid_buf = _extract_video_frame(path)
+                if vid_buf:
+                    frame = Image.open(vid_buf).convert("RGBA")
             if frame is None:
                 # Video placeholder: dark rect
                 placeholder = Image.new("RGBA", (w, h), (26, 26, 46, 200))
@@ -332,7 +374,20 @@ def export_to_pptx(db: Session, assembly_id: int) -> str:
     dest_prs.slide_height = Inches(7.5)
 
     for slide_entry in slides:
-        _add_thumbnail_slide(dest_prs, slide_entry)
+        # For PPTX slides with an embedded video, clone the original slide
+        # so the video is playable in the exported PPTX (not just a black thumbnail).
+        cloned = False
+        if slide_entry.video_path and slide_entry.source_id:
+            try:
+                source = slide_entry.source
+                if source and source.file_type == "pptx" and source.file_path:
+                    cloned = _clone_slide(dest_prs, source.file_path, slide_entry.slide_index)
+            except Exception as e:
+                logger.debug(f"Video slide clone failed (slide {slide_entry.id}): {e}")
+
+        if not cloned:
+            _add_thumbnail_slide(dest_prs, slide_entry)
+
         dest_slide = dest_prs.slides[-1]
         _add_overlays_pptx(dest_prs, dest_slide, str(slide_entry.id), overlays_map)
 
