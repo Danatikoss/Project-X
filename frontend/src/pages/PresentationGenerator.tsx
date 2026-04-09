@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
@@ -340,11 +340,18 @@ export default function PresentationGenerator() {
   const [pendingNav, setPendingNav]             = useState<{ assemblyId: number; slideIds: number[] } | null>(null)
   const [savingToLibrary, setSavingToLibrary]   = useState(false)
 
-  // Fetch brand templates
+  // Fetch brand templates — auto-select the default one
   const { data: templates = [] } = useQuery<BrandTemplate[]>({
     queryKey: ['brand-templates'],
     queryFn:  () => brandApi.listTemplates(),
   })
+
+  useEffect(() => {
+    if (templates.length > 0 && brandId === null) {
+      const def = templates.find((t) => t.is_default)
+      if (def) setBrandId(def.id)
+    }
+  }, [templates])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const apiError = (e: any): string =>

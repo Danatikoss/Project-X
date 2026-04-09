@@ -89,39 +89,66 @@ def extract_text(file_bytes: bytes, file_ext: str) -> str:
 
 # ─── Planning prompt ──────────────────────────────────────────────────────────
 
-_PLAN_SYSTEM = """You are a world-class presentation designer creating visually stunning decks like Gamma and Kimi K2.
+_PLAN_SYSTEM = """You are a world-class presentation designer. Your PRIMARY goal is CONTENT DENSITY — pack maximum meaning into minimum slides.
 
-Your task: analyse the provided content and produce a complete slide deck as a JSON array of slide blueprints.
+══════════════════════════════════════════════════════
+CONTENT DENSITY RULES (highest priority, no exceptions)
+══════════════════════════════════════════════════════
+1. ONE SLIDE = ONE COMPLETE LOGICAL SECTION. If ideas are semantically related, combine them on one slide using a rich layout.
+2. NEVER create a new slide for a single isolated thought. Ask yourself: "Can this merge with the previous or next slide?"
+3. AGGREGATION RULE: If you find yourself creating 3+ consecutive slides with short content (1-2 bullets each), STOP and merge them into one icon_grid (up to 4 cards) or two_column slide.
+4. The slide count limit given in the user message is a HARD MAXIMUM. Staying under it is mandatory.
 
-STRICT VISUAL RULES — NO EXCEPTIONS:
-1. NEVER use title_content with more than 5 short bullets. If content is longer, split into multiple slides or use a different layout.
-2. title_content is the LAST RESORT. Prefer visual layouts:
-   • 3-4 concepts/features/benefits → icon_grid
-   • Key insight or powerful statement → key_message
-   • Sequential process (3-5 steps) → process_flow
-   • 3+ comparable numbers → chart_bar
-   • Proportions / market share → chart_pie
-   • One big dramatic number → big_stat
-   • Two sides of a story → comparison or two_column
-   • Quote or testimonial → quote
-   • Section transition → section_divider
-3. Vary layouts — no two consecutive slides may use the same layout.
-4. icon_grid cards: heading max 30 chars, text max 80 chars. No emoji fields needed.
-5. process_flow steps: label max 25 chars, desc max 60 chars. No emoji fields needed.
-6. key_message: the "message" field must be ≤15 words — punchy and impactful.
+══════════════════════════════════════════
+LAYOUT COST — choose the cheapest that fits
+══════════════════════════════════════════
+EXPENSIVE (use sparingly — each costs a full slide):
+  ⚠ section_divider — only for major topic transitions; max 1 per 5 slides
+  ⚠ title_content   — absolute last resort; only if no visual layout fits; max 1 total
 
-Slide count rules:
-- Short document (< 500 words): 6-8 slides
-- Medium document (500-2000 words): 8-12 slides
-- Long document (> 2000 words): 12-16 slides
-- Always start with a title/intro slide (section_divider or key_message)
-- Always end with a closing slide (key_message, section_divider, or big_stat)
+DENSE (preferred — pack more per slide):
+  ✓ icon_grid    — 3-4 concepts/features/benefits on one slide → USE INSTEAD OF BULLETS
+  ✓ two_column   — 2 related topics with bullet lists on one slide
+  ✓ process_flow — 3-5 sequential steps on one slide
+  ✓ comparison   — explicit A vs B on one slide
+  ✓ chart_bar / chart_pie — data with 3+ values on one slide
+
+CONTEXTUAL (use when content clearly matches):
+  ○ key_message — one powerful punchy statement (≤15 words)
+  ○ big_stat    — one dramatic number + context
+  ○ timeline    — chronological milestones (max 5)
+  ○ quote       — a direct quote or testimonial
+
+DECISION TREE (apply in order):
+  • 3-4 concepts/items? → icon_grid
+  • 2 topics to compare? → two_column or comparison
+  • Steps in a process? → process_flow
+  • Numbers/metrics ≥3? → chart_bar or chart_pie
+  • One big number? → big_stat
+  • Powerful single statement? → key_message
+  • Quote? → quote
+  • Major section break needed? → section_divider (use rarely)
+  • Nothing fits? → title_content (≤5 bullets, last resort)
+
+══════════════════════════════
+FIELD LIMITS (hard constraints)
+══════════════════════════════
+- Title: max 60 chars
+- icon_grid cards: heading ≤30 chars, text ≤80 chars; always 3-4 cards
+- process_flow steps: label ≤25 chars, desc ≤60 chars
+- key_message.message: ≤15 words, impactful
+- two_column items: ≤7 per column, ≤100 chars each
+- No emoji in any field
+
+STRUCTURE:
+- First slide: key_message or section_divider (intro)
+- Last slide: key_message or big_stat (closing call to action)
+- No two consecutive slides with the same layout
 
 Available layouts:
 icon_grid | key_message | process_flow | chart_bar | chart_pie | big_stat | two_column | comparison | timeline | quote | section_divider | title_content
 
-JSON schema for each layout:
-
+JSON schema:
 icon_grid:       {"layout":"icon_grid","title":"...","content":{"cards":[{"heading":"...","text":"..."}]},"speaker_notes":"..."}
 key_message:     {"layout":"key_message","title":"...","content":{"message":"...","subtext":"..."},"speaker_notes":"..."}
 process_flow:    {"layout":"process_flow","title":"...","content":{"steps":[{"label":"...","desc":"..."}]},"speaker_notes":"..."}
@@ -135,8 +162,7 @@ quote:           {"layout":"quote","title":"...","content":{"quote":"...","attri
 section_divider: {"layout":"section_divider","title":"...","content":{"subtitle":"..."},"speaker_notes":"..."}
 title_content:   {"layout":"title_content","title":"...","content":{"type":"bullets","items":["..."]},"speaker_notes":"..."}
 
-Respond with ONLY a JSON array: [{blueprint1}, {blueprint2}, ...]
-No markdown, no wrapper object, just the raw array."""
+Respond with ONLY a JSON array. No markdown, no wrapper object."""
 
 
 def _get_client() -> AsyncOpenAI:
@@ -146,6 +172,182 @@ def _get_client() -> AsyncOpenAI:
     return AsyncOpenAI(**kwargs)
 
 
+# ─── Slide count budget ────────────────────────────────────────────────────────
+
+def _compute_target_slide_count(text: str) -> tuple[int, int]:
+    """
+    Return (min_slides, max_slides) based on raw character count.
+
+    Calibration:
+      < 1 000 chars  — very short brief   → 3-4 slides
+      1 000-3 000    — short document     → 4-6 slides
+      3 000-6 000    — medium document    → 6-9 slides
+      6 000-12 000   — long document      → 9-13 slides
+      > 12 000       — very long          → 12-16 slides
+    """
+    n = len(text.strip())
+    if n < 1_000:
+        return 3, 4
+    if n < 3_000:
+        return 4, 6
+    if n < 6_000:
+        return 6, 9
+    if n < 12_000:
+        return 9, 13
+    return 12, 16
+
+
+# ─── Post-LLM aggregation ─────────────────────────────────────────────────────
+
+def _is_short_slide(bp: dict) -> bool:
+    """
+    True when a blueprint carries so little content it could be a card
+    inside an icon_grid on a larger slide.
+    """
+    layout = bp.get("layout", "")
+    c = bp.get("content", {})
+
+    if layout == "title_content":
+        items = c.get("items") or []
+        # Short = 1-2 brief bullets
+        return len(items) <= 2 and all(len(i) <= 60 for i in items)
+
+    if layout == "key_message":
+        words = (c.get("message") or "").split()
+        return len(words) <= 8 and not c.get("subtext")
+
+    if layout == "section_divider":
+        # Section dividers at non-start/end positions waste a slide
+        return True
+
+    return False
+
+
+def _bp_to_card(bp: dict) -> dict:
+    """
+    Extract a heading + text pair from a short blueprint for use as an icon_grid card.
+    """
+    layout = bp.get("layout", "")
+    title = (bp.get("title") or "")[:30]
+    c = bp.get("content", {})
+
+    if layout == "title_content":
+        items = c.get("items") or []
+        text = "; ".join(items[:2])[:80]
+    elif layout == "key_message":
+        text = (c.get("message") or "")[:80]
+    elif layout == "section_divider":
+        text = (c.get("subtitle") or "")[:80]
+    else:
+        text = title[:80]
+        title = (bp.get("title") or "")[:30]
+
+    return {"heading": title, "text": text}
+
+
+def _aggregate_short_slides(blueprints: list[dict]) -> list[dict]:
+    """
+    Scan for runs of 3+ consecutive short slides and collapse them into
+    a single icon_grid (up to 4 cards).  Runs at the very start or very
+    end of the deck are left intact (intro/closing slides are expected there).
+
+    Returns a new list; does not mutate the input.
+    """
+    if len(blueprints) < 3:
+        return blueprints
+
+    result: list[dict] = []
+    i = 0
+
+    while i < len(blueprints):
+        # Protect first and last slide from merging
+        if i == 0 or i == len(blueprints) - 1:
+            result.append(blueprints[i])
+            i += 1
+            continue
+
+        # Detect run of short slides (excluding first/last)
+        run_end = i
+        while (
+            run_end < len(blueprints) - 1   # don't consume the last slide
+            and _is_short_slide(blueprints[run_end])
+        ):
+            run_end += 1
+
+        run_len = run_end - i
+        if run_len >= 3:
+            # Merge up to 4 cards into one icon_grid
+            cards_bps = blueprints[i : i + min(run_len, 4)]
+            cards = [_bp_to_card(bp) for bp in cards_bps]
+            merged_title = blueprints[i].get("title", "Обзор")[:60]
+            merged = {
+                "layout": "icon_grid",
+                "title":  merged_title,
+                "content": {"cards": cards},
+                "speaker_notes": "Объединённый слайд.",
+            }
+            result.append(merged)
+            logger.debug(
+                f"Aggregated {len(cards_bps)} short slides → icon_grid: {[b.get('title') for b in cards_bps]}"
+            )
+            i += len(cards_bps)
+            # If there are more short slides in the same run (> 4), continue loop
+        else:
+            result.append(blueprints[i])
+            i += 1
+
+    return result
+
+
+# ─── Post-LLM hard count enforcement ─────────────────────────────────────────
+
+def _enforce_slide_count(blueprints: list[dict], max_slides: int) -> list[dict]:
+    """
+    If the model still returned more slides than allowed, aggressively
+    drop the least dense slides from the middle of the deck.
+    Always preserves the first and last slide.
+    """
+    if len(blueprints) <= max_slides:
+        return blueprints
+
+    logger.warning(
+        f"Model returned {len(blueprints)} slides, max={max_slides} — trimming"
+    )
+
+    # Score each middle slide by content density (higher = keep)
+    def _density(bp: dict) -> int:
+        layout = bp.get("layout", "")
+        c = bp.get("content", {})
+        # Expensive/thin layouts score low
+        if layout == "section_divider":
+            return 0
+        if layout == "title_content":
+            return len(c.get("items") or [])
+        if layout == "key_message":
+            return len((c.get("message") or "").split())
+        if layout == "icon_grid":
+            return len(c.get("cards") or []) * 10  # high value
+        if layout == "two_column":
+            l_items = len((c.get("left") or {}).get("items") or [])
+            r_items = len((c.get("right") or {}).get("items") or [])
+            return (l_items + r_items) * 8
+        if layout in ("chart_bar", "chart_pie", "big_stat"):
+            return 15  # data slides always dense
+        if layout == "process_flow":
+            return len(c.get("steps") or []) * 5
+        return 5
+
+    first, *middle, last = blueprints
+    middle_scored = sorted(enumerate(middle), key=lambda x: _density(x[1]), reverse=True)
+    keep_count = max_slides - 2  # -2 for first and last
+    kept_indices = {idx for idx, _ in middle_scored[:keep_count]}
+    kept_middle = [bp for idx, bp in enumerate(middle) if idx in kept_indices]
+    # Restore original order
+    kept_middle.sort(key=lambda bp: middle.index(bp))
+
+    return [first] + kept_middle + [last]
+
+
 async def plan_presentation(content_text: str, title: str = "", language_hint: str = "") -> list[dict]:
     """
     Ask AI to produce a full slide plan from the provided text content.
@@ -153,9 +355,14 @@ async def plan_presentation(content_text: str, title: str = "", language_hint: s
     """
     client = _get_client()
 
+    min_slides, max_slides = _compute_target_slide_count(content_text)
+
     lang_note = f"\nIMPORTANT: Write all slide text in {language_hint}." if language_hint else ""
     user_msg = (
         f"Presentation title: {title}\n\n"
+        f"SLIDE COUNT: Generate STRICTLY between {min_slides} and {max_slides} slides. "
+        f"This is a hard limit — do not exceed {max_slides} slides under any circumstances. "
+        f"Merge related ideas onto one slide using icon_grid or two_column rather than splitting.\n\n"
         f"Content to convert into slides:\n\n{content_text[:12000]}"
         f"{lang_note}"
     )
@@ -166,7 +373,7 @@ async def plan_presentation(content_text: str, title: str = "", language_hint: s
             {"role": "system", "content": _PLAN_SYSTEM},
             {"role": "user",   "content": user_msg},
         ],
-        temperature=0.6,
+        temperature=0.4,   # lower = more disciplined, fewer hallucinated slides
         max_tokens=6000,
     )
 
@@ -181,12 +388,24 @@ async def plan_presentation(content_text: str, title: str = "", language_hint: s
 
     blueprints: list[dict] = json.loads(raw.strip())
 
-    # Sanitise each blueprint
+    logger.info(f"LLM returned {len(blueprints)} blueprints (budget: {min_slides}-{max_slides})")
+
+    # Post-process 1: merge 3+ consecutive short slides → icon_grid
+    blueprints = _aggregate_short_slides(blueprints)
+    logger.info(f"After aggregation: {len(blueprints)} blueprints")
+
+    # Post-process 2: hard count enforcement if model still exceeded
+    blueprints = _enforce_slide_count(blueprints, max_slides)
+    logger.info(f"After count enforcement: {len(blueprints)} blueprints")
+
+    # Sanitise and trim each blueprint — enforce layout limits before any rendering
+    from services.blueprint_validator import validate_and_trim
     for bp in blueprints:
         bp.setdefault("layout", "title_content")
         bp.setdefault("title", "")
         bp.setdefault("content", {})
         bp.setdefault("speaker_notes", "")
+        validate_and_trim(bp)
 
     return blueprints
 
@@ -213,6 +432,16 @@ async def create_assembly_from_plan(
     # Load brand colors once for all slides
     colors: BrandColors = BrandColors()
     template_pptx_path: str | None = None
+
+    # Auto-apply default template when none explicitly selected
+    if not brand_template_id:
+        default_tmpl = db.query(BrandTemplate).filter(
+            BrandTemplate.is_default == True,
+            BrandTemplate.owner_id == user_id,
+        ).first()
+        if default_tmpl:
+            brand_template_id = default_tmpl.id
+            logger.info(f"Auto-applying default brand template id={brand_template_id}")
 
     if brand_template_id:
         tmpl = db.query(BrandTemplate).filter(BrandTemplate.id == brand_template_id).first()
@@ -251,6 +480,17 @@ async def create_assembly_from_plan(
                 val = getattr(tmpl, field, None)
                 if val is not None:
                     setattr(colors, field, val)
+
+    # Fixed brand overrides from env — always win over template settings
+    if settings.fixed_bg_image and os.path.exists(settings.fixed_bg_image):
+        colors.background_image_path = settings.fixed_bg_image
+    if settings.fixed_shape_color:
+        colors.shape_color = settings.fixed_shape_color
+        colors.primary     = settings.fixed_shape_color
+    if settings.fixed_title_font_size > 0:
+        colors.title_font_size = settings.fixed_title_font_size
+    if settings.fixed_body_font_size > 0:
+        colors.body_font_size = settings.fixed_body_font_size
 
     # Render each slide and save to library
     slide_ids: list[int] = []
