@@ -6,7 +6,7 @@ import type {
   AuthResponse, Project, BrandTemplate, BrandGuidelinesUpdate, GenerateSlideRequest, GenerateSlideResponse,
   MediaFolder, MediaAsset, AssemblyTemplate,
   ThesisQuestion, ThesesSession, ThesesSessionListItem,
-  ProfileStats, AdminUser, TextElement,
+  ProfileStats, AdminUser, TextElement, SlideEditVersion,
 } from '../types'
 import { useAuthStore } from '../store/auth'
 
@@ -183,8 +183,18 @@ export const libraryApi = {
     return res.data
   },
 
-  saveTextEdits: async (slideId: number, edits: Record<string, string>): Promise<{ ok: boolean; edited: number; thumb_version: number | null }> => {
+  saveTextEdits: async (slideId: number, edits: Record<string, string>): Promise<{ ok: boolean; edited: number; thumb_version: number | null; version_number?: number }> => {
     const res = await api.post(`/library/slides/${slideId}/text-edits`, { edits })
+    return res.data
+  },
+
+  getEditHistory: async (slideId: number): Promise<{ versions: SlideEditVersion[] }> => {
+    const res = await api.get(`/library/slides/${slideId}/edit-history`)
+    return res.data
+  },
+
+  rollbackEditVersion: async (slideId: number, versionId: number): Promise<{ ok: boolean; rolled_back_to_version: number; new_version_number: number; thumb_version: number | null }> => {
+    const res = await api.post(`/library/slides/${slideId}/edit-history/${versionId}/rollback`)
     return res.data
   },
 
@@ -526,13 +536,14 @@ export interface RenderResponse {
 
 export const presentationsApi = {
   plan: async (
-    params: { file?: File; textPrompt?: string; title?: string; language?: string }
+    params: { file?: File; textPrompt?: string; title?: string; language?: string; brandTemplateId?: number | null }
   ): Promise<PlanResponse> => {
     const form = new FormData()
     if (params.file) form.append('file', params.file)
     if (params.textPrompt) form.append('text_prompt', params.textPrompt)
     form.append('title', params.title ?? 'Презентация')
     form.append('language', params.language ?? '')
+    if (params.brandTemplateId != null) form.append('brand_template_id', String(params.brandTemplateId))
     const res = await api.post<PlanResponse>('/presentations/plan', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })

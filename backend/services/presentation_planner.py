@@ -348,14 +348,76 @@ def _enforce_slide_count(blueprints: list[dict], max_slides: int) -> list[dict]:
     return [first] + kept_middle + [last]
 
 
-async def plan_presentation(content_text: str, title: str = "", language_hint: str = "") -> list[dict]:
+def _build_plan_system_prompt(available_layouts: set[str] | None) -> str:
+    """
+    Build the system prompt for plan_presentation(), filtering to only
+    the layouts actually available in the user's template.
+    """
+    if not available_layouts:
+        return _PLAN_SYSTEM
+
+    all_layouts = {
+        "icon_grid", "key_message", "process_flow", "chart_bar", "chart_pie",
+        "big_stat", "two_column", "comparison", "timeline", "quote",
+        "section_divider", "title_content",
+    }
+    removed = all_layouts - available_layouts
+    if not removed:
+        return _PLAN_SYSTEM
+
+    prompt = _PLAN_SYSTEM
+
+    # Update the Available layouts line
+    layout_list = " | ".join(sorted(available_layouts))
+    import re
+    prompt = re.sub(
+        r"Available layouts:\n.*",
+        f"Available layouts:\n{layout_list}",
+        prompt,
+    )
+
+    # Remove JSON schema lines for unavailable layouts
+    for layout in removed:
+        prompt = re.sub(rf"^{layout}:.*\n?", "", prompt, flags=re.MULTILINE)
+
+    # Remove DECISION TREE bullets for unavailable layouts
+    removal_hints = {
+        "timeline":        "chronological milestones",
+        "quote":           "direct quote",
+        "big_stat":        "one big number",
+        "comparison":      "explicit A vs B",
+        "section_divider": "section break",
+    }
+    for layout in removed:
+        if layout in removal_hints:
+            prompt = re.sub(
+                rf"  • .*{removal_hints[layout]}.*→ {layout}.*\n?",
+                "",
+                prompt,
+            )
+
+    return prompt
+
+
+async def plan_presentation(
+    content_text: str,
+    title: str = "",
+    language_hint: str = "",
+    template_pptx_path: str | None = None,
+) -> list[dict]:
     """
     Ask AI to produce a full slide plan from the provided text content.
     Returns a list of blueprint dicts ready for render_slide_pptx().
     """
+    from services.slide_generator import get_available_layouts
+
     client = _get_client()
 
     min_slides, max_slides = _compute_target_slide_count(content_text)
+
+    available_layouts = get_available_layouts(template_pptx_path)
+    system_prompt = _build_plan_system_prompt(available_layouts)
+    logger.info(f"Available layouts for LLM: {sorted(available_layouts)}")
 
     lang_note = f"\nIMPORTANT: Write all slide text in {language_hint}." if language_hint else ""
     user_msg = (
@@ -370,7 +432,7 @@ async def plan_presentation(content_text: str, title: str = "", language_hint: s
     resp = await client.chat.completions.create(
         model=settings.generator_model,
         messages=[
-            {"role": "system", "content": _PLAN_SYSTEM},
+            {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_msg},
         ],
         temperature=0.4,   # lower = more disciplined, fewer hallucinated slides

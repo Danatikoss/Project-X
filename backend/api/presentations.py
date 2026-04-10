@@ -27,10 +27,11 @@ _MAX_SIZE_MB  = 50
 
 @router.post("/plan")
 async def plan_from_file(
-    file: Optional[UploadFile] = File(None),
+    file: Optional[UploadFile]  = File(None),
     text_prompt: Optional[str]  = Form(None),
     title: str                  = Form("Презентация"),
     language: str               = Form(""),
+    brand_template_id: Optional[int] = Form(None),
     db: Session                 = Depends(get_db),
     user: User                  = Depends(get_current_user),
 ):
@@ -59,7 +60,26 @@ async def plan_from_file(
         else:
             content = text_prompt or ""
 
-        blueprints = await plan_presentation(content, title=title, language_hint=language)
+        # Resolve template pptx path for layout filtering
+        template_pptx_path: Optional[str] = None
+        effective_brand_id = brand_template_id
+        if not effective_brand_id:
+            from models.brand import BrandTemplate as _BT
+            default_tmpl = db.query(_BT).filter(
+                _BT.is_default == True,
+                _BT.owner_id == user.id,
+            ).first()
+            if default_tmpl:
+                effective_brand_id = default_tmpl.id
+        if effective_brand_id:
+            import os as _os
+            from models.brand import BrandTemplate as _BT
+            tmpl = db.query(_BT).filter(_BT.id == effective_brand_id).first()
+            if tmpl and tmpl.pptx_path and _os.path.exists(tmpl.pptx_path):
+                template_pptx_path = tmpl.pptx_path
+
+        blueprints = await plan_presentation(content, title=title, language_hint=language,
+                                             template_pptx_path=template_pptx_path)
         return {"title": title, "plan": blueprints}
 
     except ValueError as e:

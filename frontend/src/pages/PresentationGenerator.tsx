@@ -364,6 +364,7 @@ export default function PresentationGenerator() {
       textPrompt: textPrompt || undefined,
       title,
       language,
+      brandTemplateId: brandId,
     }),
     onSuccess: (data) => {
       setPlan(data.plan)
