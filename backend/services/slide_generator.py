@@ -234,31 +234,46 @@ def _set_ph_lines(ph, lines: list[str], bold_indices: set[int] | None = None) ->
 
 def _fill_slide_content(slide, blueprint: dict) -> None:
     """
-    Fill slide placeholders from the blueprint.
-    All visual styling (fonts, colors, positions, backgrounds) is governed
-    entirely by the slide layout and master — we only write text.
+    Fill slide placeholders from blueprint content.
+
+    Rules:
+    - NEVER add new shapes (no add_textbox, no add_picture for text).
+    - ONLY write into placeholders that already exist on the slide (inherited
+      from the slide layout / master).
+    - All visual styling (font, color, size, position, background) is owned
+      by the template master — we only insert plain text runs.
+    - Placeholder discovery uses idx (0=title, 1=primary body, 2=secondary body)
+      and placeholder_format.type as a fallback. The template's placeholder names
+      are auto-generated Google Slides IDs and are NOT used for matching.
     """
     layout_name = blueprint.get("layout", "title_content")
     content     = blueprint.get("content", {})
     title_text  = blueprint.get("title", "")
 
-    # Build placeholder maps
+    # ── Placeholder discovery ─────────────────────────────────────────────────
+    # idx=0  → title / center-title
+    # idx=1  → primary body (or subtitle on TITLE layout)
+    # idx=2  → secondary body (right column on two-column layouts)
+    # idx=12 → slide number — skip
     ph_by_idx: dict[int, object] = {ph.placeholder_format.idx: ph for ph in slide.placeholders}
-    ph_by_type: dict = {}
-    for ph in slide.placeholders:
-        ph_by_type.setdefault(ph.placeholder_format.type, ph)
 
     title_ph = (ph_by_idx.get(0)
-                or ph_by_type.get(PPT.TITLE)
-                or ph_by_type.get(PPT.CENTER_TITLE))
+                or next((ph for ph in slide.placeholders
+                         if ph.placeholder_format.type in (PPT.TITLE, PPT.CENTER_TITLE)), None))
 
-    # Body-type placeholders sorted by idx (1=left/first, 2=right/second)
     body_phs = [
         ph for idx, ph in sorted(ph_by_idx.items())
-        if idx >= 1 and ph.placeholder_format.type in (PPT.BODY, PPT.SUBTITLE, PPT.OBJECT)
+        if idx >= 1
+        and ph.placeholder_format.type in (PPT.BODY, PPT.SUBTITLE, PPT.OBJECT)
     ]
 
-    # ── key_message: message IS the hero text, not the slide title ────────────
+    logger.debug(
+        "_fill_slide_content: layout=%s  title_ph=%s  body_phs=%d",
+        layout_name, title_ph is not None, len(body_phs),
+    )
+
+    # ── key_message: hero text goes into the title placeholder ───────────────
+    # (MAIN_POINT layout has only a title placeholder, no body)
     if layout_name == "key_message":
         msg = content.get("message") or title_text
         if title_ph:
@@ -267,10 +282,14 @@ def _fill_slide_content(slide, blueprint: dict) -> None:
             _set_ph_text(body_phs[0], content["subtext"])
         return
 
-    # ── All other layouts: title → ph[0], content → body ph(s) ───────────────
+    # ── All other layouts: title text → idx=0 placeholder ────────────────────
     if title_ph:
         _set_ph_text(title_ph, title_text)
+
     if not body_phs:
+        # Layout has no body placeholder (e.g. TITLE_ONLY, SECTION_HEADER).
+        # Nothing more to fill — design is complete as-is.
+        logger.debug("_fill_slide_content: no body placeholder for layout=%s", layout_name)
         return
 
     if layout_name == "title_content":
@@ -289,6 +308,7 @@ def _fill_slide_content(slide, blueprint: dict) -> None:
             _set_ph_lines(body_phs[0], l_lines, bold_indices={0} if l_label else set())
             _set_ph_lines(body_phs[1], r_lines, bold_indices={0} if r_label else set())
         else:
+            # Template has only one body placeholder — merge both columns into it
             merged = l_lines + ["", "\u2500" * 20, ""] + r_lines
             bold = ({0} if l_label else set()) | (
                 {len(l_lines) + 3} if r_label else set()
@@ -366,7 +386,13 @@ def _fill_slide_content(slide, blueprint: dict) -> None:
             lines += ["", f"\u2014 {attr}"]
         _set_ph_lines(body_phs[0], lines)
 
-    # chart_bar / chart_pie: body left empty; chart added as floating shape below.
+    elif layout_name in ("chart_bar", "chart_pie"):
+        # Body placeholder is intentionally left empty — the chart shape is added
+        # as a floating graphic below by _add_chart_shape().
+        # We clear the body so no placeholder prompt text leaks through.
+        _set_ph_text(body_phs[0], "")
+
+    # section_divider, quote, timeline, big_stat — handled above; nothing else needed.
 
 
 def _add_chart_shape(slide, blueprint: dict, slide_w, slide_h) -> None:
@@ -521,6 +547,57 @@ def _render_thumbnail(pptx_path: str, out_dir: str) -> str:
     return out
 
 
+def _blueprint_body_preview(blueprint: dict) -> list[str]:
+    """
+    Extract up to 3 preview lines from a blueprint's content for thumbnail display.
+    These are shown below the title bar in the branded thumbnail.
+    """
+    layout  = blueprint.get("layout", "")
+    content = blueprint.get("content", {})
+    lines: list[str] = []
+
+    if layout == "icon_grid":
+        for card in (content.get("cards") or [])[:4]:
+            lines.append(f"• {card.get('heading', '')}")
+    elif layout in ("process_flow",):
+        for i, step in enumerate((content.get("steps") or [])[:4], 1):
+            lines.append(f"{i}. {step.get('label', '')}")
+    elif layout == "key_message":
+        if content.get("message"):
+            lines.append(content["message"])
+        if content.get("subtext"):
+            lines.append(content["subtext"])
+    elif layout == "big_stat":
+        if content.get("value"):
+            lines.append(content["value"])
+        if content.get("label"):
+            lines.append(content["label"])
+    elif layout == "section_divider":
+        if content.get("subtitle"):
+            lines.append(content["subtitle"])
+    elif layout == "quote":
+        if content.get("quote"):
+            lines.append(f"\u201C{content['quote'][:80]}\u201D")
+    elif layout in ("two_column", "comparison"):
+        lc = content.get("left") or {}
+        rc = content.get("right") or {}
+        if lc.get("heading") or lc.get("label"):
+            lines.append((lc.get("heading") or lc.get("label", "")) + " / " +
+                         (rc.get("heading") or rc.get("label", "")))
+        for item in (lc.get("items") or [])[:2]:
+            lines.append(f"• {item}")
+    elif layout == "timeline":
+        for step in (content.get("steps") or [])[:4]:
+            lines.append(f"{step.get('label', '')}  \u2192  {step.get('event', '')[:40]}")
+    elif layout in ("chart_bar", "chart_pie"):
+        lines.append("[ chart ]")
+    else:  # title_content
+        for item in (content.get("items") or [])[:4]:
+            lines.append(f"• {item}")
+
+    return [l for l in lines if l.strip()][:4]
+
+
 def _render_thumbnail_branded(
     pptx_path: str,
     out_dir: str,
@@ -529,7 +606,7 @@ def _render_thumbnail_branded(
 ) -> str:
     """
     PIL-based thumbnail for branded slides (background_image_path is set).
-    Composes: background image → semi-transparent title bar → title text.
+    Composes: background image → semi-transparent title bar → title text → body preview.
     Falls back to fitz if PIL fails.
     """
     from PIL import Image, ImageDraw, ImageFont
@@ -564,14 +641,22 @@ def _render_thumbnail_branded(
                 font = ImageFont.load_default()
             draw.text((48, int(bar_h * 0.15)), title, fill=title_rgb, font=font)
 
-        layout = blueprint.get("layout", "")
-        if layout:
+        # Body content preview — shown below the title bar
+        body_lines = _blueprint_body_preview(blueprint)
+        if body_lines:
+            body_font_size = max(28, int(_THUMB_H * 0.035))
             try:
-                badge_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 28)
+                body_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", body_font_size)
             except Exception:
-                badge_font = ImageFont.load_default()
-            draw.text((_THUMB_W - 20, _THUMB_H - 20), layout.upper(),
-                      fill=(255, 255, 255, 140), font=badge_font, anchor="rb")
+                body_font = ImageFont.load_default()
+            bc = colors.body_font_color.lstrip("#")
+            body_rgb = (int(bc[0:2], 16), int(bc[2:4], 16), int(bc[4:6], 16))
+            y = bar_h + 24
+            for line in body_lines:
+                if y + body_font_size + 8 > _THUMB_H - 20:
+                    break
+                draw.text((48, y), line[:90], fill=body_rgb, font=body_font)
+                y += body_font_size + 12
 
         out = os.path.join(out_dir, "0.png")
         bg.save(out, "PNG")
