@@ -199,6 +199,16 @@ def update_guidelines(
         if val is not None:
             setattr(tmpl, field, max(0.0, min(1.0, val)))
 
+    # Brand intelligence fields
+    if body.tone_of_voice is not None:
+        tmpl.tone_of_voice = body.tone_of_voice.strip() or None
+    if body.prohibitions is not None:
+        tmpl.prohibitions_json = json.dumps(body.prohibitions, ensure_ascii=False)
+    if body.brand_guidelines_text is not None:
+        tmpl.brand_guidelines_text = body.brand_guidelines_text.strip() or None
+    if body.target_audience is not None:
+        tmpl.target_audience = body.target_audience.strip() or None
+
     db.commit()
     db.refresh(tmpl)
     return _tmpl_to_response(tmpl)
@@ -338,4 +348,8 @@ def _tmpl_to_response(t: BrandTemplate) -> BrandTemplateResponse:
         body_y  = t.body_y  if t.body_y  is not None else 0.220,
         body_w  = t.body_w  if t.body_w  is not None else 0.924,
         body_h  = t.body_h  if t.body_h  is not None else 0.760,
+        tone_of_voice         = t.tone_of_voice,
+        prohibitions_json     = t.prohibitions_json,
+        brand_guidelines_text = t.brand_guidelines_text,
+        target_audience       = t.target_audience,
     )

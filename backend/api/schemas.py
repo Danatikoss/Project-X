@@ -179,6 +179,11 @@ class BrandTemplateResponse(BaseModel):
     body_y: float = 0.220
     body_w: float = 0.924
     body_h: float = 0.760
+    # Brand intelligence fields
+    tone_of_voice: Optional[str] = None
+    prohibitions_json: Optional[str] = None
+    brand_guidelines_text: Optional[str] = None
+    target_audience: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -202,6 +207,11 @@ class BrandGuidelinesUpdate(BaseModel):
     body_y: Optional[float] = None
     body_w: Optional[float] = None
     body_h: Optional[float] = None
+    # Brand intelligence fields
+    tone_of_voice: Optional[str] = None
+    prohibitions: Optional[list[str]] = None   # list → stored as JSON array
+    brand_guidelines_text: Optional[str] = None
+    target_audience: Optional[str] = None
 
 
 class GenerateSlideRequest(BaseModel):

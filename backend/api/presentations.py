@@ -78,8 +78,37 @@ async def plan_from_file(
             if tmpl and tmpl.pptx_path and _os.path.exists(tmpl.pptx_path):
                 template_pptx_path = tmpl.pptx_path
 
-        blueprints = await plan_presentation(content, title=title, language_hint=language,
-                                             template_pptx_path=template_pptx_path)
+        # Build brand context for LLM planner + reviewer
+        brand_context: dict | None = None
+        if effective_brand_id:
+            from models.brand import BrandTemplate as _BT2
+            import json as _json
+            full_tmpl = db.query(_BT2).filter(_BT2.id == effective_brand_id).first()
+            if full_tmpl:
+                prohibitions: list[str] = []
+                if full_tmpl.prohibitions_json:
+                    try:
+                        prohibitions = _json.loads(full_tmpl.prohibitions_json)
+                    except Exception:
+                        prohibitions = [full_tmpl.prohibitions_json]
+                brand_context = {
+                    "tone_of_voice":        full_tmpl.tone_of_voice or "",
+                    "target_audience":      full_tmpl.target_audience or "",
+                    "prohibitions":         "; ".join(prohibitions) if prohibitions else "",
+                    "brand_guidelines_text": full_tmpl.brand_guidelines_text or "",
+                }
+                # Drop empty keys so we don't send blank noise to LLM
+                brand_context = {k: v for k, v in brand_context.items() if v}
+                if not brand_context:
+                    brand_context = None
+
+        blueprints = await plan_presentation(
+            content,
+            title=title,
+            language_hint=language,
+            template_pptx_path=template_pptx_path,
+            brand_context=brand_context,
+        )
         return {"title": title, "plan": blueprints}
 
     except ValueError as e:

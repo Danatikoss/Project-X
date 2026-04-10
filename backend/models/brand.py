@@ -36,4 +36,14 @@ class BrandTemplate(Base):
     body_w  = Column(Float, default=0.924)
     body_h  = Column(Float, default=0.760)
 
+    # ── Extended Brand Intelligence ──────────────────────────────────────────
+    # Used to inject brand context into the LLM planner and reviewer prompts.
+    tone_of_voice = Column(Text, nullable=True)
+    # JSON array of strings, e.g. ["no humor", "avoid red color references"]
+    prohibitions_json = Column(Text, nullable=True)
+    # Free-form brand description: values, personality, communication style
+    brand_guidelines_text = Column(Text, nullable=True)
+    # e.g. "C-level executives", "investors", "technical teams"
+    target_audience = Column(Text, nullable=True)
+
     owner = relationship("User", backref="brand_templates")

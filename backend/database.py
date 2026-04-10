@@ -81,6 +81,7 @@ def migrate_db():
             _add_column_if_missing(conn, "slide_library_entries", "text_content", "TEXT")
             _add_column_if_missing(conn, "slide_library_entries", "key_message", "TEXT")
             _add_column_if_missing(conn, "slide_library_entries", "topic", "TEXT")
+            _add_column_if_missing(conn, "slide_library_entries", "blueprint_json", "TEXT")
         if "user_profiles" in tables:
             _add_column_if_missing(conn, "user_profiles", "user_id", "INTEGER REFERENCES users(id)")
             conn.execute(text(
@@ -111,6 +112,10 @@ def migrate_db():
             _add_column_if_missing(conn, "brand_templates", "body_y",  "REAL DEFAULT 0.220")
             _add_column_if_missing(conn, "brand_templates", "body_w",  "REAL DEFAULT 0.924")
             _add_column_if_missing(conn, "brand_templates", "body_h",  "REAL DEFAULT 0.760")
+            _add_column_if_missing(conn, "brand_templates", "tone_of_voice",         "TEXT")
+            _add_column_if_missing(conn, "brand_templates", "prohibitions_json",     "TEXT")
+            _add_column_if_missing(conn, "brand_templates", "brand_guidelines_text", "TEXT")
+            _add_column_if_missing(conn, "brand_templates", "target_audience",       "TEXT")
 
 
 def create_tables():

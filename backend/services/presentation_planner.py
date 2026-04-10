@@ -348,13 +348,45 @@ def _enforce_slide_count(blueprints: list[dict], max_slides: int) -> list[dict]:
     return [first] + kept_middle + [last]
 
 
-def _build_plan_system_prompt(available_layouts: set[str] | None) -> str:
+def _build_brand_context_section(brand_context: dict | None) -> str:
+    """
+    Build a brand context appendix for the planning system prompt.
+    Returns empty string when no brand context is provided.
+    """
+    if not brand_context:
+        return ""
+    lines: list[str] = []
+    if brand_context.get("tone_of_voice"):
+        lines.append(f"Tone of voice: {brand_context['tone_of_voice']}")
+    if brand_context.get("target_audience"):
+        lines.append(f"Target audience: {brand_context['target_audience']}")
+    if brand_context.get("prohibitions"):
+        lines.append(
+            f"PROHIBITIONS — never include in any slide text: {brand_context['prohibitions']}"
+        )
+    if brand_context.get("brand_guidelines_text"):
+        lines.append(f"Brand guidelines: {brand_context['brand_guidelines_text']}")
+    if not lines:
+        return ""
+    return (
+        "\n\n══════════════════════\n"
+        "CLIENT BRAND CONTEXT (mandatory — apply to every slide)\n"
+        "══════════════════════\n"
+        + "\n".join(lines)
+    )
+
+
+def _build_plan_system_prompt(
+    available_layouts: set[str] | None,
+    brand_context: dict | None = None,
+) -> str:
     """
     Build the system prompt for plan_presentation(), filtering to only
-    the layouts actually available in the user's template.
+    the layouts actually available in the user's template and injecting
+    brand context when provided.
     """
     if not available_layouts:
-        return _PLAN_SYSTEM
+        return _PLAN_SYSTEM + _build_brand_context_section(brand_context)
 
     all_layouts = {
         "icon_grid", "key_message", "process_flow", "chart_bar", "chart_pie",
@@ -363,7 +395,7 @@ def _build_plan_system_prompt(available_layouts: set[str] | None) -> str:
     }
     removed = all_layouts - available_layouts
     if not removed:
-        return _PLAN_SYSTEM
+        return _PLAN_SYSTEM + _build_brand_context_section(brand_context)
 
     prompt = _PLAN_SYSTEM
 
@@ -396,7 +428,7 @@ def _build_plan_system_prompt(available_layouts: set[str] | None) -> str:
                 prompt,
             )
 
-    return prompt
+    return prompt + _build_brand_context_section(brand_context)
 
 
 async def plan_presentation(
@@ -404,6 +436,7 @@ async def plan_presentation(
     title: str = "",
     language_hint: str = "",
     template_pptx_path: str | None = None,
+    brand_context: dict | None = None,
 ) -> list[dict]:
     """
     Ask AI to produce a full slide plan from the provided text content.
@@ -416,8 +449,13 @@ async def plan_presentation(
     min_slides, max_slides = _compute_target_slide_count(content_text)
 
     available_layouts = get_available_layouts(template_pptx_path)
-    system_prompt = _build_plan_system_prompt(available_layouts)
+    system_prompt = _build_plan_system_prompt(available_layouts, brand_context)
     logger.info(f"Available layouts for LLM: {sorted(available_layouts)}")
+    if brand_context:
+        logger.info(
+            f"Brand context injected: tone={brand_context.get('tone_of_voice')!r}, "
+            f"audience={brand_context.get('target_audience')!r}"
+        )
 
     lang_note = f"\nIMPORTANT: Write all slide text in {language_hint}." if language_hint else ""
     user_msg = (
@@ -459,6 +497,16 @@ async def plan_presentation(
     # Post-process 2: hard count enforcement if model still exceeded
     blueprints = _enforce_slide_count(blueprints, max_slides)
     logger.info(f"After count enforcement: {len(blueprints)} blueprints")
+
+    # Reviewer pass — fix consecutive layouts, tone/prohibitions, narrative flow
+    from services.reviewer_agent import review_and_fix_blueprints
+    blueprints = await review_and_fix_blueprints(
+        blueprints=blueprints,
+        available_layouts=available_layouts,
+        brand_context=brand_context,
+        title=title,
+    )
+    logger.info(f"After reviewer pass: {len(blueprints)} blueprints")
 
     # Sanitise and trim each blueprint — enforce layout limits before any rendering
     from services.blueprint_validator import validate_and_trim
