@@ -142,40 +142,37 @@ export function AppShell() {
     <div className="flex flex-col h-screen bg-surface overflow-hidden">
 
       {/* ── Top header ─────────────────────────────────────────────────────── */}
-      <header className="hidden md:flex items-center shrink-0 h-[52px] px-4 bg-white border-b border-gray-200 z-20">
+      <header className="hidden md:flex items-center shrink-0 h-[52px] px-4 bg-white border-b border-gray-200 z-20 relative">
 
-        {/* Logo */}
-        <NavLink to="/dashboard" className="flex items-center gap-2 mr-4 shrink-0 group">
+        {/* Logo — left fixed */}
+        <NavLink to="/dashboard" className="flex items-center gap-2 shrink-0 group">
           <div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
             <Layers className="w-3.5 h-3.5 text-white" />
           </div>
           <span className="font-bold text-[15px] tracking-tight text-gray-900">SLIDEX</span>
         </NavLink>
 
-        {/* Divider */}
-        <div className="w-px h-5 bg-gray-200 mr-3 shrink-0" />
+        {/* Center nav — absolutely centered */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
+          <nav className="flex items-center gap-0.5">
+            {PRIMARY_NAV.map((item) => (
+              <TopNavLink key={item.to} {...item} />
+            ))}
+          </nav>
 
-        {/* Primary nav */}
-        <nav className="flex items-center gap-0.5">
-          {PRIMARY_NAV.map((item) => (
-            <TopNavLink key={item.to} {...item} />
-          ))}
-        </nav>
+          <div className="w-px h-5 bg-gray-200 mx-2 shrink-0" />
 
-        {/* Divider */}
-        <div className="w-px h-5 bg-gray-200 mx-3 shrink-0" />
+          <nav className="flex items-center gap-0.5">
+            {SECONDARY_NAV.map((item) => (
+              <TopNavLink key={item.to} {...item} />
+            ))}
+            {user?.is_admin && ADMIN_NAV.map((item) => (
+              <TopNavLink key={item.to} {...item} />
+            ))}
+          </nav>
+        </div>
 
-        {/* Secondary + admin nav */}
-        <nav className="flex items-center gap-0.5">
-          {SECONDARY_NAV.map((item) => (
-            <TopNavLink key={item.to} {...item} />
-          ))}
-          {user?.is_admin && ADMIN_NAV.map((item) => (
-            <TopNavLink key={item.to} {...item} />
-          ))}
-        </nav>
-
-        {/* Right side */}
+        {/* Right side — fixed to the right */}
         <div className="flex items-center gap-1 ml-auto shrink-0">
           <IndexingBell />
           <div className="w-px h-5 bg-gray-200 mx-1" />
