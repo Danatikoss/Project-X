@@ -55,6 +55,7 @@ class SlideLibraryEntry(Base):
     topic = Column(String, nullable=True)                # thematic category: finance|strategy|product|team|market|ops|other
 
     text_edits_json = Column(Text, nullable=True)        # JSON {shape_id: new_text} — user text edits
+    blueprint_json  = Column(Text, nullable=True)        # JSON blueprint used for AI-generated slides (enables re-render)
 
     is_outdated = Column(Boolean, default=False)
     is_generated = Column(Boolean, default=False)      # True = AI-generated, hidden from library until saved
@@ -66,6 +67,9 @@ class SlideLibraryEntry(Base):
 
     source = relationship("SourcePresentation", back_populates="slides")
     project = relationship("Project", back_populates="slides")
+    edit_versions = relationship("SlideEditVersion", back_populates="slide",
+                                 order_by="SlideEditVersion.version_number",
+                                 cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_slide_source_id", "source_id"),
@@ -74,3 +78,17 @@ class SlideLibraryEntry(Base):
         Index("ix_slide_is_outdated", "is_outdated"),
         Index("ix_slide_access_level", "access_level"),
     )
+
+
+class SlideEditVersion(Base):
+    __tablename__ = "slide_edit_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slide_id = Column(Integer, ForeignKey("slide_library_entries.id"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    edits_json = Column(Text, nullable=False)           # full merged {shape_id: text} snapshot
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    slide = relationship("SlideLibraryEntry", back_populates="edit_versions")
+    created_by = relationship("User")

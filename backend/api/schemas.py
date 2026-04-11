@@ -253,4 +253,3 @@ class UserProfilePatchRequest(BaseModel):
 class ProfileStatsResponse(BaseModel):
     assemblies_count: int
     slides_count: int
-    theses_count: int

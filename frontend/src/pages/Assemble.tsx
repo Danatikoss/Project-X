@@ -5,11 +5,11 @@ import {
   Download, ArrowLeft, Plus, Search, X, Edit2, Check,
   ChevronLeft, ChevronRight, Share2,
   BookImage, Sparkles, FolderOpen, Play,
-  Film, Image, Trash2, FileText, ChevronDown,
+  Film, Image, Trash2, ChevronDown,
   PanelLeftClose, PanelLeftOpen, Presentation,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { assemblyApi, libraryApi, searchApi, projectsApi, mediaApi, thesesApi } from '../api/client'
+import { assemblyApi, libraryApi, searchApi, projectsApi, mediaApi } from '../api/client'
 import { FilmStrip } from '../components/assemble/FilmStrip'
 import { SlideCard, SlideThumbnail } from '../components/common/SlideCard'
 import { Slideshow } from '../components/common/Slideshow'
@@ -415,7 +415,6 @@ export default function Assemble() {
   const [filmstripCollapsed, setFilmstripCollapsed] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
-  const [isCreatingTheses, setIsCreatingTheses] = useState(false)
   const [showSlideshow, setShowSlideshow] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [editingSlideId, setEditingSlideId] = useState<number | null>(null)
@@ -661,21 +660,6 @@ export default function Assemble() {
             </button>
           )}
 
-          {/* Theses */}
-          <button
-            onClick={async () => {
-              setIsCreatingTheses(true)
-              try { const s = await thesesApi.create(assemblyId); navigate(`/theses/${s.id}`) }
-              catch { toast.error('Не удалось создать тезисы') }
-              finally { setIsCreatingTheses(false) }
-            }}
-            disabled={isCreatingTheses || localSlides.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm transition-colors disabled:opacity-40"
-            title="Тезисы к выступлению"
-          >
-            {isCreatingTheses ? <Spinner size="sm" className="border-gray-400 border-t-transparent" /> : <FileText className="w-4 h-4" />}
-            <span className="hidden md:inline">Тезисы</span>
-          </button>
 
           {/* Share */}
           <button

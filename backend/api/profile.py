@@ -14,7 +14,6 @@ from database import get_db
 from models.user import User, UserProfile
 from models.assembly import AssembledPresentation
 from models.slide import SlideLibraryEntry, SourcePresentation
-from models.theses import ThesesSession
 from api.schemas import UserProfileResponse, UserProfilePatchRequest, ProfileStatsResponse
 from api.deps import get_current_user
 
@@ -60,12 +59,9 @@ def get_stats(db: Session = Depends(get_db), user: User = Depends(get_current_us
         if source_ids else 0
     )
 
-    theses_count = db.query(ThesesSession).filter_by(owner_id=user.id).count()
-
     return ProfileStatsResponse(
         assemblies_count=assemblies_count,
         slides_count=slides_count,
-        theses_count=theses_count,
     )
 
 

@@ -5,7 +5,6 @@ import type {
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
   AuthResponse, Project, BrandTemplate, BrandGuidelinesUpdate, GenerateSlideRequest, GenerateSlideResponse,
   MediaFolder, MediaAsset, AssemblyTemplate,
-  ThesisQuestion, ThesesSession, ThesesSessionListItem,
   ProfileStats, AdminUser, TextElement, SlideEditVersion,
 } from '../types'
 import { useAuthStore } from '../store/auth'
@@ -473,47 +472,6 @@ export const mediaApi = {
   },
 }
 
-// ─── Theses ───────────────────────────────────────────────────────────────────
-
-export const thesesApi = {
-  list: async (): Promise<ThesesSessionListItem[]> => {
-    const res = await api.get<ThesesSessionListItem[]>('/theses')
-    return res.data
-  },
-
-  create: async (assemblyId: number): Promise<ThesesSession> => {
-    const res = await api.post<ThesesSession>('/theses', { assembly_id: assemblyId })
-    return res.data
-  },
-
-  uploadFile: async (file: File): Promise<ThesesSession> => {
-    const form = new FormData()
-    form.append('file', file)
-    const res = await api.post<ThesesSession>('/theses/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    return res.data
-  },
-
-  get: async (sessionId: number): Promise<ThesesSession> => {
-    const res = await api.get<ThesesSession>(`/theses/${sessionId}`)
-    return res.data
-  },
-
-  delete: async (sessionId: number): Promise<void> => {
-    await api.delete(`/theses/${sessionId}`)
-  },
-
-  analyze: async (sessionId: number): Promise<{ questions: ThesisQuestion[] }> => {
-    const res = await api.post<{ questions: ThesisQuestion[] }>(`/theses/${sessionId}/analyze`)
-    return res.data
-  },
-
-  generate: async (sessionId: number, context?: Record<string, string>): Promise<{ theses: ThesesSession['theses'] }> => {
-    const res = await api.post<{ theses: ThesesSession['theses'] }>(`/theses/${sessionId}/generate`, { context: context ?? {} })
-    return res.data
-  },
-}
 
 // ─── Presentations (AI Generator) ────────────────────────────────────────────
 

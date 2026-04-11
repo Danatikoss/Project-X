@@ -1,0 +1,1 @@
+/Users/danatikoss/desktop/project2/.claude/skills/gstack/devex-review/SKILL.md

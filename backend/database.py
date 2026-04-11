@@ -120,15 +120,7 @@ def migrate_db():
 
 
 def create_tables():
-    from models import slide, assembly, user, project, brand, media, template, theses  # noqa: F401
-    # Drop old assembly_theses table if it exists (replaced by theses_sessions)
-    try:
-        existing_tables = inspect(engine).get_table_names()
-        if "assembly_theses" in existing_tables and "theses_sessions" not in existing_tables:
-            with engine.begin() as conn:
-                conn.execute(text("DROP TABLE assembly_theses"))
-    except Exception:
-        pass
+    from models import slide, assembly, user, project, brand, media, template  # noqa: F401
 
     # Drop old assembly_templates if schema changed (had AI 'prompt' column)
     try:

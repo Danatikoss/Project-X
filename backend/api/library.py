@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, joinedload
 from config import settings
 from database import get_db
 from models.assembly import AssembledPresentation
-from models.slide import SourcePresentation, SlideLibraryEntry
+from models.slide import SourcePresentation, SlideLibraryEntry, SlideEditVersion
 from models.user import User
 from api.schemas import (
     UploadResponse, SourcePresentationResponse,
@@ -218,16 +218,6 @@ def update_slide(slide_id: int, body: SlidePatchRequest, db: Session = Depends(g
     return slide_to_response(slide, db)
 
 
-@router.delete("/slides/{slide_id}", status_code=204)
-def delete_slide(slide_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    slide = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).get(slide_id)
-    if not slide:
-        raise HTTPException(404, detail="Слайд не найден")
-    _check_slide_owner(slide, user.id)
-    db.delete(slide)
-    db.commit()
-
-
 @router.delete("/slides/all", status_code=200)
 def delete_all_slides(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Delete all library slides belonging to this user (non-generated only)."""
@@ -238,6 +228,16 @@ def delete_all_slides(db: Session = Depends(get_db), user: User = Depends(get_cu
     ).delete(synchronize_session=False)
     db.commit()
     return {"deleted": result}
+
+
+@router.delete("/slides/{slide_id}", status_code=204)
+def delete_slide(slide_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    slide = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).get(slide_id)
+    if not slide:
+        raise HTTPException(404, detail="Слайд не найден")
+    _check_slide_owner(slide, user.id)
+    db.delete(slide)
+    db.commit()
 
 
 @router.delete("/sources/all", status_code=200)
@@ -508,17 +508,17 @@ def _apply_text_edits(pptx_bytes: bytes, edits: dict) -> bytes:
         tf = shape.text_frame
         new_lines = new_text.split('\n')
 
-        # Distribute lines to matching paragraphs (one line → one paragraph).
-        # This preserves per-paragraph font size/bold/color inherited by runs.
-        for i, para in enumerate(tf.paragraphs):
+        # Distribute lines only to paragraphs that have runs (skip spacing/empty paragraphs).
+        # Use a separate line counter so empty paragraphs don't consume a line slot.
+        line_idx = 0
+        for para in tf.paragraphs:
             if not para.runs:
                 continue
-            line = new_lines[i] if i < len(new_lines) else ''
-            # First run of the paragraph gets the new line text
+            line = new_lines[line_idx] if line_idx < len(new_lines) else ''
             para.runs[0].text = line
-            # Blank out any additional runs inside this paragraph
             for run in para.runs[1:]:
                 run.text = ''
+            line_idx += 1
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -539,9 +539,11 @@ def _build_original_pptx(slide: SlideLibraryEntry) -> bytes:
     if src and src.file_type == "pptx" and src.file_path and Path(src.file_path).exists():
         try:
             from services.export import _clone_slide
+            # Preserve original slide dimensions so EMU coordinates map correctly
+            _src_prs = _Prs(src.file_path)
             dest = _Prs()
-            dest.slide_width = _Inches(13.33)
-            dest.slide_height = _Inches(7.5)
+            dest.slide_width = _src_prs.slide_width or _Inches(13.33)
+            dest.slide_height = _src_prs.slide_height or _Inches(7.5)
             if _clone_slide(dest, src.file_path, slide.slide_index):
                 buf = _io.BytesIO()
                 dest.save(buf)
@@ -622,7 +624,21 @@ def save_text_edits(
     # Update DB
     slide.text_edits_json = json.dumps(existing)
     slide.updated_at = datetime.now(timezone.utc)
+
+    # Save version snapshot
+    from sqlalchemy import func
+    max_ver = db.query(func.max(SlideEditVersion.version_number)).filter(
+        SlideEditVersion.slide_id == slide_id
+    ).scalar() or 0
+    version_entry = SlideEditVersion(
+        slide_id=slide_id,
+        version_number=max_ver + 1,
+        edits_json=json.dumps(existing),
+        created_by_id=user.id,
+    )
+    db.add(version_entry)
     db.commit()
+    db.refresh(version_entry)
 
     # Regenerate thumbnail from the edited PPTX
     thumb_version: int | None = None
@@ -663,4 +679,137 @@ def save_text_edits(
             except Exception as e:
                 logger.warning(f"Thumbnail regen failed for slide {slide_id}: {e}")
 
-    return {"ok": True, "edited": len(existing), "thumb_version": thumb_version}
+    return {
+        "ok": True,
+        "edited": len(existing),
+        "thumb_version": thumb_version,
+        "version_number": version_entry.version_number,
+    }
+
+
+@router.get("/slides/{slide_id}/edit-history")
+def get_edit_history(
+    slide_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the list of saved edit versions for a slide, newest first."""
+    slide = db.query(SlideLibraryEntry).get(slide_id)
+    if not slide:
+        raise HTTPException(404, detail="Слайд не найден")
+
+    versions = (
+        db.query(SlideEditVersion)
+        .filter(SlideEditVersion.slide_id == slide_id)
+        .order_by(SlideEditVersion.version_number.desc())
+        .all()
+    )
+
+    result = []
+    for v in versions:
+        author_name = None
+        if v.created_by_id:
+            author = db.query(User).get(v.created_by_id)
+            author_name = author.name if author else None
+        result.append({
+            "id": v.id,
+            "version_number": v.version_number,
+            "created_at": v.created_at.isoformat() + "Z",
+            "created_by_name": author_name,
+            "edit_count": len(json.loads(v.edits_json or "{}")),
+        })
+
+    return {"versions": result}
+
+
+@router.post("/slides/{slide_id}/edit-history/{version_id}/rollback")
+def rollback_edit_version(
+    slide_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Restore slide text to a previously saved version."""
+    import tempfile
+    import time
+    from datetime import datetime, timezone
+    from api.wopi import _edited_pptx_path
+
+    slide = db.query(SlideLibraryEntry).options(
+        joinedload(SlideLibraryEntry.source)
+    ).get(slide_id)
+    if not slide:
+        raise HTTPException(404, detail="Слайд не найден")
+
+    version = db.query(SlideEditVersion).get(version_id)
+    if not version or version.slide_id != slide_id:
+        raise HTTPException(404, detail="Версия не найдена")
+
+    target_edits: dict = json.loads(version.edits_json or "{}")
+
+    # Rebuild PPTX from original and apply target version's edits
+    pptx_bytes = _build_original_pptx(slide)
+    updated_bytes = _apply_text_edits(pptx_bytes, target_edits)
+    _edited_pptx_path(slide_id).write_bytes(updated_bytes)
+
+    # Update slide
+    slide.text_edits_json = json.dumps(target_edits)
+    slide.updated_at = datetime.now(timezone.utc)
+
+    # Record rollback as a new version entry
+    from sqlalchemy import func
+    max_ver = db.query(func.max(SlideEditVersion.version_number)).filter(
+        SlideEditVersion.slide_id == slide_id
+    ).scalar() or 0
+    rollback_entry = SlideEditVersion(
+        slide_id=slide_id,
+        version_number=max_ver + 1,
+        edits_json=json.dumps(target_edits),
+        created_by_id=user.id,
+    )
+    db.add(rollback_entry)
+    db.commit()
+    db.refresh(rollback_entry)
+
+    # Regenerate thumbnail
+    thumb_version: int | None = None
+    if slide.thumbnail_path:
+        thumb_path = Path(settings.thumbnail_dir) / slide.thumbnail_path
+        if thumb_path.parent.exists():
+            try:
+                import fitz
+                from services.thumbnail import _pptx_to_pdf_via_libreoffice
+
+                with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
+                    f.write(updated_bytes)
+                    tmp_pptx = f.name
+                try:
+                    pdf_path = _pptx_to_pdf_via_libreoffice(tmp_pptx)
+                    if pdf_path:
+                        doc = fitz.open(pdf_path)
+                        pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
+                        pix.save(str(thumb_path))
+                        try:
+                            os.unlink(pdf_path)
+                        except Exception:
+                            pass
+                    else:
+                        doc = fitz.open(tmp_pptx)
+                        if doc.page_count > 0:
+                            pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
+                            pix.save(str(thumb_path))
+                finally:
+                    try:
+                        os.unlink(tmp_pptx)
+                    except Exception:
+                        pass
+                thumb_version = int(time.time())
+            except Exception as e:
+                logger.warning(f"Thumbnail regen failed on rollback for slide {slide_id}: {e}")
+
+    return {
+        "ok": True,
+        "rolled_back_to_version": version.version_number,
+        "new_version_number": rollback_entry.version_number,
+        "thumb_version": thumb_version,
+    }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film,
-  FileText, Wand2, ShieldCheck, ChevronLeft, ChevronRight,
+  Wand2, ShieldCheck, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { IndexingBell } from './IndexingBell'
@@ -13,7 +13,6 @@ const BASE_NAV = [
   { to: '/generate',       icon: Wand2,           label: 'Генератор' },
   { to: '/library',        icon: BookImage,        label: 'Библиотека' },
   { to: '/library/upload', icon: Upload,           label: 'Загрузить' },
-  { to: '/theses',         icon: FileText,         label: 'Тезисы' },
   { to: '/media',          icon: Film,             label: 'Медиа' },
   { to: '/brand',          icon: Palette,          label: 'Бренд' },
   { to: '/profile',        icon: User,             label: 'Профиль' },

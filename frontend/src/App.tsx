@@ -13,8 +13,6 @@ import Brand from './pages/Brand'
 import BrandGuidelines from './pages/BrandGuidelines'
 import Media from './pages/Media'
 import TemplateEditor from './pages/TemplateEditor'
-import ThesesList from './pages/ThesesList'
-import Theses from './pages/Theses'
 import PresentationGenerator from './pages/PresentationGenerator'
 import SharedAssembly from './pages/SharedAssembly'
 import Login from './pages/Login'
@@ -64,8 +62,6 @@ export default function App() {
             <Route path="/media" element={<ErrorBoundary><Media /></ErrorBoundary>} />
             <Route path="/templates/new" element={<ErrorBoundary><TemplateEditor /></ErrorBoundary>} />
             <Route path="/templates/:id/edit" element={<ErrorBoundary><TemplateEditor /></ErrorBoundary>} />
-            <Route path="/theses" element={<ErrorBoundary><ThesesList /></ErrorBoundary>} />
-            <Route path="/theses/:id" element={<ErrorBoundary><Theses /></ErrorBoundary>} />
             <Route path="/generate" element={<ErrorBoundary><PresentationGenerator /></ErrorBoundary>} />
           </Route>
         </Routes>

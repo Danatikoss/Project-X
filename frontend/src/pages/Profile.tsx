@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Search, X, Check, LogOut, Layers, FileText,
+  Search, X, Check, LogOut, Layers,
   Tag, Globe, Sparkles, Briefcase,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -217,10 +217,9 @@ export default function Profile() {
       </div>
 
       {/* ── Статистика ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard icon={Layers}   label="Презентации"  value={stats?.assemblies_count} color="bg-brand-600" />
-        <StatCard icon={FileText} label="Тезисы"        value={stats?.theses_count}     color="bg-violet-500" />
-        <StatCard icon={Layers}   label="Слайдов"       value={stats?.slides_count}      color="bg-emerald-500" />
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard icon={Layers} label="Презентации" value={stats?.assemblies_count} color="bg-brand-600" />
+        <StatCard icon={Layers} label="Слайдов"     value={stats?.slides_count}     color="bg-emerald-500" />
       </div>
 
       {/* ── Основная информация ────────────────────────────────────────── */}

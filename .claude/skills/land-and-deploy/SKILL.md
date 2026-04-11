@@ -1,0 +1,1 @@
+/Users/danatikoss/desktop/project2/.claude/skills/gstack/land-and-deploy/SKILL.md

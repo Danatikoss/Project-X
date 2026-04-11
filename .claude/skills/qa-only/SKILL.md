@@ -1,0 +1,1 @@
+/Users/danatikoss/desktop/project2/.claude/skills/gstack/qa-only/SKILL.md
