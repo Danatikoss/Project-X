@@ -171,11 +171,6 @@ export default function Library() {
 
   const debouncedQuery = useDebounce(query, 400)
 
-  const { data: sources } = useQuery({
-    queryKey: ['sources'],
-    queryFn: libraryApi.listSources,
-  })
-
   const { data: searchResults, isFetching: searchFetching } = useQuery({
     queryKey: ['search', debouncedQuery],
     queryFn: () => searchApi.search(debouncedQuery, 50),
@@ -185,7 +180,6 @@ export default function Library() {
   const { data: libraryData, isFetching: libraryFetching } = useQuery({
     queryKey: ['slides', filters, page],
     queryFn: () => libraryApi.listSlides({
-      source_ids: filters.source_ids,
       layout_type: filters.layout_type,
       language: filters.language,
       is_outdated: filters.is_outdated,
@@ -221,7 +215,6 @@ export default function Library() {
             <FilterPanel
               filters={filters}
               onChange={(f) => { setFilters(f); setPage(1) }}
-              sources={sources || []}
             />
           </div>
         </div>

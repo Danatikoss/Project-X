@@ -1,10 +1,13 @@
 import { useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload as UploadIcon, CheckCircle, XCircle, ArrowLeft, FileText, X } from 'lucide-react'
+import { Upload as UploadIcon, CheckCircle, XCircle, ArrowLeft, FileText, X, Trash2, FileType2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useIndexingStore, UploadEntry } from '../store/indexing'
 import { Spinner } from '../components/common/Spinner'
 import { cn } from '../utils/cn'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { libraryApi } from '../api/client'
+import type { SourcePresentation } from '../types'
 
 function FileRow({ entry, onRemove }: { entry: UploadEntry; onRemove: () => void }) {
   const job = useIndexingStore((s) => s.jobs.find((j) => j.ws_token === entry.wsToken))
@@ -57,11 +60,67 @@ function FileRow({ entry, onRemove }: { entry: UploadEntry; onRemove: () => void
   )
 }
 
+function SourceRow({ source, onDelete }: { source: SourcePresentation; onDelete: () => void }) {
+  const date = new Date(source.uploaded_at).toLocaleDateString('ru-RU', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  })
+
+  return (
+    <div className="group flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all">
+      <div className={cn(
+        'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold uppercase',
+        source.file_type === 'pptx' ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'
+      )}>
+        {source.file_type}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-800 truncate">{source.filename}</p>
+        <p className="text-xs text-slate-400 mt-0.5">
+          {source.slide_count} слайдов · {date}
+        </p>
+      </div>
+      <span className={cn(
+        'text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0',
+        source.status === 'done' ? 'bg-emerald-50 text-emerald-600' :
+        source.status === 'error' ? 'bg-red-50 text-red-600' :
+        'bg-slate-100 text-slate-500'
+      )}>
+        {source.status === 'done' ? 'Готово' : source.status === 'error' ? 'Ошибка' : 'Обработка'}
+      </span>
+      <button
+        onClick={onDelete}
+        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all shrink-0"
+        title="Удалить презентацию и все её слайды"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  )
+}
+
 export default function Upload() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { uploadQueue, enqueue, removeFromQueue } = useIndexingStore()
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+
+  const { data: sources = [], isLoading: sourcesLoading } = useQuery<SourcePresentation[]>({
+    queryKey: ['sources'],
+    queryFn: libraryApi.listSources,
+  })
+
+  const deleteSourceMutation = useMutation({
+    mutationFn: libraryApi.deleteSource,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+      queryClient.invalidateQueries({ queryKey: ['slides'] })
+      setDeleteConfirmId(null)
+      toast.success('Презентация удалена')
+    },
+    onError: () => toast.error('Не удалось удалить'),
+  })
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files?.length) return
@@ -90,6 +149,7 @@ export default function Upload() {
 
   const doneCount = uploadQueue.filter((e) => e.status === 'done').length
   const allDone = uploadQueue.length > 0 && uploadQueue.every((e) => e.status === 'done' || e.status === 'error')
+  const sourceToDelete = sources.find((s) => s.id === deleteConfirmId)
 
   return (
     <div className="min-h-full bg-surface">
@@ -144,12 +204,12 @@ export default function Upload() {
           </div>
         </div>
 
-        {/* File list */}
+        {/* Active upload queue */}
         {uploadQueue.length > 0 && (
           <div className="mt-6 flex flex-col gap-2">
             <div className="flex items-center justify-between mb-1">
               <p className="text-sm font-semibold text-slate-700">
-                Файлы <span className="text-slate-400 font-normal">({doneCount}/{uploadQueue.length} готово)</span>
+                Загрузка <span className="text-slate-400 font-normal">({doneCount}/{uploadQueue.length} готово)</span>
               </p>
               {allDone && (
                 <button
@@ -170,8 +230,32 @@ export default function Upload() {
           </div>
         )}
 
-        {/* Instructions */}
-        {uploadQueue.length === 0 && (
+        {/* Uploaded presentations history */}
+        {(sources.length > 0 || sourcesLoading) && (
+          <div className="mt-8">
+            <div className="flex items-center gap-2 mb-3">
+              <FileType2 className="w-4 h-4 text-slate-400" />
+              <h2 className="text-sm font-semibold text-slate-700">Загруженные презентации</h2>
+              <span className="ml-auto text-xs text-slate-400">{sources.length} файлов</span>
+            </div>
+            {sourcesLoading ? (
+              <div className="flex justify-center py-6"><Spinner /></div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {sources.map((source) => (
+                  <SourceRow
+                    key={source.id}
+                    source={source}
+                    onDelete={() => setDeleteConfirmId(source.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Instructions (only when no uploads in progress and no history) */}
+        {uploadQueue.length === 0 && sources.length === 0 && !sourcesLoading && (
           <div className="mt-8 grid grid-cols-3 gap-4">
             {[
               { step: '1', title: 'Загрузите', desc: 'PPTX или PDF файлы с вашими слайдами' },
@@ -189,6 +273,42 @@ export default function Upload() {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteConfirmId && sourceToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteConfirmId(null)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Удалить презентацию?</p>
+                <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{sourceToDelete.filename}</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">
+              Будут удалены все {sourceToDelete.slide_count} слайдов из этой презентации. Действие нельзя отменить.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => deleteSourceMutation.mutate(deleteConfirmId)}
+                disabled={deleteSourceMutation.isPending}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+              >
+                {deleteSourceMutation.isPending ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

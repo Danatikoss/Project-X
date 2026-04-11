@@ -304,7 +304,8 @@ def list_labels(db: Session = Depends(get_db), user: User = Depends(get_current_
 @router.get("/sources", response_model=list[SourcePresentationResponse])
 def list_sources(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     sources = db.query(SourcePresentation).filter(
-        SourcePresentation.owner_id == user.id
+        SourcePresentation.owner_id == user.id,
+        SourcePresentation.is_ai_source == False,  # noqa: E712
     ).order_by(SourcePresentation.id.desc()).all()
     return [SourcePresentationResponse.model_validate(s) for s in sources]
 

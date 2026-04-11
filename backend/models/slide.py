@@ -18,6 +18,7 @@ class SourcePresentation(Base):
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     indexed_at = Column(DateTime, nullable=True)
+    is_ai_source = Column(Boolean, default=False)    # True = created by AI generator, hidden from UI
 
     owner = relationship("User", back_populates="sources")
     slides = relationship("SlideLibraryEntry", back_populates="source", cascade="all, delete-orphan")

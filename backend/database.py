@@ -56,6 +56,7 @@ def migrate_db():
     with engine.begin() as conn:
         if "source_presentations" in tables:
             _add_column_if_missing(conn, "source_presentations", "owner_id", "INTEGER REFERENCES users(id)")
+            _add_column_if_missing(conn, "source_presentations", "is_ai_source", "BOOLEAN DEFAULT 0")
         if "assembled_presentations" in tables:
             _add_column_if_missing(conn, "assembled_presentations", "owner_id", "INTEGER REFERENCES users(id)")
             _add_column_if_missing(conn, "assembled_presentations", "share_token", "TEXT")

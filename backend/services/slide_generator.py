@@ -1243,6 +1243,7 @@ async def generate_slide(
         file_type="pptx",
         slide_count=1,
         status="done",
+        is_ai_source=True,
     )
     db.add(source)
     db.flush()
@@ -1349,6 +1350,7 @@ async def save_slide_from_blueprint(
         file_type="pptx",
         slide_count=1,
         status="done",
+        is_ai_source=True,
     )
     db.add(source)
     db.flush()
