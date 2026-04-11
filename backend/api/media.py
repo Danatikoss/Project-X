@@ -160,6 +160,7 @@ def delete_folder(
 def list_assets(
     folder_id: Optional[int] = None,
     unfoldered: bool = False,
+    file_type: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -168,6 +169,8 @@ def list_assets(
         q = q.filter(MediaAsset.folder_id.is_(None))
     elif folder_id is not None:
         q = q.filter(MediaAsset.folder_id == folder_id)
+    if file_type:
+        q = q.filter(MediaAsset.file_type == file_type)
     assets = q.order_by(MediaAsset.created_at.desc()).all()
     return [
         AssetResponse(

@@ -8,6 +8,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   Upload, FolderPlus, Folder, FolderOpen, MoreHorizontal,
   Trash2, Edit2, Check, X, Film, Image, FileVideo, Plus,
+  Clapperboard, ImagePlay,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { mediaApi } from '../api/client'
@@ -316,12 +317,21 @@ function FolderItem({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 type FolderFilter = 'all' | 'unfiled' | number
+type TypeFilter = 'all' | 'gif' | 'video' | 'image'
+
+const TYPE_TABS: { value: TypeFilter; label: string; icon: React.ReactNode; color: string }[] = [
+  { value: 'all',   label: 'Все',    icon: <Image className="w-3.5 h-3.5" />,        color: '' },
+  { value: 'gif',   label: 'GIF',    icon: <ImagePlay className="w-3.5 h-3.5" />,    color: 'text-pink-600' },
+  { value: 'video', label: 'Видео',  icon: <Clapperboard className="w-3.5 h-3.5" />, color: 'text-violet-600' },
+  { value: 'image', label: 'Фото',   icon: <Image className="w-3.5 h-3.5" />,        color: 'text-blue-600' },
+]
 
 export default function Media() {
   const qc = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [activeFolder, setActiveFolder] = useState<FolderFilter>('all')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [draggingAsset, setDraggingAsset] = useState<MediaAsset | null>(null)
   const [newFolderMode, setNewFolderMode] = useState(false)
@@ -337,13 +347,15 @@ export default function Media() {
     queryFn: mediaApi.listFolders,
   })
 
-  const assetsParams =
-    activeFolder === 'all'     ? {} :
-    activeFolder === 'unfiled' ? { unfoldered: true } :
-    { folder_id: activeFolder as number }
+  const assetsParams = {
+    ...(activeFolder === 'all'     ? {} :
+        activeFolder === 'unfiled' ? { unfoldered: true } :
+        { folder_id: activeFolder as number }),
+    ...(typeFilter !== 'all' ? { file_type: typeFilter } : {}),
+  }
 
   const { data: assets = [], isLoading: assetsLoading } = useQuery({
-    queryKey: ['media-assets', activeFolder],
+    queryKey: ['media-assets', activeFolder, typeFilter],
     queryFn: () => mediaApi.listAssets(assetsParams),
   })
 
@@ -457,6 +469,12 @@ export default function Media() {
 
   const currentFolderForUpload = typeof activeFolder === 'number' ? activeFolder : null
 
+  // Current section title
+  const sectionTitle =
+    activeFolder === 'all'     ? (typeFilter === 'all' ? 'Все медиа' : TYPE_TABS.find(t => t.value === typeFilter)?.label ?? 'Медиа') :
+    activeFolder === 'unfiled' ? 'Без папки' :
+    folders.find((f) => f.id === activeFolder)?.name ?? 'Медиа'
+
   return (
     <DndContext
       sensors={sensors}
@@ -466,25 +484,38 @@ export default function Media() {
     >
       <div className="flex h-full">
         {/* ── Sidebar ──────────────────────────────────────────────────────── */}
-        <aside className="w-52 shrink-0 border-r border-slate-200 bg-white flex flex-col py-4 px-2">
-          <p className="px-3 mb-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Медиатека</p>
+        <aside className="w-52 shrink-0 border-r border-slate-200 bg-white flex flex-col py-4 px-2 gap-0.5">
+          <p className="px-3 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Тип</p>
 
-          {/* All */}
-          <button
-            onClick={() => setActiveFolder('all')}
-            className={cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors',
-              activeFolder === 'all' ? 'bg-brand-50 text-brand-800' : 'text-slate-600 hover:bg-slate-100'
-            )}
-          >
-            <Image className={cn('w-4 h-4 shrink-0', activeFolder === 'all' ? 'text-brand-600' : 'text-slate-400')} />
-            Все медиа
-          </button>
+          {/* Type filters */}
+          {TYPE_TABS.map(({ value, label, icon, color }) => {
+            const isActive = activeFolder === 'all' && typeFilter === value
+            return (
+              <button
+                key={value}
+                onClick={() => { setActiveFolder('all'); setTypeFilter(value) }}
+                className={cn(
+                  'flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors',
+                  isActive ? 'bg-brand-50 text-brand-800' : 'text-slate-600 hover:bg-slate-100'
+                )}
+              >
+                <span className={cn('shrink-0', isActive ? 'text-brand-600' : color || 'text-slate-400')}>
+                  {icon}
+                </span>
+                {label}
+              </button>
+            )
+          })}
+
+          {/* Divider */}
+          <div className="my-2 border-t border-slate-100" />
+
+          <p className="px-3 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Папки</p>
 
           {/* Unfiled */}
           <div ref={unfiledRef}>
             <button
-              onClick={() => setActiveFolder('unfiled')}
+              onClick={() => { setActiveFolder('unfiled'); setTypeFilter('all') }}
               className={cn(
                 'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all',
                 activeFolder === 'unfiled' ? 'bg-brand-50 text-brand-800' : 'text-slate-600 hover:bg-slate-100',
@@ -498,14 +529,14 @@ export default function Media() {
 
           {/* Folders */}
           {!foldersLoading && folders.length > 0 && (
-            <div className="mt-1 flex flex-col gap-0.5">
+            <div className="flex flex-col gap-0.5">
               {folders.map((f) => (
                 <FolderItem
                   key={f.id}
                   folder={f}
                   isActive={activeFolder === f.id}
                   isDragOver={dragOverFolder === f.id}
-                  onClick={() => setActiveFolder(f.id)}
+                  onClick={() => { setActiveFolder(f.id); setTypeFilter('all') }}
                   onRename={(name) => renameFolderMutation.mutate({ id: f.id, name })}
                   onDelete={() => {
                     if (!confirm(`Удалить папку «${f.name}»? Медиафайлы останутся.`)) return
@@ -517,7 +548,7 @@ export default function Media() {
           )}
 
           {/* New folder */}
-          <div className="mt-2 px-1">
+          <div className="mt-1 px-1">
             {newFolderMode ? (
               <div className="flex items-center gap-1">
                 <input
@@ -561,15 +592,31 @@ export default function Media() {
           {/* Top bar */}
           <div className="border-b border-slate-200 px-5 py-3 flex items-center gap-3 bg-white sticky top-0 z-10 shadow-sm">
             <div>
-              <h1 className="text-sm font-bold text-slate-900">
-                {activeFolder === 'all'     ? 'Все медиа' :
-                 activeFolder === 'unfiled' ? 'Без папки' :
-                 folders.find((f) => f.id === activeFolder)?.name ?? 'Медиа'}
-              </h1>
+              <h1 className="text-sm font-bold text-slate-900">{sectionTitle}</h1>
               {!assetsLoading && (
                 <p className="text-xs text-slate-400">{totalAssets} файлов</p>
               )}
             </div>
+
+            {/* Type pill tabs (only when in a folder or unfiled) */}
+            {activeFolder !== 'all' && (
+              <div className="flex items-center gap-1 ml-4">
+                {TYPE_TABS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setTypeFilter(value)}
+                    className={cn(
+                      'text-xs px-2.5 py-1 rounded-full border transition-colors',
+                      typeFilter === value
+                        ? 'bg-brand-600 text-white border-brand-600'
+                        : 'border-slate-200 text-slate-500 hover:border-brand-400 hover:text-brand-600'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="ml-auto">
               <input
@@ -601,8 +648,12 @@ export default function Media() {
                 <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-4">
                   <Upload className="w-7 h-7 text-slate-300" />
                 </div>
-                <p className="text-sm font-semibold text-slate-600">Нет медиафайлов</p>
-                <p className="text-xs text-slate-400 mt-1">Нажмите, чтобы загрузить GIF, фото или видео</p>
+                <p className="text-sm font-semibold text-slate-600">
+                  {typeFilter === 'gif'   ? 'Нет GIF-анимаций' :
+                   typeFilter === 'video' ? 'Нет видеофайлов'  :
+                   typeFilter === 'image' ? 'Нет фотографий'   : 'Нет медиафайлов'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">Нажмите, чтобы загрузить</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">

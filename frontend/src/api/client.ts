@@ -446,7 +446,7 @@ export const mediaApi = {
     await api.delete(`/media/folders/${id}`)
   },
 
-  listAssets: async (params?: { folder_id?: number; unfoldered?: boolean }): Promise<MediaAsset[]> => {
+  listAssets: async (params?: { folder_id?: number; unfoldered?: boolean; file_type?: string }): Promise<MediaAsset[]> => {
     const res = await api.get<MediaAsset[]>('/media/assets', { params })
     return res.data
   },

@@ -232,39 +232,54 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
 
 // ─── Media Panel ──────────────────────────────────────────────────────────────
 
+const MEDIA_TYPE_TABS = [
+  { value: 'all'   as const, label: 'Все' },
+  { value: 'gif'   as const, label: 'GIF' },
+  { value: 'video' as const, label: 'Видео' },
+  { value: 'image' as const, label: 'Фото' },
+]
+
 function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
   const [selectedFolder, setSelectedFolder] = useState<number | 'all' | 'unfoldered'>('all')
+  const [typeTab, setTypeTab] = useState<'all' | 'gif' | 'video' | 'image'>('all')
+
   const { data: folders = [] } = useQuery<MediaFolder[]>({ queryKey: ['media-folders'], queryFn: mediaApi.listFolders })
   const { data: assets = [], isLoading } = useQuery({
-    queryKey: ['media-assets', selectedFolder],
+    queryKey: ['media-assets', selectedFolder, typeTab],
     queryFn: () => {
-      if (selectedFolder === 'all') return mediaApi.listAssets()
-      if (selectedFolder === 'unfoldered') return mediaApi.listAssets({ unfoldered: true })
-      return mediaApi.listAssets({ folder_id: selectedFolder })
+      const params: { folder_id?: number; unfoldered?: boolean; file_type?: string } = {}
+      if (selectedFolder === 'unfoldered') params.unfoldered = true
+      else if (typeof selectedFolder === 'number') params.folder_id = selectedFolder
+      if (typeTab !== 'all') params.file_type = typeTab
+      return mediaApi.listAssets(params)
     },
   })
 
   if (isLoading) return <div className="flex justify-center py-8"><Spinner /></div>
-  if (!isLoading && assets.length === 0 && folders.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 p-6">
-        <Film className="w-10 h-10 opacity-20" />
-        <div className="text-center">
-          <p className="text-xs font-medium text-gray-400">Нет медиафайлов</p>
-          <p className="text-[10px] mt-1 text-gray-400">Загрузите GIF, видео или фото в разделе «Медиа»</p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="flex flex-col h-full">
+      {/* Type tabs */}
+      <div className="px-2 pt-2 pb-1 flex gap-1">
+        {MEDIA_TYPE_TABS.map(({ value, label }) => (
+          <button key={value} onClick={() => setTypeTab(value)}
+            className={cn(
+              'flex-1 text-[10px] font-semibold py-1 rounded-lg border transition-colors',
+              typeTab === value
+                ? 'bg-brand-600 text-white border-brand-600'
+                : 'border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600'
+            )}
+          >{label}</button>
+        ))}
+      </div>
+
+      {/* Folder chips */}
       {folders.length > 0 && (
-        <div className="p-2 border-b border-gray-200 flex flex-wrap gap-1">
+        <div className="px-2 pb-1 border-b border-gray-100 flex flex-wrap gap-1">
           {(['all', 'unfoldered'] as const).map((v) => (
             <button key={v} onClick={() => setSelectedFolder(v)}
               className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-colors', selectedFolder === v ? 'bg-brand-50 text-brand-600 border-brand-300' : 'border-gray-200 text-gray-500 hover:border-brand-400')}
-            >{v === 'all' ? 'Все' : 'Без папки'}</button>
+            >{v === 'all' ? 'Все папки' : 'Без папки'}</button>
           ))}
           {folders.map((f) => (
             <button key={f.id} onClick={() => setSelectedFolder(f.id)}
@@ -276,10 +291,18 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
           ))}
         </div>
       )}
+
       {assets.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 p-4">
           <Film className="w-8 h-8 opacity-20" />
-          <p className="text-xs">Нет файлов в папке</p>
+          <p className="text-xs text-center">
+            {typeTab === 'gif'   ? 'Нет GIF-анимаций' :
+             typeTab === 'video' ? 'Нет видеофайлов'  :
+             typeTab === 'image' ? 'Нет фотографий'   : 'Нет медиафайлов'}
+          </p>
+          {typeTab === 'all' && (
+            <p className="text-[10px] text-gray-400 text-center">Загрузите в разделе «Медиа»</p>
+          )}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-2">
@@ -297,8 +320,13 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                   <Plus className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-lg" />
                 </div>
-                <span className="absolute top-1 left-1 text-[8px] bg-black/60 text-white px-1 py-0.5 rounded font-medium uppercase">
-                  {asset.file_type}
+                <span className={cn(
+                  'absolute top-1 left-1 text-[8px] px-1 py-0.5 rounded font-bold uppercase',
+                  asset.file_type === 'gif'   ? 'bg-pink-500/90 text-white' :
+                  asset.file_type === 'video' ? 'bg-violet-500/90 text-white' :
+                  'bg-black/60 text-white'
+                )}>
+                  {asset.file_type === 'video' ? 'MP4' : asset.file_type.toUpperCase()}
                 </span>
                 <p className="absolute bottom-0 left-0 right-0 text-[9px] text-white bg-black/50 px-1.5 py-0.5 truncate">{asset.name}</p>
               </button>
