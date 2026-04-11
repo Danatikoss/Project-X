@@ -31,28 +31,28 @@ export function IndexingBell() {
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'w-12 h-12 rounded-xl flex items-center justify-center relative transition-colors',
-          open ? 'bg-brand-50 text-brand-900' : 'text-gray-400 hover:text-brand-900 hover:bg-brand-50'
+          'w-8 h-8 rounded-lg flex items-center justify-center relative transition-colors',
+          open ? 'bg-brand-50 text-brand-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
         )}
         title="Индексация"
       >
         {activeCount > 0 ? (
           <Spinner size="sm" />
         ) : (
-          <Bell className="w-5 h-5" />
+          <Bell className="w-4 h-4" />
         )}
         {activeCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-brand-900 text-white text-[9px] font-bold flex items-center justify-center">
+          <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-brand-600 text-white text-[8px] font-bold flex items-center justify-center">
             {activeCount}
           </span>
         )}
         {activeCount === 0 && hasCompleted && (
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-green-500" />
+          <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500" />
         )}
       </button>
 
       {open && (
-        <div className="absolute left-full ml-2 top-0 w-72 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-1.5 w-72 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
             <span className="text-xs font-semibold text-gray-700">Индексация файлов</span>
             <div className="flex items-center gap-1">
