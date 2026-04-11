@@ -622,6 +622,7 @@ async def create_assembly_from_plan(
         prompt="(AI-генерация)",
         slide_ids_json=json.dumps(slide_ids),
         status="draft",
+        brand_template_id=brand_template_id,
     )
     db.add(assembly)
     db.commit()

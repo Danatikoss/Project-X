@@ -598,6 +598,344 @@ def _blueprint_body_preview(blueprint: dict) -> list[str]:
     return [l for l in lines if l.strip()][:4]
 
 
+def _thumb_font(size: int):
+    """Load Helvetica or fall back to default PIL font."""
+    from PIL import ImageFont
+    for path in (
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    ):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _thumb_font_bold(size: int):
+    """Load Helvetica Bold or fall back."""
+    from PIL import ImageFont
+    for path in (
+        "/System/Library/Fonts/Helvetica.ttc",   # index 1 for bold, but truetype handles it
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    ):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _draw_body_thumbnail(draw, blueprint: dict, body_rgb: tuple, bar_h: int) -> None:
+    """
+    Draw layout-specific body content on the thumbnail image.
+    Each layout gets a visually distinct representation.
+    """
+    from PIL import ImageDraw as _ID
+
+    layout  = blueprint.get("layout", "title_content")
+    content = blueprint.get("content", {})
+
+    # Body area dimensions
+    PAD   = 52
+    top   = bar_h + 30
+    left  = PAD
+    right = _THUMB_W - PAD
+    width = right - left
+    avail = _THUMB_H - top - 30   # available height for body
+
+    # ── icon_grid: 2×2 card grid ─────────────────────────────────────────────
+    if layout == "icon_grid":
+        cards = (content.get("cards") or [])[:4]
+        if not cards:
+            return
+        cols = 2
+        rows = (len(cards) + 1) // 2
+        card_w = (width - PAD) // cols
+        card_h = min(180, (avail - PAD * (rows - 1)) // rows)
+        card_font   = _thumb_font(max(22, int(_THUMB_H * 0.028)))
+        heading_font = _thumb_font_bold(max(26, int(_THUMB_H * 0.032)))
+        for i, card in enumerate(cards):
+            col = i % cols
+            row = i // cols
+            cx = left + col * (card_w + PAD)
+            cy = top  + row * (card_h + 20)
+            # Card box
+            draw.rounded_rectangle(
+                [(cx, cy), (cx + card_w, cy + card_h)],
+                radius=12,
+                fill=(255, 255, 255, 25),
+                outline=(255, 255, 255, 60),
+                width=1,
+            )
+            # Heading
+            heading = (card.get("heading") or "")[:28]
+            draw.text((cx + 16, cy + 14), heading, fill=body_rgb, font=heading_font)
+            # Body text
+            text = (card.get("text") or "")[:60]
+            if text:
+                draw.text((cx + 16, cy + 14 + 36), text, fill=(body_rgb[0], body_rgb[1], body_rgb[2]), font=card_font)
+
+    # ── big_stat: huge number centered ────────────────────────────────────────
+    elif layout == "big_stat":
+        value = str(content.get("value") or "")[:12]
+        label = str(content.get("label") or "")[:50]
+        ctx   = (content.get("context") or [])[:3]
+
+        if value:
+            stat_font = _thumb_font_bold(max(120, int(_THUMB_H * 0.15)))
+            bbox = draw.textbbox((0, 0), value, font=stat_font)
+            stat_w = bbox[2] - bbox[0]
+            stat_x = (_THUMB_W - stat_w) // 2
+            stat_y = top + max(10, (avail - 200) // 3)
+            draw.text((stat_x, stat_y), value, fill=body_rgb, font=stat_font)
+
+            if label:
+                lbl_font = _thumb_font(max(28, int(_THUMB_H * 0.036)))
+                lbl_bbox = draw.textbbox((0, 0), label, font=lbl_font)
+                lbl_x = (_THUMB_W - (lbl_bbox[2] - lbl_bbox[0])) // 2
+                draw.text((lbl_x, stat_y + 160), label, fill=body_rgb, font=lbl_font)
+
+        ctx_font = _thumb_font(max(22, int(_THUMB_H * 0.026)))
+        cy = top + avail - len(ctx) * 38 - 10
+        for item in ctx:
+            item_text = f"• {item}"[:70]
+            draw.text((left, cy), item_text, fill=body_rgb, font=ctx_font)
+            cy += 38
+
+    # ── two_column / comparison: two panels ───────────────────────────────────
+    elif layout in ("two_column", "comparison"):
+        lc = content.get("left") or {}
+        rc = content.get("right") or {}
+        l_label = str(lc.get("heading") or lc.get("label", ""))[:30]
+        r_label = str(rc.get("heading") or rc.get("label", ""))[:30]
+        l_items = (lc.get("items") or [])[:4]
+        r_items = (rc.get("items") or [])[:4]
+
+        col_w     = (width - 60) // 2
+        sep_x     = left + col_w + 30
+        head_font = _thumb_font_bold(max(26, int(_THUMB_H * 0.032)))
+        item_font = _thumb_font(max(22, int(_THUMB_H * 0.026)))
+
+        # Vertical divider
+        draw.line([(sep_x, top), (sep_x, top + avail - 20)],
+                  fill=(255, 255, 255, 80), width=2)
+
+        for col_idx, (label, items) in enumerate([(l_label, l_items), (r_label, r_items)]):
+            cx = left if col_idx == 0 else sep_x + 30
+            cy = top
+            if label:
+                draw.text((cx, cy), label, fill=body_rgb, font=head_font)
+                cy += 44
+            for item in items:
+                draw.text((cx, cy), f"• {item[:38]}", fill=body_rgb, font=item_font)
+                cy += 34
+
+    # ── process_flow: numbered steps ──────────────────────────────────────────
+    elif layout == "process_flow":
+        steps = (content.get("steps") or [])[:5]
+        step_font  = _thumb_font_bold(max(26, int(_THUMB_H * 0.032)))
+        desc_font  = _thumb_font(max(22, int(_THUMB_H * 0.026)))
+        step_h     = min(160, avail // max(len(steps), 1))
+        num_colors = [(0x3B, 0x82, 0xF6), (0x06, 0xB6, 0xD4), (0x10, 0xB9, 0x81),
+                      (0xF5, 0x9E, 0x0B), (0xEF, 0x44, 0x44)]
+
+        for i, step in enumerate(steps):
+            cy  = top + i * step_h
+            nc  = num_colors[i % len(num_colors)]
+            # Circle number
+            r = 26
+            draw.ellipse([(left, cy), (left + r * 2, cy + r * 2)], fill=nc)
+            num_font = _thumb_font_bold(max(22, int(_THUMB_H * 0.026)))
+            draw.text((left + r - 8, cy + r - 14), str(i + 1), fill=(255, 255, 255), font=num_font)
+            # Label + desc
+            label = str(step.get("label", ""))[:28]
+            desc  = str(step.get("desc", ""))[:50]
+            draw.text((left + r * 2 + 16, cy + 2), label, fill=body_rgb, font=step_font)
+            if desc:
+                draw.text((left + r * 2 + 16, cy + 38), desc, fill=body_rgb, font=desc_font)
+
+            # Arrow between steps (except last)
+            if i < len(steps) - 1:
+                ax = left + r
+                ay = cy + r * 2 + 4
+                draw.polygon([(ax - 10, ay), (ax + 10, ay), (ax, ay + 14)],
+                             fill=(255, 255, 255, 80))
+
+    # ── key_message: large centered message ───────────────────────────────────
+    elif layout == "key_message":
+        message = str(content.get("message") or "")[:80]
+        subtext = str(content.get("subtext") or "")[:100]
+        msg_font = _thumb_font_bold(max(52, int(_THUMB_H * 0.065)))
+        sub_font = _thumb_font(max(28, int(_THUMB_H * 0.034)))
+
+        # Wrap message across lines (~30 chars each)
+        words, lines, line = message.split(), [], []
+        for w in words:
+            line.append(w)
+            if len(" ".join(line)) > 32:
+                lines.append(" ".join(line[:-1]))
+                line = [w]
+        if line:
+            lines.append(" ".join(line))
+
+        total_h = len(lines) * 70 + (40 if subtext else 0)
+        cy = top + max(20, (avail - total_h) // 2)
+        for msg_line in lines[:3]:
+            bbox = draw.textbbox((0, 0), msg_line, font=msg_font)
+            tx = (_THUMB_W - (bbox[2] - bbox[0])) // 2
+            draw.text((tx, cy), msg_line, fill=body_rgb, font=msg_font)
+            cy += 70
+
+        if subtext:
+            bbox = draw.textbbox((0, 0), subtext[:80], font=sub_font)
+            tx = (_THUMB_W - (bbox[2] - bbox[0])) // 2
+            draw.text((tx, cy + 10), subtext[:80], fill=body_rgb, font=sub_font)
+
+    # ── quote: quotation marks + attribution ──────────────────────────────────
+    elif layout == "quote":
+        quote = str(content.get("quote") or "")[:120]
+        attr  = str(content.get("attribution") or "")[:60]
+        q_font = _thumb_font(max(32, int(_THUMB_H * 0.040)))
+        a_font = _thumb_font(max(24, int(_THUMB_H * 0.028)))
+
+        # Big quotation mark
+        qm_font = _thumb_font_bold(max(100, int(_THUMB_H * 0.12)))
+        draw.text((left, top - 20), "\u201C", fill=(255, 255, 255, 100), font=qm_font)
+
+        # Wrap quote
+        words, lines, line = quote.split(), [], []
+        for w in words:
+            line.append(w)
+            if len(" ".join(line)) > 45:
+                lines.append(" ".join(line[:-1]))
+                line = [w]
+        if line:
+            lines.append(" ".join(line))
+
+        cy = top + 60
+        for qline in lines[:4]:
+            draw.text((left + 20, cy), qline, fill=body_rgb, font=q_font)
+            cy += 46
+
+        if attr:
+            draw.text((left + 20, cy + 20), f"\u2014 {attr}", fill=body_rgb, font=a_font)
+
+    # ── chart_bar: simple bar chart visual ────────────────────────────────────
+    elif layout == "chart_bar":
+        cats   = (content.get("categories") or [])[:6]
+        series = (content.get("series") or [])[:1]
+        if cats and series:
+            values = [float(v) for v in (series[0].get("values") or [])[:len(cats)]]
+            max_v  = max(values) if values else 1
+            bar_colors = [(0x3B, 0x82, 0xF6), (0x06, 0xB6, 0xD4), (0x10, 0xB9, 0x81),
+                          (0xF5, 0x9E, 0x0B), (0xEF, 0x44, 0x44), (0x8B, 0x5C, 0xF6)]
+            chart_h   = avail - 60
+            bar_w     = max(40, (width - 40) // max(len(cats), 1) - 16)
+            cat_font  = _thumb_font(max(18, int(_THUMB_H * 0.022)))
+            baseline  = top + chart_h
+
+            for i, (cat, val) in enumerate(zip(cats, values)):
+                bx = left + 20 + i * (bar_w + 16)
+                bh = int(chart_h * 0.85 * (val / max_v)) if max_v > 0 else 20
+                bc = bar_colors[i % len(bar_colors)]
+                draw.rounded_rectangle(
+                    [(bx, baseline - bh), (bx + bar_w, baseline)],
+                    radius=6, fill=bc,
+                )
+                # Category label
+                cat_label = str(cat)[:10]
+                draw.text((bx, baseline + 6), cat_label, fill=body_rgb, font=cat_font)
+            # Baseline
+            draw.line([(left, baseline), (right, baseline)], fill=(255, 255, 255, 60), width=2)
+
+    # ── chart_pie: simple pie/donut visual ────────────────────────────────────
+    elif layout == "chart_pie":
+        slices = (content.get("slices") or [])[:6]
+        if slices:
+            total  = sum(float(s.get("value", 0)) for s in slices) or 1
+            colors_list = [
+                (0x3B, 0x82, 0xF6), (0x06, 0xB6, 0xD4), (0x10, 0xB9, 0x81),
+                (0xF5, 0x9E, 0x0B), (0xEF, 0x44, 0x44), (0x8B, 0x5C, 0xF6),
+            ]
+            import math
+            cx_pie = _THUMB_W // 2
+            cy_pie = top + avail // 2
+            radius = min(avail // 2 - 20, 220)
+            angle  = -90.0
+            for i, sl in enumerate(slices):
+                sweep = float(sl.get("value", 0)) / total * 360
+                col   = colors_list[i % len(colors_list)]
+                draw.pieslice(
+                    [(cx_pie - radius, cy_pie - radius),
+                     (cx_pie + radius, cy_pie + radius)],
+                    start=angle, end=angle + sweep,
+                    fill=col,
+                )
+                angle += sweep
+
+            # Legend
+            leg_font = _thumb_font(max(20, int(_THUMB_H * 0.024)))
+            lx = right - 280
+            ly = top + 20
+            for i, sl in enumerate(slices):
+                col = colors_list[i % len(colors_list)]
+                draw.rectangle([(lx, ly + i * 32), (lx + 20, ly + i * 32 + 20)], fill=col)
+                label = str(sl.get("label", ""))[:18]
+                val   = float(sl.get("value", 0))
+                draw.text((lx + 28, ly + i * 32), f"{label} {val:.0f}%", fill=body_rgb, font=leg_font)
+
+    # ── timeline: milestones with line ────────────────────────────────────────
+    elif layout == "timeline":
+        steps    = (content.get("steps") or [])[:5]
+        t_font   = _thumb_font_bold(max(24, int(_THUMB_H * 0.028)))
+        e_font   = _thumb_font(max(20, int(_THUMB_H * 0.024)))
+        step_gap = avail // max(len(steps), 1)
+        line_y   = top + avail // 2
+
+        # Horizontal timeline line
+        draw.line([(left + 20, line_y), (right - 20, line_y)],
+                  fill=(0x3B, 0x82, 0xF6), width=4)
+
+        for i, step in enumerate(steps):
+            sx = left + 20 + i * ((right - left - 40) // max(len(steps) - 1, 1))
+            # Dot on line
+            draw.ellipse([(sx - 10, line_y - 10), (sx + 10, line_y + 10)],
+                         fill=(0x3B, 0x82, 0xF6))
+            label = str(step.get("label", ""))[:14]
+            event = str(step.get("event", ""))[:30]
+            if i % 2 == 0:  # above line
+                draw.text((sx - 40, line_y - 60), label, fill=body_rgb, font=t_font)
+                draw.text((sx - 40, line_y - 30), event, fill=body_rgb, font=e_font)
+            else:            # below line
+                draw.text((sx - 40, line_y + 20), label, fill=body_rgb, font=t_font)
+                draw.text((sx - 40, line_y + 46), event, fill=body_rgb, font=e_font)
+
+    # ── section_divider: subtitle centered ────────────────────────────────────
+    elif layout == "section_divider":
+        subtitle = str(content.get("subtitle") or "")[:100]
+        sub_font = _thumb_font(max(36, int(_THUMB_H * 0.044)))
+        if subtitle:
+            bbox = draw.textbbox((0, 0), subtitle, font=sub_font)
+            tx = (_THUMB_W - (bbox[2] - bbox[0])) // 2
+            ty = top + (avail - (bbox[3] - bbox[1])) // 2
+            draw.text((tx, ty), subtitle, fill=body_rgb, font=sub_font)
+
+    # ── title_content / default: bullet list ──────────────────────────────────
+    else:
+        items     = (content.get("items") or [])[:5]
+        item_font = _thumb_font(max(28, int(_THUMB_H * 0.034)))
+        cy        = top + 10
+        for item in items:
+            text = f"• {item}"[:70]
+            draw.text((left, cy), text, fill=body_rgb, font=item_font)
+            cy += max(38, int(_THUMB_H * 0.046))
+            if cy > _THUMB_H - 40:
+                break
+
+
 def _render_thumbnail_branded(
     pptx_path: str,
     out_dir: str,
@@ -606,61 +944,62 @@ def _render_thumbnail_branded(
 ) -> str:
     """
     PIL-based thumbnail for branded slides (background_image_path is set).
-    Composes: background image → semi-transparent title bar → title text → body preview.
+    Composes: background image → semi-transparent title bar → title text →
+    layout-specific body visuals (cards, charts, big numbers, columns, etc.).
     Falls back to fitz if PIL fails.
     """
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     try:
-        bg = Image.open(colors.background_image_path).convert("RGB")
-        bg = bg.resize((_THUMB_W, _THUMB_H), Image.LANCZOS)
-
+        bg   = Image.open(colors.background_image_path).convert("RGB")
+        bg   = bg.resize((_THUMB_W, _THUMB_H), Image.LANCZOS)
         draw = ImageDraw.Draw(bg, "RGBA")
 
+        # ── Title bar ────────────────────────────────────────────────────────
         sc = colors.shape_color.lstrip("#")
         shape_r, shape_g, shape_b = int(sc[0:2], 16), int(sc[2:4], 16), int(sc[4:6], 16)
-        opacity_pct = max(0, min(100, colors.shape_opacity))
         bar_h     = int(_THUMB_H * 0.18)
-        bar_alpha = int(opacity_pct / 100 * 200)
-
+        bar_alpha = int(max(0, min(100, colors.shape_opacity)) / 100 * 200)
         draw.rectangle([(0, 0), (_THUMB_W, bar_h)],
                        fill=(shape_r, shape_g, shape_b, bar_alpha))
 
+        # Accent divider line
         acc = colors.secondary.lstrip("#")
         draw.rectangle([(0, bar_h), (_THUMB_W, bar_h + 6)],
                        fill=(int(acc[0:2], 16), int(acc[2:4], 16), int(acc[4:6], 16), 200))
 
+        # ── Title text ────────────────────────────────────────────────────────
         title = (blueprint.get("title") or "")[:80]
         if title:
-            tc = colors.title_font_color.lstrip("#")
-            title_rgb = (int(tc[0:2], 16), int(tc[2:4], 16), int(tc[4:6], 16))
-            font_size = max(40, min(72, int(_THUMB_H * 0.055)))
-            try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
-            except Exception:
-                font = ImageFont.load_default()
-            draw.text((48, int(bar_h * 0.15)), title, fill=title_rgb, font=font)
+            tc         = colors.title_font_color.lstrip("#")
+            title_rgb  = (int(tc[0:2], 16), int(tc[2:4], 16), int(tc[4:6], 16))
+            font_size  = max(40, min(72, int(_THUMB_H * 0.055)))
+            title_font = _thumb_font(font_size)
+            draw.text((48, int(bar_h * 0.15)), title, fill=title_rgb, font=title_font)
 
-        # Body content preview — shown below the title bar
-        body_lines = _blueprint_body_preview(blueprint)
-        if body_lines:
-            body_font_size = max(28, int(_THUMB_H * 0.035))
-            try:
-                body_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", body_font_size)
-            except Exception:
-                body_font = ImageFont.load_default()
-            bc = colors.body_font_color.lstrip("#")
+        # ── Body: auto-detect text color against background ───────────────────
+        # Parse background image average brightness in the body area
+        # Use white text if background is dark (< 128), dark text if light
+        try:
+            import numpy as np
+            body_region = bg.crop((0, bar_h + 10, _THUMB_W, _THUMB_H))
+            avg_brightness = float(np.array(body_region).mean())
+        except Exception:
+            avg_brightness = 50.0  # assume dark
+
+        if avg_brightness < 128:
+            body_rgb = (220, 228, 240)  # near-white for dark backgrounds
+        else:
+            bc       = colors.body_font_color.lstrip("#")
             body_rgb = (int(bc[0:2], 16), int(bc[2:4], 16), int(bc[4:6], 16))
-            y = bar_h + 24
-            for line in body_lines:
-                if y + body_font_size + 8 > _THUMB_H - 20:
-                    break
-                draw.text((48, y), line[:90], fill=body_rgb, font=body_font)
-                y += body_font_size + 12
+
+        # ── Layout-specific body drawing ──────────────────────────────────────
+        _draw_body_thumbnail(draw, blueprint, body_rgb, bar_h)
 
         out = os.path.join(out_dir, "0.png")
         bg.save(out, "PNG")
-        logger.debug("_render_thumbnail_branded: composed → %s", out)
+        logger.debug("_render_thumbnail_branded: composed → %s (layout=%s)",
+                     out, blueprint.get("layout"))
         return out
 
     except Exception as e:

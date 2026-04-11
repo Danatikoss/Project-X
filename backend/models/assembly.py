@@ -16,8 +16,11 @@ class AssembledPresentation(Base):
     status = Column(String, default="draft")
     export_path = Column(String, nullable=True)
     share_token = Column(String, nullable=True, unique=True, index=True)
+    # Brand template used when generating this assembly (needed for PPTX re-render on export)
+    brand_template_id = Column(Integer, ForeignKey("brand_templates.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="assemblies")
+    brand_template = relationship("BrandTemplate", foreign_keys=[brand_template_id])
