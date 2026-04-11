@@ -34,7 +34,7 @@ ALLOWED_TYPES: dict[str, str] = {
 
 ALLOWED_EXTENSIONS = {".gif", ".jpg", ".jpeg", ".png", ".webp", ".svg", ".mp4", ".mov", ".webm"}
 
-MAX_SIZE = 200 * 1024 * 1024  # 200 MB
+MAX_SIZE = 500 * 1024 * 1024  # 500 MB
 
 
 def _media_url(file_path: str) -> str:
@@ -199,11 +199,6 @@ async def upload_asset(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Неподдерживаемый тип файла: {ext}")
 
-    # Read and validate size
-    content = await file.read()
-    if len(content) > MAX_SIZE:
-        raise HTTPException(413, "Файл превышает 200 МБ")
-
     # Determine file type
     mime = file.content_type or ""
     file_type = ALLOWED_TYPES.get(mime, "image")
@@ -221,11 +216,26 @@ async def upload_asset(
         if not folder:
             raise HTTPException(404, "Папка не найдена")
 
-    # Save file
+    # Stream file to disk — avoids loading large videos into memory
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4()}{ext}"
     dest = MEDIA_DIR / filename
-    dest.write_bytes(content)
+    total = 0
+    try:
+        with open(dest, "wb") as f:
+            while chunk := await file.read(1024 * 1024):  # 1 MB chunks
+                total += len(chunk)
+                if total > MAX_SIZE:
+                    f.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(413, f"Файл превышает {MAX_SIZE // 1024 // 1024} МБ")
+                f.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        logger.error("media upload write error: %s", e)
+        raise HTTPException(500, "Ошибка при сохранении файла")
 
     asset = MediaAsset(
         owner_id=user.id,
@@ -234,7 +244,7 @@ async def upload_asset(
         file_path=filename,
         file_type=file_type,
         mime_type=mime or None,
-        file_size=len(content),
+        file_size=total,
     )
     db.add(asset)
     db.commit()
