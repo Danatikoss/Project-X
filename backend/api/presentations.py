@@ -81,26 +81,18 @@ async def plan_from_file(
         # Build brand context for LLM planner + reviewer
         brand_context: dict | None = None
         if effective_brand_id:
-            from models.brand import BrandTemplate as _BT2
-            import json as _json
-            full_tmpl = db.query(_BT2).filter(_BT2.id == effective_brand_id).first()
-            if full_tmpl:
-                prohibitions: list[str] = []
-                if full_tmpl.prohibitions_json:
-                    try:
-                        prohibitions = _json.loads(full_tmpl.prohibitions_json)
-                    except Exception:
-                        prohibitions = [full_tmpl.prohibitions_json]
-                brand_context = {
-                    "tone_of_voice":        full_tmpl.tone_of_voice or "",
-                    "target_audience":      full_tmpl.target_audience or "",
-                    "prohibitions":         "; ".join(prohibitions) if prohibitions else "",
-                    "brand_guidelines_text": full_tmpl.brand_guidelines_text or "",
+            from services.brand_context import load_brand_context
+            bc = load_brand_context(effective_brand_id, db)
+            if bc:
+                candidate = {
+                    "tone_of_voice":         bc.tone_of_voice or "",
+                    "target_audience":       bc.target_audience or "",
+                    "prohibitions":          "; ".join(bc.prohibitions) if bc.prohibitions else "",
+                    "brand_guidelines_text": bc.brand_guidelines_text or "",
                 }
-                # Drop empty keys so we don't send blank noise to LLM
-                brand_context = {k: v for k, v in brand_context.items() if v}
-                if not brand_context:
-                    brand_context = None
+                candidate = {k: v for k, v in candidate.items() if v}
+                if candidate:
+                    brand_context = candidate
 
         blueprints = await plan_presentation(
             content,
