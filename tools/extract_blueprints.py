@@ -17,6 +17,11 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER_TYPE as PPT
 
+# Slide canvas dimensions in EMU (standard 13.333" × 7.5")
+_SLIDE_H_EMU = 6858000   # 7.5 inches
+# Shapes in the top 20% of the slide are candidates for the title
+_TITLE_ZONE_EMU = int(_SLIDE_H_EMU * 0.20)   # ≈ 1.5"
+
 
 def _para_text(para) -> str:
     """Concatenate all run text in a paragraph."""
@@ -27,6 +32,66 @@ def _word_count(text: str) -> int:
     return len(text.split()) if text.strip() else 0
 
 
+def _text_shapes_sorted(slide) -> list:
+    """
+    Return all shapes that carry text, sorted by vertical position (top).
+    Excludes shapes with empty text.
+    """
+    shapes = []
+    for shape in slide.shapes:
+        try:
+            if shape.has_text_frame:
+                text = shape.text_frame.text.strip()
+                if text:
+                    shapes.append((shape.top or 0, shape, text))
+        except Exception:
+            pass
+    shapes.sort(key=lambda x: x[0])
+    return shapes
+
+
+def _find_title_placeholder(slide) -> tuple[object | None, str]:
+    """
+    Try placeholder-based title detection first (native PowerPoint files).
+    Returns (placeholder_shape_or_None, title_text).
+    """
+    TITLE_TYPES = {PPT.TITLE, PPT.CENTER_TITLE}
+    try:
+        ph_map = {ph.placeholder_format.idx: ph for ph in slide.placeholders}
+        ph = ph_map.get(0) or next(
+            (p for p in slide.placeholders
+             if p.placeholder_format.type in TITLE_TYPES),
+            None,
+        )
+        if ph and ph.has_text_frame:
+            text = ph.text_frame.text.strip()
+            if text:
+                return ph, text
+    except Exception:
+        pass
+    return None, ""
+
+
+def _find_title_positional(slide) -> tuple[object | None, str]:
+    """
+    Fallback for Google Slides exports (no placeholders).
+    The topmost text shape in the upper 20% of the slide is the title.
+    If nothing is that high up, take the single topmost text shape.
+    """
+    sorted_shapes = _text_shapes_sorted(slide)
+    if not sorted_shapes:
+        return None, ""
+
+    # Prefer a shape clearly in the title zone
+    for top, shape, text in sorted_shapes:
+        if top <= _TITLE_ZONE_EMU:
+            return shape, text
+
+    # Nothing in title zone — take the very first text shape as a best guess
+    _, shape, text = sorted_shapes[0]
+    return shape, text
+
+
 def _extract_slide(slide, filename: str, slide_index: int) -> dict:
     layout_name: str = ""
     try:
@@ -35,28 +100,14 @@ def _extract_slide(slide, filename: str, slide_index: int) -> dict:
         pass
 
     # ── Title ──────────────────────────────────────────────────────────────────
-    title_text = ""
-    try:
-        title_ph = next(
-            (
-                ph
-                for ph in slide.placeholders
-                if ph.placeholder_format.type
-                in (PPT.TITLE, PPT.CENTER_TITLE)
-            ),
-            None,
-        )
-        if title_ph and title_ph.has_text_frame:
-            title_text = title_ph.text_frame.text.strip()
-    except Exception:
-        pass
+    title_shape, title_text = _find_title_placeholder(slide)
+    if not title_text:
+        title_shape, title_text = _find_title_positional(slide)
 
     # ── Content blocks ─────────────────────────────────────────────────────────
     content_blocks: list[dict] = []
     has_image = False
     total_words = _word_count(title_text)
-
-    TITLE_TYPES = {PPT.TITLE, PPT.CENTER_TITLE}
 
     for shape in slide.shapes:
         # Images
@@ -76,19 +127,20 @@ def _extract_slide(slide, filename: str, slide_index: int) -> dict:
         except Exception:
             pass
 
-        # Text frames — skip the title placeholder (already captured)
+        # Must have a text frame
         try:
             if not shape.has_text_frame:
                 continue
         except Exception:
             continue
 
-        # Skip title placeholder
+        # Skip the shape we used as the title
+        if title_shape is not None and shape is title_shape:
+            continue
+
+        # Skip placeholder idx=0 (native title slot, already handled)
         try:
-            if (
-                shape.is_placeholder
-                and shape.placeholder_format.type in TITLE_TYPES
-            ):
+            if shape.is_placeholder and shape.placeholder_format.idx == 0:
                 continue
         except Exception:
             pass
