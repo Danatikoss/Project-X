@@ -587,10 +587,16 @@ def _render_metrics_grid(slide, blueprint: dict, brand: BrandContext) -> None:
         slide_w = int(W)
         slide_h = int(H)
 
-    primary_rgb  = _scratch_rgb(brand.primary_color if brand else None)
-    body_rgb     = _scratch_rgb(
-        (brand.body_color if brand else None) or "1E293B", "1E293B"
-    )
+    # Explicit colors — never rely on theme/template defaults.
+    # White cards: value in white (readable on any brand-colored background),
+    # label in light gray.
+    value_rgb   = RGBColor(0xFF, 0xFF, 0xFF)          # white
+    label_rgb   = RGBColor(0xCC, 0xCC, 0xCC)          # light gray
+    muted_rgb   = RGBColor(0xAA, 0xAA, 0xAA)          # dimmer gray for sublabel
+    title_rgb   = RGBColor(0xFF, 0xFF, 0xFF)          # white title on brand bg
+
+    # Card background uses primary brand color so white text is always legible
+    card_bg_rgb = _scratch_rgb(brand.primary_color if brand else None)
 
     _clear_placeholders(slide)
 
@@ -599,7 +605,7 @@ def _render_metrics_grid(slide, blueprint: dict, brand: BrandContext) -> None:
         _add_textbox(
             slide, x=0.04, y=0.04, w=0.92, h=0.12,
             text=title_text, font_size=28, bold=True,
-            color=primary_rgb, slide_w=slide_w, slide_h=slide_h,
+            color=title_rgb, slide_w=slide_w, slide_h=slide_h,
         )
 
     metrics = (blueprint.get("content") or {}).get("metrics", [])
@@ -622,6 +628,8 @@ def _render_metrics_grid(slide, blueprint: dict, brand: BrandContext) -> None:
     avail_h = 1.0 - margin_y_top - margin_y_bot - gap_y * (rows - 1)
     card_h  = avail_h / rows
 
+    print(f"[metrics_grid] slide={slide_w}x{slide_h} EMU, cards={len(metrics)}")
+
     for idx, metric in enumerate(metrics):
         col = idx % cols
         row = idx // cols
@@ -634,27 +642,29 @@ def _render_metrics_grid(slide, blueprint: dict, brand: BrandContext) -> None:
         width  = int(card_w * slide_w)
         height = int(card_h * slide_h)
 
-        # White rounded rectangle card
+        print(f"  card {idx}: left={left} top={top} width={width} height={height}")
+
+        # Brand-colored rounded rectangle card (white text stays legible on any brand color)
         card = slide.shapes.add_shape(
             1,   # MSO_SHAPE_TYPE.ROUNDED_RECTANGLE
             left, top, width, height,
         )
         card.fill.solid()
-        card.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-        card.line.color.rgb = RGBColor(0xE2, 0xE8, 0xF0)
-        card.line.width = Pt(0.75)
-        # Adjust corner rounding (20 000 EMU / 100 000 max ≈ subtle)
+        card.fill.fore_color.rgb = card_bg_rgb
+        card.line.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        card.line.width = Pt(0.5)
+        # Adjust corner rounding
         try:
             card._element.spPr.prstGeom.avLst.clear()
             from lxml import etree
-            av = etree.SubElement(
+            etree.SubElement(
                 card._element.spPr.prstGeom.avLst,
                 qn("a:gd"), name="adj", fmla="val 20000",
             )
         except Exception:
             pass
 
-        # Value text (large, bold, primary color) — top 55% of card
+        # Value text (large, bold, white) — top 55% of card
         val_h = card_h * 0.55
         _add_textbox(
             slide,
@@ -662,12 +672,12 @@ def _render_metrics_grid(slide, blueprint: dict, brand: BrandContext) -> None:
             w=card_w - 0.02, h=val_h - 0.04,
             text=metric.get("value", ""),
             font_size=36, bold=True,
-            color=primary_rgb,
+            color=value_rgb,
             slide_w=slide_w, slide_h=slide_h,
             align_center=True,
         )
 
-        # Label text (small, body color) — below value
+        # Label text (small, light gray) — below value
         label_y = cy + val_h
         label_h = card_h * 0.28
         _add_textbox(
@@ -676,17 +686,16 @@ def _render_metrics_grid(slide, blueprint: dict, brand: BrandContext) -> None:
             w=card_w - 0.02, h=label_h,
             text=metric.get("label", ""),
             font_size=12, bold=False,
-            color=body_rgb,
+            color=label_rgb,
             slide_w=slide_w, slide_h=slide_h,
             align_center=True,
         )
 
-        # Sublabel (optional, smaller, muted)
+        # Sublabel (optional, dimmer gray)
         sublabel = metric.get("sublabel") or ""
         if sublabel:
             sublabel_y = label_y + label_h
             sublabel_h = card_h * 0.18
-            muted_rgb = _scratch_rgb("64748B", "64748B")
             _add_textbox(
                 slide,
                 x=cx + 0.01, y=sublabel_y,
@@ -733,11 +742,16 @@ def render_from_scratch(slide, blueprint: dict, brand: BrandContext | None) -> N
 
     Currently handles: metrics_grid, section_divider.
     """
-    layout = blueprint.get("layout", "")
-    if layout == "metrics_grid":
-        _render_metrics_grid(slide, blueprint, brand)
-    elif layout == "section_divider":
-        _render_section_divider_scratch(slide, blueprint, brand)
+    try:
+        layout = blueprint.get("layout", "")
+        if layout == "metrics_grid":
+            _render_metrics_grid(slide, blueprint, brand)
+        elif layout == "section_divider":
+            _render_section_divider_scratch(slide, blueprint, brand)
+    except Exception as e:
+        import traceback
+        print(f"[metrics_grid] RENDER ERROR: {e}")
+        traceback.print_exc()
 
 
 # ─── Core renderer ────────────────────────────────────────────────────────────
