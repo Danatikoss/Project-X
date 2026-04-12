@@ -169,10 +169,18 @@ def apply_brand_styling(slide, brand: BrandContext) -> None:
             return
         rgb = _rgb(color_hex)
         for para in shape.text_frame.paragraphs:
+            # Paragraph-level default: covers any future runs added without explicit formatting
             if font_family:
                 para.font.name = font_family
             if rgb is not None:
                 para.font.color.rgb = rgb
+            # Run-level: theme colors defined in the layout/master inherit at run
+            # level and beat the paragraph default, so we must also set each run.
+            for run in para.runs:
+                if font_family:
+                    run.font.name = font_family
+                if rgb is not None:
+                    run.font.color.rgb = rgb
 
     accent_rgb = _rgb(brand.accent_color)
 
