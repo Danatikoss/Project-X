@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 from config import settings
 from models.brand import BrandTemplate
 from models.slide import SlideLibraryEntry, SourcePresentation
+from schemas.brand_context import BrandContext
 from services.blueprint_validator import validate_and_trim
 from services.embedding import embed_single
 
@@ -138,6 +139,57 @@ def _extract_brand_colors(pptx_path: str) -> BrandColors:
     except Exception as e:
         logger.warning(f"Color extraction failed: {e}")
         return BrandColors()
+
+
+# ─── Brand styling ───────────────────────────────────────────────────────────
+
+
+def apply_brand_styling(slide, brand: BrandContext) -> None:
+    """
+    Apply brand colors and font family to a rendered slide's placeholders.
+
+    Rules:
+      - Title placeholder (TITLE / CENTER_TITLE): font_family + title_color
+        (falls back to primary_color when title_color is None)
+      - Body placeholder (BODY): font_family + body_color
+      - Non-placeholder solid-fill shapes: accent_color on fill
+      - Any field that is None on the BrandContext is skipped entirely —
+        template defaults are never overridden with None.
+    """
+    def _rgb(hex_str: str | None) -> RGBColor | None:
+        if not hex_str:
+            return None
+        h = hex_str.lstrip("#")
+        if len(h) != 6:
+            return None
+        return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+    def _style_text(shape, font_family: str | None, color_hex: str | None) -> None:
+        if not shape.has_text_frame:
+            return
+        rgb = _rgb(color_hex)
+        for para in shape.text_frame.paragraphs:
+            if font_family:
+                para.font.name = font_family
+            if rgb is not None:
+                para.font.color.rgb = rgb
+
+    accent_rgb = _rgb(brand.accent_color)
+
+    for shape in slide.shapes:
+        if shape.is_placeholder:
+            ph_type = shape.placeholder_format.type
+            if ph_type in (PPT.TITLE, PPT.CENTER_TITLE):
+                _style_text(shape, brand.font_family, brand.title_color or brand.primary_color)
+            elif ph_type == PPT.BODY:
+                _style_text(shape, brand.font_family, brand.body_color)
+        else:
+            if accent_rgb is not None:
+                try:
+                    if shape.fill.type == 1:  # MSO_FILL_TYPE.SOLID
+                        shape.fill.fore_color.rgb = accent_rgb
+                except Exception:
+                    pass
 
 
 # ─── Template-First: Layout mapping ──────────────────────────────────────────
@@ -459,6 +511,7 @@ def render_slide_pptx(
     blueprint: dict,
     colors: "BrandColors",          # kept in signature; not used for layout
     template_pptx_path: str | None = None,
+    brand_context: BrandContext | None = None,
 ) -> Presentation:
     """
     Template-First rendering pipeline:
@@ -494,6 +547,9 @@ def render_slide_pptx(
     slide_layout = _find_layout(prs, layout_name)
     slide        = prs.slides.add_slide(slide_layout)
     _fill_slide_content(slide, blueprint)
+
+    if brand_context is not None:
+        apply_brand_styling(slide, brand_context)
 
     if layout_name in ("chart_bar", "chart_pie"):
         _add_chart_shape(slide, blueprint, prs.slide_width, prs.slide_height)
@@ -1019,6 +1075,7 @@ async def _render_with_vision_qa(
     gen_dir: Path,
     thumb_dir: Path,
     label: str = "",
+    brand_context: BrandContext | None = None,
 ) -> dict:
     """
     Run GPT-4o Vision on the rendered thumbnail; if issues found, attempt
@@ -1057,7 +1114,7 @@ async def _render_with_vision_qa(
 
     pptx_fixed: str | None = None
     try:
-        prs_fixed  = render_slide_pptx(fixed_bp, colors, template_pptx_path)
+        prs_fixed  = render_slide_pptx(fixed_bp, colors, template_pptx_path, brand_context)
         pptx_fixed = str(gen_dir / f"gen_{uuid.uuid4()}.pptx")
         prs_fixed.save(pptx_fixed)
 
@@ -1218,6 +1275,12 @@ async def generate_slide(
     if settings.fixed_body_font_size > 0:
         colors.body_font_size = settings.fixed_body_font_size
 
+    # Load structured brand context for PPTX styling
+    brand_context: BrandContext | None = None
+    if template_id:
+        from services.brand_context import load_brand_context
+        brand_context = load_brand_context(template_id, db)
+
     # 2. Generate + validate blueprint
     blueprint = await generate_blueprint(prompt, context)
     blueprint.setdefault("layout",  "title_content")
@@ -1226,7 +1289,7 @@ async def generate_slide(
     validate_and_trim(blueprint)
 
     # 3. Render PPTX
-    prs = render_slide_pptx(blueprint, colors, template_pptx_path)
+    prs = render_slide_pptx(blueprint, colors, template_pptx_path, brand_context)
 
     # 4. Save PPTX
     gen_dir = Path(settings.upload_dir) / "generated"
@@ -1272,6 +1335,7 @@ async def generate_slide(
             pptx_path=pptx_path, thumb_abs=thumb_abs,
             gen_dir=gen_dir, thumb_dir=thumb_dir,
             label=f"generate_slide/{title[:30]}",
+            brand_context=brand_context,
         )
 
     # 7. XML blob
@@ -1324,6 +1388,7 @@ async def save_slide_from_blueprint(
     template_pptx_path: str | None,
     user_id: int | None,
     slide_index: int = 0,
+    brand_context: BrandContext | None = None,
 ) -> "SlideLibraryEntry":
     """
     Render a pre-made blueprint → save as SlideLibraryEntry with thumbnail.
@@ -1336,7 +1401,7 @@ async def save_slide_from_blueprint(
     validate_and_trim(blueprint)
     title = (blueprint.get("title") or "")[:80]
 
-    prs = render_slide_pptx(blueprint, colors, template_pptx_path)
+    prs = render_slide_pptx(blueprint, colors, template_pptx_path, brand_context)
 
     gen_dir = Path(settings.upload_dir) / "generated"
     gen_dir.mkdir(parents=True, exist_ok=True)
@@ -1377,6 +1442,7 @@ async def save_slide_from_blueprint(
             pptx_path=pptx_path, thumb_abs=thumb_abs,
             gen_dir=gen_dir, thumb_dir=thumb_dir,
             label=f"slide_{slide_index}/{title[:30]}",
+            brand_context=brand_context,
         )
 
     xml_blob: str | None = None

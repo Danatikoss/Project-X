@@ -537,6 +537,7 @@ async def create_assembly_from_plan(
     from services.slide_generator import (
         BrandColors, _extract_brand_colors, save_slide_from_blueprint,
     )
+    from services.brand_context import load_brand_context
     from models.brand import BrandTemplate
     from models.assembly import AssembledPresentation
 
@@ -592,6 +593,9 @@ async def create_assembly_from_plan(
                 if val is not None:
                     setattr(colors, field, val)
 
+    # Load structured brand context for PPTX per-placeholder styling
+    brand_ctx = load_brand_context(brand_template_id, db) if brand_template_id else None
+
     # Fixed brand overrides from env — always win over template settings
     if settings.fixed_bg_image and os.path.exists(settings.fixed_bg_image):
         colors.background_image_path = settings.fixed_bg_image
@@ -613,6 +617,7 @@ async def create_assembly_from_plan(
             template_pptx_path=template_pptx_path,
             user_id=user_id,
             slide_index=i,
+            brand_context=brand_ctx,
         )
         slide_ids.append(entry.id)
 
