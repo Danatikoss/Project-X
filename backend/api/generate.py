@@ -31,9 +31,18 @@ router = APIRouter()
 
 # ── Request / Response models ─────────────────────────────────────────────────
 
-class GeneratePresentationRequest(BaseModel):
-    prompt: str = Field(..., min_length=5, max_length=2000)
-    num_slides: int = Field(default=5, ge=1, le=15)
+class GeneratePlanRequest(BaseModel):
+    prompt: str = Field(..., min_length=5, max_length=4000)
+
+
+class SlideInPlan(BaseModel):
+    template_id: str
+    slots: dict[str, str]
+
+
+class PresentationPlan(BaseModel):
+    title: str
+    slides: list[SlideInPlan]
 
 
 class GenerateSlideRequest(BaseModel):
@@ -59,10 +68,14 @@ def _pptx_to_stream(prs: PptxPresentation) -> io.BytesIO:
 
 
 def _make_streaming_response(buf: io.BytesIO, filename: str) -> StreamingResponse:
+    from urllib.parse import quote
+    ascii_name = filename.encode("ascii", "ignore").decode("ascii") or "presentation.pptx"
+    encoded_name = quote(filename, safe="")
+    disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
 
 
@@ -84,71 +97,101 @@ def list_templates(current_user: User = Depends(get_current_user)):
     ]
 
 
-@router.post("/presentation")
-async def generate_presentation(
-    body: GeneratePresentationRequest,
+@router.post("/plan", response_model=PresentationPlan)
+async def create_plan(
+    body: GeneratePlanRequest,
     current_user: User = Depends(get_current_user),
 ):
     """
-    Generate a full presentation PPTX from a text prompt.
-    LLM selects templates and fills all slots automatically.
+    Step 1: Ask LLM to create a presentation plan.
+    Returns structured plan (template IDs + slots) for preview before rendering.
     """
     try:
-        plan = await generate_presentation_plan(
-            prompt=body.prompt,
-            num_slides=body.num_slides,
-        )
+        plan = await generate_presentation_plan(prompt=body.prompt)
     except Exception as e:
-        logger.error("Generation failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"Ошибка генерации: {e}")
+        logger.error("Plan generation failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Ошибка генерации плана: {e}")
 
-    slides_plan = plan.get("slides", [])
-    if not slides_plan:
+    slides = plan.get("slides", [])
+    if not slides:
         raise HTTPException(status_code=502, detail="LLM не вернул слайды")
 
-    # Build PPTX
+    return PresentationPlan(
+        title=plan.get("title", "Презентация"),
+        slides=[SlideInPlan(template_id=s["template_id"], slots=s.get("slots", {})) for s in slides],
+    )
+
+
+@router.post("/download")
+async def download_presentation(
+    body: PresentationPlan,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Step 2: Render a confirmed plan to PPTX and return as a download.
+    Accepts the plan returned by /plan (possibly edited by user).
+    """
     from pptx import Presentation as PptxPrs
     from services.template_injector import PPTX_PATH as TPL_PATH
-    catalog = load_catalog()
+    from pptx.oxml.ns import qn
 
-    # Start with a blank presentation matching template dimensions
+    catalog = load_catalog()
     source = PptxPrs(str(TPL_PATH))
     out_prs = PptxPrs()
     out_prs.slide_width = source.slide_width
     out_prs.slide_height = source.slide_height
-    # Remove default blank slide added by python-pptx
-    from pptx.oxml.ns import qn
     sldIdLst = out_prs.slides._sldIdLst
     for sldId in list(sldIdLst):
         sldIdLst.remove(sldId)
 
-    errors = []
-    for i, slide_plan in enumerate(slides_plan):
-        template_id = slide_plan.get("template_id")
-        slots = slide_plan.get("slots", {})
-
+    for i, slide in enumerate(body.slides):
         try:
-            tmpl = get_template_by_id(template_id, catalog)
+            tmpl = get_template_by_id(slide.template_id, catalog)
         except ValueError:
-            logger.warning("Unknown template_id %r at slide %d, skipping", template_id, i)
-            errors.append(f"Слайд {i+1}: неизвестный шаблон {template_id!r}")
+            logger.warning("Unknown template_id %r at slide %d, skipping", slide.template_id, i)
             continue
-
         try:
-            inject_into_presentation(out_prs, tmpl, slots)
+            inject_into_presentation(out_prs, tmpl, slide.slots)
         except Exception as e:
             logger.error("Inject failed for slide %d: %s", i, e)
-            errors.append(f"Слайд {i+1}: ошибка рендера — {e}")
 
     if len(out_prs.slides) == 0:
         raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")
 
-    title = plan.get("title", "presentation")
-    safe_title = "".join(c for c in title if c.isalnum() or c in " _-")[:40].strip() or "presentation"
-    filename = f"{safe_title}.pptx"
-
+    filename = f"{body.title}.pptx"
     buf = _pptx_to_stream(out_prs)
     return _make_streaming_response(buf, filename)
+
+
+@router.post("/extract-file")
+async def extract_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Extract key content from a PDF or DOCX file.
+    Returns a clean text summary suitable for use as a generation prompt.
+    """
+    from services.template_generator import extract_file_content
+
+    filename = file.filename or "document"
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in ("pdf", "docx", "doc"):
+        raise HTTPException(status_code=400, detail="Поддерживаются только PDF и DOCX файлы")
+
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:  # 20MB limit
+        raise HTTPException(status_code=400, detail="Файл слишком большой (максимум 20MB)")
+
+    try:
+        summary = await extract_file_content(content, filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("File extraction failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Ошибка обработки файла: {e}")
+
+    return {"summary": summary, "filename": filename}
 
 
 @router.post("/slide")

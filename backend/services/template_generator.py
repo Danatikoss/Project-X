@@ -69,12 +69,10 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — генератор слайдов для п
 }}"""
 
 
-async def generate_presentation_plan(
-    prompt: str,
-    num_slides: int = 5,
-) -> dict:
+async def generate_presentation_plan(prompt: str) -> dict:
     """
     Ask LLM to create a presentation plan: list of slides with template_id + filled slots.
+    LLM decides how many slides to use based on the content.
 
     Returns dict with keys: title, slides (list of {template_id, slots})
     """
@@ -84,7 +82,7 @@ async def generate_presentation_plan(
 
     user_message = (
         f"Создай презентацию на тему:\n{prompt}\n\n"
-        f"Количество слайдов: {num_slides}\n"
+        f"Сам определи оптимальное количество слайдов исходя из содержания (обычно 3–8).\n"
         f"Заполни все слоты каждого слайда реальным контентом по теме."
     )
 
@@ -106,6 +104,62 @@ async def generate_presentation_plan(
     except Exception as e:
         logger.error("LLM generation failed: %s", e)
         raise
+
+
+async def extract_file_content(file_bytes: bytes, filename: str) -> str:
+    """
+    Extract meaningful text from a PDF or DOCX file.
+    Strips boilerplate/filler and returns a clean summary suitable for use as a prompt.
+    """
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+
+    # Extract raw text
+    raw_text = ""
+    if ext == "pdf":
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        pages = []
+        for page in doc:
+            pages.append(page.get_text())
+        raw_text = "\n".join(pages)
+    elif ext in ("docx", "doc"):
+        from docx import Document
+        import io as _io
+        doc = Document(_io.BytesIO(file_bytes))
+        raw_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    else:
+        raise ValueError(f"Неподдерживаемый формат файла: .{ext}. Используй PDF или DOCX.")
+
+    if not raw_text.strip():
+        raise ValueError("Файл не содержит текста")
+
+    # Truncate to avoid token limits (keep ~8000 chars)
+    truncated = raw_text[:8000]
+    if len(raw_text) > 8000:
+        truncated += "\n[текст обрезан...]"
+
+    # Ask LLM to extract key facts
+    client = _get_client()
+    response = await client.chat.completions.create(
+        model=settings.assembly_model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Ты — аналитик документов. Извлеки из текста только ключевую информацию: "
+                    "факты, цифры, названия, цели, результаты, программы. "
+                    "Убери воду, вводные фразы, юридические формулировки. "
+                    "Верни структурированный список ключевых фактов на языке документа. "
+                    "Не более 500 слов."
+                ),
+            },
+            {"role": "user", "content": f"Документ:\n{truncated}"},
+        ],
+        temperature=0.1,
+    )
+    summary = response.choices[0].message.content or raw_text[:1000]
+    logger.info("Extracted %d chars from %r → %d char summary", len(raw_text), filename, len(summary))
+    return summary
 
 
 async def fill_single_slide(

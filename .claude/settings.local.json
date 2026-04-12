@@ -120,7 +120,9 @@
       "Bash(ls /tmp/pdf_slides*)",
       "Bash(convert /tmp/pdf_slides-01.ppm /tmp/slide1.png)",
       "Bash(git fetch:*)",
-      "Skill(office-hours)"
+      "Skill(office-hours)",
+      "Bash(mkdir -p /Users/danatikoss/Desktop/project2/backend/slide_templates)",
+      "Bash(cp /Users/danatikoss/Desktop/Libraryslides.pptx /Users/danatikoss/Desktop/project2/backend/slide_templates/)"
     ]
   }
 }

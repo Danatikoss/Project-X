@@ -451,18 +451,38 @@ function _downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => window.URL.revokeObjectURL(url), 5000)
 }
 
+export interface PresentationPlan {
+  title: string
+  slides: { template_id: string; slots: Record<string, string> }[]
+}
+
 export const generateApi = {
   listTemplates: async (): Promise<SlideTemplate[]> => {
     const res = await api.get<SlideTemplate[]>('/generate/templates')
     return res.data
   },
 
-  generatePresentation: async (prompt: string, numSlides: number): Promise<void> => {
-    const res = await api.post('/generate/presentation', { prompt, num_slides: numSlides }, { responseType: 'blob' })
+  createPlan: async (prompt: string): Promise<PresentationPlan> => {
+    const res = await api.post<PresentationPlan>('/generate/plan', { prompt })
+    return res.data
+  },
+
+  downloadPresentation: async (plan: PresentationPlan): Promise<void> => {
+    const res = await api.post('/generate/download', plan, { responseType: 'blob' })
     const cd = res.headers['content-disposition'] || ''
-    const match = cd.match(/filename[^;=\n]*=(['"]?)([^'";\n]*)\1/)
-    const filename = match?.[2]?.trim() || 'presentation.pptx'
-    _downloadBlob(res.data as Blob, filename)
+    const utf8Match = cd.match(/filename\*=UTF-8''([^;\n]*)/)
+    const asciiMatch = cd.match(/filename="?([^";\n]*)"?/)
+    const raw = utf8Match?.[1] ? decodeURIComponent(utf8Match[1]) : (asciiMatch?.[1] || 'presentation.pptx')
+    _downloadBlob(res.data as Blob, raw)
+  },
+
+  extractFile: async (file: File): Promise<{ summary: string; filename: string }> => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await api.post<{ summary: string; filename: string }>('/generate/extract-file', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
   },
 
   generateSlide: async (description: string, templateId?: string): Promise<void> => {
