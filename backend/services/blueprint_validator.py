@@ -75,6 +75,14 @@ _CONSTRAINTS: dict[str, dict] = {
         "slices_max":  6,
         "label_chars": 22,
     },
+    "metrics_grid": {
+        "metrics_max":    8,
+        "metrics_min":    3,
+        "value_chars":   15,   # e.g. "26 млн", "#1 среди СНГ"
+        "label_chars":   40,   # max 5 words ≈ 40 chars
+        "sublabel_chars": 60,
+    },
+    # section_divider (scratch render) — title only, no content to trim
 }
 
 _TITLE_MAX = 55            # title placeholder is narrower than full slide width
@@ -194,6 +202,20 @@ def validate_and_trim(bp: dict) -> dict:
             }
             for s in slices
         ]
+
+    elif layout == "metrics_grid":
+        metrics = (c.get("metrics") or [])[:lim["metrics_max"]]
+        c["metrics"] = [
+            {
+                "value":    _trim(m.get("value", ""),    lim["value_chars"]),
+                "label":    _trim(m.get("label", ""),    lim["label_chars"]),
+                "sublabel": _trim(m.get("sublabel") or "", lim["sublabel_chars"]) or None,
+            }
+            for m in metrics
+        ]
+        # Enforce minimum — pad with placeholders rather than render an empty grid
+        while len(c["metrics"]) < lim["metrics_min"]:
+            c["metrics"].append({"value": "—", "label": "", "sublabel": None})
 
     bp["content"] = c
     return bp

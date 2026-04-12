@@ -206,6 +206,8 @@ def apply_brand_styling(slide, brand: BrandContext) -> None:
 # First match in the list wins; if none match we fall back to any TITLE+BODY layout.
 
 _LAYOUT_PREFS: dict[str, list[str]] = {
+    # Scratch-rendered layouts — any template supports them (no placeholder needed)
+    "metrics_grid":    ["TITLE_AND_BODY", "ONE_COLUMN_TEXT", "TITLE_ONLY", "TITLE"],
     "title_content":   ["TITLE_AND_BODY", "ONE_COLUMN_TEXT", "TITLE_AND_TWO_COLUMNS"],
     "two_column":      ["TITLE_AND_TWO_COLUMNS", "COMPARISON", "TITLE_AND_BODY", "ONE_COLUMN_TEXT"],
     "comparison":      ["TITLE_AND_TWO_COLUMNS", "COMPARISON", "TITLE_AND_BODY", "ONE_COLUMN_TEXT"],
@@ -512,6 +514,232 @@ def _add_chart_shape(slide, blueprint: dict, slide_w, slide_h) -> None:
         logger.warning(f"_add_chart_shape ({layout_name}): {e}")
 
 
+# ─── Scratch renderer (metrics_grid, section_divider) ────────────────────────
+
+_SCRATCH_LAYOUTS = {"metrics_grid", "section_divider"}
+
+_DEFAULT_PRIMARY = "1A3C8F"   # fallback when BrandContext has no primary_color
+
+
+def _scratch_rgb(hex_str: str | None, default: str = _DEFAULT_PRIMARY) -> RGBColor:
+    h = (hex_str or default).lstrip("#")
+    if len(h) != 6:
+        h = default
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _clear_placeholders(slide) -> None:
+    """Remove all placeholder shapes so we start with a blank canvas."""
+    from lxml import etree
+    sp_tree = slide.shapes._spTree
+    for ph in list(slide.placeholders):
+        try:
+            sp_tree.remove(ph._element)
+        except Exception:
+            pass
+
+
+def _add_textbox(slide, x: float, y: float, w: float, h: float,
+                 text: str, font_size: int, bold: bool,
+                 color: RGBColor, slide_w: int, slide_h: int,
+                 align_center: bool = False) -> None:
+    """
+    Add a text box using normalised (0–1) coordinates.
+    x, y, w, h are fractions of slide_w / slide_h.
+    """
+    from pptx.util import Emu
+    from pptx.enum.text import PP_ALIGN
+
+    left   = int(x * slide_w)
+    top    = int(y * slide_h)
+    width  = int(w * slide_w)
+    height = int(h * slide_h)
+
+    txBox = slide.shapes.add_textbox(left, top, width, height)
+    tf    = txBox.text_frame
+    tf.word_wrap = True
+
+    para = tf.paragraphs[0]
+    if align_center:
+        para.alignment = PP_ALIGN.CENTER
+    run = para.add_run()
+    run.text = text
+    run.font.bold = bold
+    run.font.size = Pt(font_size)
+    run.font.color.rgb = color
+
+
+def _render_metrics_grid(slide, blueprint: dict, brand: BrandContext) -> None:
+    """
+    Render a metrics_grid slide from scratch.
+    Cards are laid out in rows of 3–4, evenly spaced.
+    """
+    from pptx.util import Emu
+    from pptx.enum.text import PP_ALIGN
+    from pptx.oxml.ns import qn
+
+    sw = slide.shapes._spTree.getparent().getparent()   # not used — use slide dims
+    # Grab slide dimensions from the presentation object attached to the slide part
+    try:
+        slide_w = slide.part.package.presentation.slide_width
+        slide_h = slide.part.package.presentation.slide_height
+    except Exception:
+        slide_w = int(W)
+        slide_h = int(H)
+
+    primary_rgb  = _scratch_rgb(brand.primary_color if brand else None)
+    body_rgb     = _scratch_rgb(
+        (brand.body_color if brand else None) or "1E293B", "1E293B"
+    )
+
+    _clear_placeholders(slide)
+
+    title_text = blueprint.get("title", "")
+    if title_text:
+        _add_textbox(
+            slide, x=0.04, y=0.04, w=0.92, h=0.12,
+            text=title_text, font_size=28, bold=True,
+            color=primary_rgb, slide_w=slide_w, slide_h=slide_h,
+        )
+
+    metrics = (blueprint.get("content") or {}).get("metrics", [])
+    if not metrics:
+        return
+
+    n = len(metrics)
+    cols = 4 if n >= 5 else 3
+    rows = (n + cols - 1) // cols
+
+    # Layout constants (normalised)
+    margin_x = 0.04
+    margin_y_top = 0.20   # below title
+    margin_y_bot = 0.04
+    gap_x = 0.02
+    gap_y = 0.04
+
+    total_w = 1.0 - 2 * margin_x - gap_x * (cols - 1)
+    card_w  = total_w / cols
+    avail_h = 1.0 - margin_y_top - margin_y_bot - gap_y * (rows - 1)
+    card_h  = avail_h / rows
+
+    for idx, metric in enumerate(metrics):
+        col = idx % cols
+        row = idx // cols
+
+        cx = margin_x + col * (card_w + gap_x)
+        cy = margin_y_top + row * (card_h + gap_y)
+
+        left   = int(cx * slide_w)
+        top    = int(cy * slide_h)
+        width  = int(card_w * slide_w)
+        height = int(card_h * slide_h)
+
+        # White rounded rectangle card
+        card = slide.shapes.add_shape(
+            1,   # MSO_SHAPE_TYPE.ROUNDED_RECTANGLE
+            left, top, width, height,
+        )
+        card.fill.solid()
+        card.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        card.line.color.rgb = RGBColor(0xE2, 0xE8, 0xF0)
+        card.line.width = Pt(0.75)
+        # Adjust corner rounding (20 000 EMU / 100 000 max ≈ subtle)
+        try:
+            card._element.spPr.prstGeom.avLst.clear()
+            from lxml import etree
+            av = etree.SubElement(
+                card._element.spPr.prstGeom.avLst,
+                qn("a:gd"), name="adj", fmla="val 20000",
+            )
+        except Exception:
+            pass
+
+        # Value text (large, bold, primary color) — top 55% of card
+        val_h = card_h * 0.55
+        _add_textbox(
+            slide,
+            x=cx + 0.01, y=cy + 0.04,
+            w=card_w - 0.02, h=val_h - 0.04,
+            text=metric.get("value", ""),
+            font_size=36, bold=True,
+            color=primary_rgb,
+            slide_w=slide_w, slide_h=slide_h,
+            align_center=True,
+        )
+
+        # Label text (small, body color) — below value
+        label_y = cy + val_h
+        label_h = card_h * 0.28
+        _add_textbox(
+            slide,
+            x=cx + 0.01, y=label_y,
+            w=card_w - 0.02, h=label_h,
+            text=metric.get("label", ""),
+            font_size=12, bold=False,
+            color=body_rgb,
+            slide_w=slide_w, slide_h=slide_h,
+            align_center=True,
+        )
+
+        # Sublabel (optional, smaller, muted)
+        sublabel = metric.get("sublabel") or ""
+        if sublabel:
+            sublabel_y = label_y + label_h
+            sublabel_h = card_h * 0.18
+            muted_rgb = _scratch_rgb("64748B", "64748B")
+            _add_textbox(
+                slide,
+                x=cx + 0.01, y=sublabel_y,
+                w=card_w - 0.02, h=sublabel_h,
+                text=sublabel,
+                font_size=9, bold=False,
+                color=muted_rgb,
+                slide_w=slide_w, slide_h=slide_h,
+                align_center=True,
+            )
+
+
+def _render_section_divider_scratch(slide, blueprint: dict, brand: BrandContext) -> None:
+    """
+    Render a section_divider slide from scratch: title centered on blank canvas.
+    """
+    try:
+        slide_w = slide.part.package.presentation.slide_width
+        slide_h = slide.part.package.presentation.slide_height
+    except Exception:
+        slide_w = int(W)
+        slide_h = int(H)
+
+    primary_rgb = _scratch_rgb(brand.primary_color if brand else None)
+
+    _clear_placeholders(slide)
+
+    title_text = blueprint.get("title", "")
+    if title_text:
+        _add_textbox(
+            slide,
+            x=0.08, y=0.35, w=0.84, h=0.30,
+            text=title_text, font_size=40, bold=True,
+            color=primary_rgb,
+            slide_w=slide_w, slide_h=slide_h,
+            align_center=True,
+        )
+
+
+def render_from_scratch(slide, blueprint: dict, brand: BrandContext | None) -> None:
+    """
+    Entry point for layouts that build their own shapes rather than filling
+    placeholders from the PPTX template.
+
+    Currently handles: metrics_grid, section_divider.
+    """
+    layout = blueprint.get("layout", "")
+    if layout == "metrics_grid":
+        _render_metrics_grid(slide, blueprint, brand)
+    elif layout == "section_divider":
+        _render_section_divider_scratch(slide, blueprint, brand)
+
+
 # ─── Core renderer ────────────────────────────────────────────────────────────
 
 
@@ -554,13 +782,15 @@ def render_slide_pptx(
 
     slide_layout = _find_layout(prs, layout_name)
     slide        = prs.slides.add_slide(slide_layout)
-    _fill_slide_content(slide, blueprint)
 
-    if brand_context is not None:
-        apply_brand_styling(slide, brand_context)
-
-    if layout_name in ("chart_bar", "chart_pie"):
-        _add_chart_shape(slide, blueprint, prs.slide_width, prs.slide_height)
+    if layout_name in _SCRATCH_LAYOUTS:
+        render_from_scratch(slide, blueprint, brand_context)
+    else:
+        _fill_slide_content(slide, blueprint)
+        if brand_context is not None:
+            apply_brand_styling(slide, brand_context)
+        if layout_name in ("chart_bar", "chart_pie"):
+            _add_chart_shape(slide, blueprint, prs.slide_width, prs.slide_height)
 
     logger.debug(
         "render_slide_pptx: layout=%s → tmpl_layout=%r  template=%s",

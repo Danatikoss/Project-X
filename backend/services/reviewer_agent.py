@@ -60,8 +60,9 @@ Layout JSON schemas (use when changing layout):
   comparison:      content = {"left":{"label":"...","items":["..."]}, "right":{"label":"...","items":["..."]}}
   timeline:        content = {"steps": [{"label":"...", "event":"..."}]}
   quote:           content = {"quote":"...", "attribution":"..."}
-  section_divider: content = {"subtitle":"..."}
+  section_divider: content = {}
   title_content:   content = {"type":"bullets", "items":["..."]}
+  metrics_grid:    content = {"metrics": [{"value":"26 млн","label":"ЭЦП выдано","sublabel":null}]}  (3-8 items)
 """
 
 

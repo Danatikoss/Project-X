@@ -124,21 +124,37 @@ DECISION TREE (apply in order):
   • 3-4 concepts/items? → icon_grid
   • 2 topics to compare? → two_column or comparison
   • Steps in a process? → process_flow
-  • Numbers/metrics ≥3? → chart_bar or chart_pie
+  • 3+ statistics / KPIs / rankings with numeric values? → metrics_grid  ← NEW
+  • Numbers/metrics in chart form? → chart_bar or chart_pie
   • One big number? → big_stat
   • Powerful single statement? → key_message
   • Quote? → quote
   • Major section break needed? → section_divider (use rarely)
   • Nothing fits? → title_content (≤5 bullets, last resort)
 
+METRICS_GRID RULES:
+  - Use when slide shows 3-8 stats, KPIs, rankings, or achievements
+  - NEVER use bullet lists for statistics — always use metrics_grid
+  - Each metric: value must be a specific number/symbol ("26 млн", "#1", "20+")
+    Never vague values ("many", "several", "lots")
+  - Label: max 5 words
+  - A single bullet list of numbers IS a metrics_grid — convert it
+
+STYLE RULES (based on user's slide library):
+  - Titles: 30–45 characters, specific and descriptive
+  - Max 2–3 bullet points per slide for text layouts
+  - Never create a slide where all content is one sentence that could be the title
+    Exception: section_divider is intentionally title-only
+
 ══════════════════════════════
 FIELD LIMITS (hard constraints)
 ══════════════════════════════
-- Title: max 60 chars
+- Title: max 60 chars (target 30–45)
 - icon_grid cards: heading ≤30 chars, text ≤80 chars; always 3-4 cards
 - process_flow steps: label ≤25 chars, desc ≤60 chars
 - key_message.message: ≤15 words, impactful
 - two_column items: ≤7 per column, ≤100 chars each
+- metrics_grid: 3–8 metrics; value ≤15 chars; label ≤5 words
 - No emoji in any field
 
 STRUCTURE:
@@ -147,7 +163,7 @@ STRUCTURE:
 - No two consecutive slides with the same layout
 
 Available layouts:
-icon_grid | key_message | process_flow | chart_bar | chart_pie | big_stat | two_column | comparison | timeline | quote | section_divider | title_content
+icon_grid | key_message | process_flow | chart_bar | chart_pie | big_stat | two_column | comparison | timeline | quote | section_divider | title_content | metrics_grid
 
 JSON schema:
 icon_grid:       {"layout":"icon_grid","title":"...","content":{"cards":[{"heading":"...","text":"..."}]},"speaker_notes":"..."}
@@ -160,8 +176,9 @@ two_column:      {"layout":"two_column","title":"...","content":{"left":{"headin
 comparison:      {"layout":"comparison","title":"...","content":{"left":{"label":"...","items":["..."]},"right":{"label":"...","items":["..."]}},"speaker_notes":"..."}
 timeline:        {"layout":"timeline","title":"...","content":{"steps":[{"label":"...","event":"..."}]},"speaker_notes":"..."}
 quote:           {"layout":"quote","title":"...","content":{"quote":"...","attribution":"..."},"speaker_notes":"..."}
-section_divider: {"layout":"section_divider","title":"...","content":{"subtitle":"..."},"speaker_notes":"..."}
+section_divider: {"layout":"section_divider","title":"...","content":{},"speaker_notes":"..."}
 title_content:   {"layout":"title_content","title":"...","content":{"type":"bullets","items":["..."]},"speaker_notes":"..."}
+metrics_grid:    {"layout":"metrics_grid","title":"...","content":{"metrics":[{"value":"26 млн","label":"ЭЦП выдано","sublabel":"по состоянию на 2025"},{"value":"#1","label":"среди стран СНГ","sublabel":null}]},"speaker_notes":"..."}
 
 Respond with ONLY a JSON array. No markdown, no wrapper object."""
 
