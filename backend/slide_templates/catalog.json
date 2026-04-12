@@ -1,0 +1,156 @@
+[
+  {
+    "id": "hero_4_metrics",
+    "slide_index": 0,
+    "name": "Продукт + 4 метрики",
+    "description": "Заглавный слайд продукта с описанием и четырьмя ключевыми показателями",
+    "scenario_tags": ["product overview", "key metrics", "4 stats", "product intro", "kpi", "launch slide"],
+    "slots": {
+      "slot_product_name": "Название продукта (коротко)",
+      "slot_main_card": "Название продукта\n\nОдна строка описания",
+      "slot_metric_1": "Значение\nПодпись",
+      "slot_metric_2": "Значение\nПодпись",
+      "slot_metric_3": "Значение\nПодпись",
+      "slot_metric_4": "Значение\nПодпись",
+      "slot_metrics_label": "Лейбл раздела (напр. 'Статистика:')"
+    }
+  },
+  {
+    "id": "product_2_cases",
+    "slide_index": 1,
+    "name": "Продукт + 2 кейса",
+    "description": "Описание продукта с двумя примерами использования или кейсами",
+    "scenario_tags": ["case studies", "use cases", "examples", "2 cases", "demo", "product cases"],
+    "slots": {
+      "slot_product_name": "Название продукта",
+      "slot_main_card": "Название продукта\n\nКраткое описание",
+      "slot_case_1": "Case 1\nОписание первого кейса",
+      "slot_case_2": "Case 2\nОписание второго кейса"
+    }
+  },
+  {
+    "id": "before_after",
+    "slide_index": 2,
+    "name": "До / После",
+    "description": "Сравнение состояния до и после внедрения продукта",
+    "scenario_tags": ["before after", "comparison", "transformation", "impact", "before vs after", "change"],
+    "slots": {
+      "slot_product_name": "Название продукта",
+      "slot_main_card": "Название продукта\n\nОписание",
+      "slot_before": "Раньше\nОписание прежнего состояния",
+      "slot_after": "В настоящее время:\nОписание текущего состояния"
+    }
+  },
+  {
+    "id": "product_goals",
+    "slide_index": 3,
+    "name": "Продукт + цели",
+    "description": "Описание продукта с целями или задачами внедрения",
+    "scenario_tags": ["goals", "objectives", "purpose", "product goals", "implementation goals", "tasks"],
+    "slots": {
+      "slot_product_name": "Название продукта",
+      "slot_main_card": "Название продукта\n\nОписание",
+      "slot_goals_list": "Цель внедрения:\nПункт 1\nПункт 2\nПункт 3"
+    }
+  },
+  {
+    "id": "product_feature_stat",
+    "slide_index": 4,
+    "name": "Продукт + возможности + стат",
+    "description": "Описание продукта со списком возможностей и одним крупным показателем",
+    "scenario_tags": ["features", "capabilities", "one stat", "pilot", "deployment stat", "functionality"],
+    "slots": {
+      "slot_product_name": "Название продукта",
+      "slot_main_card": "Название продукта\n\nОписание",
+      "slot_features_list": "Функциональные возможности:\nВозможность 1\nВозможность 2\nВозможность 3",
+      "slot_big_stat": "Крупный показатель (напр. 'Пилотируется в 38 клиниках')"
+    }
+  },
+  {
+    "id": "process_flow",
+    "slide_index": 5,
+    "name": "Процесс / Pipeline",
+    "description": "Описание продукта с преимуществами, возможностями и процессом из 6 шагов",
+    "scenario_tags": ["process", "pipeline", "workflow", "steps", "flow", "how it works", "6 steps"],
+    "slots": {
+      "slot_product_name": "Название продукта",
+      "slot_description": "Краткое описание решения",
+      "slot_benefits_label": "Преимущества:",
+      "slot_capabilities_label": "Ключевые возможности:",
+      "slot_benefits_list": "Преимущество 1\nПреимущество 2\nПреимущество 3",
+      "slot_capabilities_list": "Возможность 1\nВозможность 2\nВозможность 3",
+      "slot_step_1": "Шаг 1",
+      "slot_step_2": "Шаг 2",
+      "slot_step_3": "Шаг 3",
+      "slot_step_4": "Шаг 4",
+      "slot_step_5": "Шаг 5",
+      "slot_step_6": "Шаг 6"
+    }
+  },
+  {
+    "id": "framework_3pillars",
+    "slide_index": 6,
+    "name": "Фреймворк / 3 колонки",
+    "description": "Институциональный или концептуальный фреймворк с тремя направлениями",
+    "scenario_tags": ["framework", "3 pillars", "columns", "structure", "regulation", "law", "institutional"],
+    "slots": {
+      "slot_product_name": "Заголовок слайда",
+      "slot_law_title": "Название закона или основного документа",
+      "slot_pillar_1_title": "Название 1-й колонки",
+      "slot_pillar_2_title": "Название 2-й колонки",
+      "slot_pillar_3_title": "Название 3-й колонки",
+      "slot_pillar_1_content": "- Пункт 1\n- Пункт 2\n- Пункт 3",
+      "slot_pillar_2_content": "- Пункт 1\n- Пункт 2",
+      "slot_pillar_3_content": "- Пункт 1\n- Пункт 2"
+    }
+  },
+  {
+    "id": "goal_breakdown",
+    "slide_index": 7,
+    "name": "Цель + разбивка по категориям",
+    "description": "Общая цель с таймлайном и разбивкой на 5 категорий",
+    "scenario_tags": ["goal", "breakdown", "categories", "target", "5 categories", "plan", "total goal"],
+    "slots": {
+      "slot_product_name": "Заголовок слайда",
+      "slot_timeline": "Период\nед. измерения (напр. '5\nлет')",
+      "slot_total_goal": "Общая цель\nОписание (напр. '1 млн\nчеловек')",
+      "slot_category_1": "Значение\nПодпись категории",
+      "slot_category_2": "Значение\nПодпись категории",
+      "slot_category_3": "Значение\nПодпись категории",
+      "slot_category_4": "Значение\nПодпись категории",
+      "slot_category_5": "Значение\nПодпись категории"
+    }
+  },
+  {
+    "id": "programs_4step",
+    "slide_index": 8,
+    "name": "Программы / 4 этапа + результаты",
+    "description": "Четыре программы или этапа с соответствующими результатами",
+    "scenario_tags": ["programs", "phases", "4 steps", "results", "roadmap", "initiatives"],
+    "slots": {
+      "slot_product_name": "Заголовок слайда",
+      "slot_program_1_name": "Название программы 1",
+      "slot_program_2_name": "Название программы 2",
+      "slot_program_3_name": "Название программы 3",
+      "slot_program_4_name": "Название программы 4",
+      "slot_program_1_result": "Результат\nОписание",
+      "slot_program_2_result": "Результат\nОписание",
+      "slot_program_3_result": "Результат\nОписание",
+      "slot_program_4_result": "Результат\nОписание"
+    }
+  },
+  {
+    "id": "hero_3_metrics",
+    "slide_index": 9,
+    "name": "Продукт + 3 метрики",
+    "description": "Заглавный слайд продукта с описанием и тремя ключевыми показателями",
+    "scenario_tags": ["product overview", "3 metrics", "3 stats", "product intro", "kpi", "hero slide"],
+    "slots": {
+      "slot_product_name": "Название продукта",
+      "slot_metric_1": "Значение\nПодпись",
+      "slot_metric_2": "Значение\nПодпись",
+      "slot_metric_3": "Значение\nПодпись",
+      "slot_description": "Описание продукта или сервиса"
+    }
+  }
+]
