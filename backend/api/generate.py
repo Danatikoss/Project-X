@@ -1,15 +1,19 @@
 """
 Template-based slide generation API.
 
-POST /generate/presentation  — full presentation from a prompt
-POST /generate/slide         — single slide (returns PPTX)
-GET  /generate/templates     — list available templates
+POST /generate/presentation       — full presentation from a prompt
+POST /generate/slide              — single slide (returns PPTX)
+GET  /generate/templates          — list available templates
+POST /generate/templates/upload   — upload a new PPTX template
+DELETE /generate/templates/{id}   — remove a template
 """
 import io
+import json
 import logging
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -17,7 +21,7 @@ from typing import Optional
 from api.deps import get_current_user
 from models.user import User
 from services.template_generator import generate_presentation_plan, fill_single_slide
-from services.template_library import load_catalog, get_template_by_id
+from services.template_library import load_catalog, get_template_by_id, CATALOG_PATH, TEMPLATES_DIR
 from services.template_injector import inject_into_slide, inject_into_presentation
 from pptx import Presentation as PptxPresentation
 
@@ -180,3 +184,127 @@ async def generate_single_slide(
 
     buf = _pptx_to_stream(prs)
     return _make_streaming_response(buf, "slide.pptx")
+
+
+# ── Template management ───────────────────────────────────────────────────────
+
+def _save_catalog(catalog_data: list[dict]) -> None:
+    with open(CATALOG_PATH, "w", encoding="utf-8") as f:
+        json.dump(catalog_data, f, ensure_ascii=False, indent=2)
+
+
+@router.post("/templates/upload", response_model=TemplateSlotInfo)
+async def upload_template(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: str = Form(default=""),
+    scenario_tags: str = Form(default=""),  # comma-separated
+    slide_index: int = Form(default=0),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload a new PPTX slide template.
+    The PPTX must have shapes named slot_* for content injection.
+    Only admins can upload templates (they are shared across all users).
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор может загружать шаблоны")
+
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="Файл должен быть в формате .pptx")
+
+    # Save uploaded file
+    uploads_dir = TEMPLATES_DIR / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
+    file_id = uuid.uuid4().hex[:12]
+    pptx_filename = f"uploads/{file_id}.pptx"
+    pptx_path = TEMPLATES_DIR / pptx_filename
+
+    content = await file.read()
+    pptx_path.write_bytes(content)
+
+    # Extract slot names from the specified slide
+    try:
+        from pptx import Presentation as PptxPrs
+        import io as _io
+        prs = PptxPrs(_io.BytesIO(content))
+        if slide_index >= len(prs.slides):
+            pptx_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail=f"Слайд {slide_index} не существует в файле (всего {len(prs.slides)})")
+        slide = prs.slides[slide_index]
+        slots = {
+            shape.name: f"Слот {shape.name}"
+            for shape in slide.shapes
+            if shape.name.startswith("slot_") and hasattr(shape, "has_text_frame") and shape.has_text_frame
+        }
+        if not slots:
+            pptx_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="В слайде не найдено ни одного слота (shape с именем slot_*). Переименуй shapes в PowerPoint.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        pptx_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"Не удалось прочитать PPTX: {e}")
+
+    # Build template ID from name
+    template_id = "custom_" + "".join(c if c.isalnum() else "_" for c in name.lower())[:30] + "_" + file_id[:6]
+
+    # Parse scenario_tags
+    tags = [t.strip() for t in scenario_tags.split(",") if t.strip()]
+
+    new_entry = {
+        "id": template_id,
+        "slide_index": slide_index,
+        "name": name,
+        "description": description,
+        "scenario_tags": tags,
+        "slots": slots,
+        "pptx_file": pptx_filename,
+    }
+
+    # Append to catalog
+    with open(CATALOG_PATH, encoding="utf-8") as f:
+        catalog_data = json.load(f)
+    catalog_data.append(new_entry)
+    _save_catalog(catalog_data)
+
+    logger.info("Uploaded new template %r by user %d", template_id, current_user.id)
+    return TemplateSlotInfo(
+        id=template_id,
+        name=name,
+        description=description,
+        slots=slots,
+        scenario_tags=tags,
+    )
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+def delete_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a template from the catalog. Built-in templates cannot be deleted."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор может удалять шаблоны")
+
+    with open(CATALOG_PATH, encoding="utf-8") as f:
+        catalog_data = json.load(f)
+
+    entry = next((e for e in catalog_data if e["id"] == template_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+
+    pptx_file = entry.get("pptx_file", "")
+    if not pptx_file.startswith("uploads/"):
+        raise HTTPException(status_code=400, detail="Встроенные шаблоны нельзя удалить")
+
+    # Remove file
+    pptx_path = TEMPLATES_DIR / pptx_file
+    pptx_path.unlink(missing_ok=True)
+
+    # Remove from catalog
+    catalog_data = [e for e in catalog_data if e["id"] != template_id]
+    _save_catalog(catalog_data)
+
+    logger.info("Deleted template %r by user %d", template_id, current_user.id)
+    return None

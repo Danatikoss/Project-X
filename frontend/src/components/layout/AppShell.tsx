@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, BookImage, Upload, User, Layers, Film,
-  LogOut, ChevronDown,
+  LogOut, ChevronDown, Sparkles,
 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '../../utils/cn'
@@ -12,6 +12,7 @@ import { useAuthStore } from '../../store/auth'
 
 const PRIMARY_NAV = [
   { to: '/dashboard',      icon: LayoutDashboard, label: 'Главная' },
+  { to: '/generate',       icon: Sparkles,        label: 'Генерация' },
   { to: '/library',        icon: BookImage,        label: 'Библиотека' },
   { to: '/library/upload', icon: Upload,           label: 'Загрузить' },
   { to: '/media',          icon: Film,             label: 'Медиа' },

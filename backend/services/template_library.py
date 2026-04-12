@@ -11,7 +11,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 CATALOG_PATH = Path(__file__).parent.parent / "slide_templates" / "catalog.json"
-PPTX_PATH = Path(__file__).parent.parent / "slide_templates" / "Libraryslides.pptx"
+TEMPLATES_DIR = Path(__file__).parent.parent / "slide_templates"
 
 
 @dataclass
@@ -22,6 +22,11 @@ class TemplateInfo:
     description: str
     scenario_tags: list[str]
     slots: dict[str, str]
+    pptx_file: str = "Libraryslides.pptx"
+
+    @property
+    def pptx_path(self) -> Path:
+        return TEMPLATES_DIR / self.pptx_file
 
 
 def load_catalog() -> list[TemplateInfo]:

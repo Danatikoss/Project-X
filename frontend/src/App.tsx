@@ -11,6 +11,7 @@ import Assemble from './pages/Assemble'
 import Profile from './pages/Profile'
 import Media from './pages/Media'
 import TemplateEditor from './pages/TemplateEditor'
+import Generate from './pages/Generate'
 import SharedAssembly from './pages/SharedAssembly'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/assemble/:id" element={<ErrorBoundary><Assemble /></ErrorBoundary>} />
             <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
             <Route path="/media" element={<ErrorBoundary><Media /></ErrorBoundary>} />
+            <Route path="/generate" element={<ErrorBoundary><Generate /></ErrorBoundary>} />
             <Route path="/templates/new" element={<ErrorBoundary><TemplateEditor /></ErrorBoundary>} />
             <Route path="/templates/:id/edit" element={<ErrorBoundary><TemplateEditor /></ErrorBoundary>} />
           </Route>

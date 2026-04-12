@@ -430,6 +430,67 @@ export const wopiApi = {
   },
 }
 
+// ─── Generate (template-based) ───────────────────────────────────────────────
+
+export interface SlideTemplate {
+  id: string
+  name: string
+  description: string
+  slots: Record<string, string>
+  scenario_tags: string[]
+}
+
+function _downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => window.URL.revokeObjectURL(url), 5000)
+}
+
+export const generateApi = {
+  listTemplates: async (): Promise<SlideTemplate[]> => {
+    const res = await api.get<SlideTemplate[]>('/generate/templates')
+    return res.data
+  },
+
+  generatePresentation: async (prompt: string, numSlides: number): Promise<void> => {
+    const res = await api.post('/generate/presentation', { prompt, num_slides: numSlides }, { responseType: 'blob' })
+    const cd = res.headers['content-disposition'] || ''
+    const match = cd.match(/filename[^;=\n]*=(['"]?)([^'";\n]*)\1/)
+    const filename = match?.[2]?.trim() || 'presentation.pptx'
+    _downloadBlob(res.data as Blob, filename)
+  },
+
+  generateSlide: async (description: string, templateId?: string): Promise<void> => {
+    const res = await api.post('/generate/slide', { description, template_id: templateId ?? null }, { responseType: 'blob' })
+    _downloadBlob(res.data as Blob, 'slide.pptx')
+  },
+
+  uploadTemplate: async (
+    file: File,
+    meta: { name: string; description: string; scenario_tags: string; slide_index: number }
+  ): Promise<SlideTemplate> => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('name', meta.name)
+    form.append('description', meta.description)
+    form.append('scenario_tags', meta.scenario_tags)
+    form.append('slide_index', String(meta.slide_index))
+    const res = await api.post<SlideTemplate>('/generate/templates/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  },
+
+  deleteTemplate: async (id: string): Promise<void> => {
+    await api.delete(`/generate/templates/${id}`)
+  },
+}
+
 // ─── Assembly Templates ───────────────────────────────────────────────────────
 
 export const templatesApi = {

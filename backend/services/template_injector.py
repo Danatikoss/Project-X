@@ -17,7 +17,10 @@ from pptx import Presentation
 from pptx.oxml.ns import qn
 from pptx.util import Pt
 
-from services.template_library import TemplateInfo, PPTX_PATH
+from services.template_library import TemplateInfo, TEMPLATES_DIR
+
+# Default PPTX path (kept for backwards compat with generate.py)
+PPTX_PATH = TEMPLATES_DIR / "Libraryslides.pptx"
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +118,7 @@ def inject_into_slide(template: TemplateInfo, slots: dict[str, str]) -> Presenta
     Returns:
         A Presentation with a single slide (ready to save or merge)
     """
-    source_prs = Presentation(str(PPTX_PATH))
+    source_prs = Presentation(str(template.pptx_path))
     source_slide = source_prs.slides[template.slide_index]
 
     # Create a new presentation with the same dimensions
@@ -164,7 +167,7 @@ def inject_into_presentation(base_prs: Presentation, template: TemplateInfo, slo
     Append an injected template slide to an existing Presentation in-place.
     Uses the same copy mechanism as inject_into_slide but appends to base_prs.
     """
-    source_prs = Presentation(str(PPTX_PATH))
+    source_prs = Presentation(str(template.pptx_path))
     source_slide = source_prs.slides[template.slide_index]
 
     blank_layout = base_prs.slide_layouts[6]
