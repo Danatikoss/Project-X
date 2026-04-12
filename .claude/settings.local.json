@@ -118,7 +118,9 @@
       "Bash(read f:*)",
       "Bash(pdftoppm -r 96 /Users/danatikoss/Downloads/ntcnjdfz_11.pdf /tmp/pdf_slides)",
       "Bash(ls /tmp/pdf_slides*)",
-      "Bash(convert /tmp/pdf_slides-01.ppm /tmp/slide1.png)"
+      "Bash(convert /tmp/pdf_slides-01.ppm /tmp/slide1.png)",
+      "Bash(git fetch:*)",
+      "Skill(office-hours)"
     ]
   }
 }

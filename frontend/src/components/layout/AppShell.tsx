@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, BookImage, Upload, User, Layers, Palette, Film,
-  Wand2, ShieldCheck, LogOut, ChevronDown,
+  LayoutDashboard, BookImage, Upload, User, Layers, Film,
+  LogOut, ChevronDown,
 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '../../utils/cn'
@@ -12,19 +12,14 @@ import { useAuthStore } from '../../store/auth'
 
 const PRIMARY_NAV = [
   { to: '/dashboard',      icon: LayoutDashboard, label: 'Главная' },
-  { to: '/generate',       icon: Wand2,           label: 'Генератор' },
   { to: '/library',        icon: BookImage,        label: 'Библиотека' },
   { to: '/library/upload', icon: Upload,           label: 'Загрузить' },
   { to: '/media',          icon: Film,             label: 'Медиа' },
 ]
 
-const SECONDARY_NAV = [
-  { to: '/brand', icon: Palette, label: 'Бренд' },
-]
+const SECONDARY_NAV: { to: string; icon: React.ElementType; label: string }[] = []
 
-const ADMIN_NAV = [
-  { to: '/brand/guidelines', icon: ShieldCheck, label: 'Гайдлайны' },
-]
+const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = []
 
 // ─── Nav link ─────────────────────────────────────────────────────────────────
 

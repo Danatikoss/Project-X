@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Download, ArrowLeft, Plus, Search, X, Edit2, Check,
   ChevronLeft, ChevronRight, Share2,
-  BookImage, Sparkles, FolderOpen, Play,
+  BookImage, FolderOpen, Play,
   Film, Image, Trash2, ChevronDown,
   PanelLeftClose, PanelLeftOpen, Presentation,
 } from 'lucide-react'
@@ -14,7 +14,6 @@ import { FilmStrip } from '../components/assemble/FilmStrip'
 import { SlideCard, SlideThumbnail } from '../components/common/SlideCard'
 import { Slideshow } from '../components/common/Slideshow'
 import { Spinner } from '../components/common/Spinner'
-import { GenerateSlideModal } from '../components/common/GenerateSlideModal'
 import { SlideTextEditor } from '../components/common/SlideTextEditor'
 import { cn } from '../utils/cn'
 import { useAppStore } from '../store'
@@ -52,11 +51,10 @@ async function getNaturalAR(asset: MediaAsset): Promise<number | null> {
 
 // ─── Library Panel ────────────────────────────────────────────────────────────
 
-function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
+function LibraryPanel({ existingIds, onAdd, onAddMultiple }: {
   existingIds: Set<number>
   onAdd: (slide: Slide) => void
   onAddMultiple: (slides: Slide[]) => void
-  onGenerate: () => void
 }) {
   const [query, setQuery] = useState('')
   const [projectId, setProjectId] = useState<number | undefined>()
@@ -120,11 +118,6 @@ function LibraryPanel({ existingIds, onAdd, onAddMultiple, onGenerate }: {
             className={cn('text-[10px] px-2 py-1.5 rounded-lg border transition-colors whitespace-nowrap shrink-0',
               selectMode ? 'bg-brand-600 text-white border-brand-600' : 'border-gray-200 text-gray-500 hover:border-brand-500 hover:text-gray-900')}
           >{selectMode ? 'Отмена' : 'Выбрать'}</button>
-          <button
-            onClick={onGenerate}
-            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-brand-600 hover:border-brand-300 hover:bg-brand-50 transition-colors shrink-0"
-            title="AI-генерация слайда"
-          ><Sparkles className="w-3.5 h-3.5" /></button>
         </div>
 
         {projects.length > 0 && (
@@ -444,7 +437,6 @@ export default function Assemble() {
   const [isExporting, setIsExporting] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [showSlideshow, setShowSlideshow] = useState(false)
-  const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [editingSlideId, setEditingSlideId] = useState<number | null>(null)
   const [rightTab, setRightTab] = useState<'library' | 'media'>(
     searchParams.get('tab') === 'library' ? 'library' : 'library'
@@ -991,7 +983,6 @@ export default function Assemble() {
                   existingIds={existingIds}
                   onAdd={handleAddSlide}
                   onAddMultiple={handleAddMultiple}
-                  onGenerate={() => setShowGenerateModal(true)}
                 />
               )}
 
@@ -1059,13 +1050,6 @@ export default function Assemble() {
         />
       )}
 
-      {showGenerateModal && (
-        <GenerateSlideModal
-          onClose={() => setShowGenerateModal(false)}
-          assemblyContext={assembly?.title}
-          onSlideGenerated={(slide) => { handleAddSlide(slide); setShowGenerateModal(false) }}
-        />
-      )}
     </div>
   )
 }

@@ -9,11 +9,8 @@ import Library from './pages/Library'
 import Upload from './pages/Upload'
 import Assemble from './pages/Assemble'
 import Profile from './pages/Profile'
-import Brand from './pages/Brand'
-import BrandGuidelines from './pages/BrandGuidelines'
 import Media from './pages/Media'
 import TemplateEditor from './pages/TemplateEditor'
-import PresentationGenerator from './pages/PresentationGenerator'
 import SharedAssembly from './pages/SharedAssembly'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -57,12 +54,9 @@ export default function App() {
             <Route path="/library/upload" element={<ErrorBoundary><Upload /></ErrorBoundary>} />
             <Route path="/assemble/:id" element={<ErrorBoundary><Assemble /></ErrorBoundary>} />
             <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
-            <Route path="/brand" element={<ErrorBoundary><Brand /></ErrorBoundary>} />
-            <Route path="/brand/guidelines" element={<ErrorBoundary><BrandGuidelines /></ErrorBoundary>} />
             <Route path="/media" element={<ErrorBoundary><Media /></ErrorBoundary>} />
             <Route path="/templates/new" element={<ErrorBoundary><TemplateEditor /></ErrorBoundary>} />
             <Route path="/templates/:id/edit" element={<ErrorBoundary><TemplateEditor /></ErrorBoundary>} />
-            <Route path="/generate" element={<ErrorBoundary><PresentationGenerator /></ErrorBoundary>} />
           </Route>
         </Routes>
       </BrowserRouter>

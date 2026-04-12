@@ -147,69 +147,12 @@ export interface AuthResponse {
   user: AuthUser
 }
 
-// ─── Brand Templates ─────────────────────────────────────────────────────────
-
-export interface BrandTemplate {
-  id: number
-  name: string
-  is_default: boolean
-  colors: Record<string, string>
-  created_at: string
-  // Strict Brand Guidelines
-  background_image_url: string | null
-  font_family: string
-  title_font_color: string
-  title_font_size: number
-  body_font_color: string
-  body_font_size: number
-  shape_color: string
-  shape_opacity: number
-  // Text zone positions (fraction 0-1 of slide dimensions)
-  title_x: number
-  title_y: number
-  title_w: number
-  title_h: number
-  body_x: number
-  body_y: number
-  body_w: number
-  body_h: number
-}
-
-export interface BrandGuidelinesUpdate {
-  font_family?: string
-  title_font_color?: string
-  title_font_size?: number
-  body_font_color?: string
-  body_font_size?: number
-  shape_color?: string
-  shape_opacity?: number
-  clear_background_image?: boolean
-  title_x?: number
-  title_y?: number
-  title_w?: number
-  title_h?: number
-  body_x?: number
-  body_y?: number
-  body_w?: number
-  body_h?: number
-}
-
 export interface AdminUser {
   id: number
   email: string
   name: string | null
   is_admin: boolean
   is_active: boolean
-}
-
-export interface GenerateSlideRequest {
-  prompt: string
-  template_id?: number
-  context?: string
-}
-
-export interface GenerateSlideResponse {
-  slide: Slide
 }
 
 // ─── User Profile ────────────────────────────────────────────────────────────

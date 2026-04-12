@@ -3,7 +3,7 @@ import type {
   Slide, SlideListResponse, SlidePatchRequest, SourcePresentation,
   UploadResponse, Assembly, AssemblyListItem, AssembleRequest,
   AssemblyPatchRequest, SearchResponse, UserProfile, UserProfilePatchRequest,
-  AuthResponse, Project, BrandTemplate, BrandGuidelinesUpdate, GenerateSlideRequest, GenerateSlideResponse,
+  AuthResponse, Project,
   MediaFolder, MediaAsset, AssemblyTemplate,
   ProfileStats, AdminUser, TextElement, SlideEditVersion,
 } from '../types'
@@ -325,58 +325,6 @@ export const assemblyApi = {
   },
 }
 
-// ─── Brand & Generation ───────────────────────────────────────────────────────
-
-export const brandApi = {
-  listTemplates: async (): Promise<BrandTemplate[]> => {
-    const res = await api.get<BrandTemplate[]>('/brand/templates')
-    return res.data
-  },
-
-  uploadTemplate: async (name: string, file: File): Promise<BrandTemplate> => {
-    const form = new FormData()
-    form.append('name', name)
-    form.append('file', file)
-    const res = await api.post<BrandTemplate>('/brand/templates', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    return res.data
-  },
-
-  setDefault: async (id: number): Promise<BrandTemplate> => {
-    const res = await api.patch<BrandTemplate>(`/brand/templates/${id}/default`)
-    return res.data
-  },
-
-  deleteTemplate: async (id: number): Promise<void> => {
-    await api.delete(`/brand/templates/${id}`)
-  },
-
-  generateSlide: async (req: GenerateSlideRequest): Promise<GenerateSlideResponse> => {
-    const res = await api.post<GenerateSlideResponse>('/brand/generate', req)
-    return res.data
-  },
-
-  updateGuidelines: async (templateId: number, data: BrandGuidelinesUpdate): Promise<BrandTemplate> => {
-    const res = await api.patch<BrandTemplate>(`/brand/templates/${templateId}/guidelines`, data)
-    return res.data
-  },
-
-  uploadBackground: async (templateId: number, file: File): Promise<BrandTemplate> => {
-    const form = new FormData()
-    form.append('file', file)
-    const res = await api.post<BrandTemplate>(`/brand/templates/${templateId}/guidelines/bg`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    return res.data
-  },
-
-  removeBackground: async (templateId: number): Promise<BrandTemplate> => {
-    const res = await api.delete<BrandTemplate>(`/brand/templates/${templateId}/guidelines/bg`)
-    return res.data
-  },
-}
-
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
 export const adminApi = {
@@ -472,55 +420,6 @@ export const mediaApi = {
   },
 }
 
-
-// ─── Presentations (AI Generator) ────────────────────────────────────────────
-
-export interface SlideBlueprint {
-  layout: string
-  title: string
-  content: Record<string, unknown>
-  speaker_notes?: string
-}
-
-export interface PlanResponse {
-  title: string
-  plan: SlideBlueprint[]
-}
-
-export interface RenderResponse {
-  assembly_id: number
-  slide_ids: number[]
-}
-
-export const presentationsApi = {
-  plan: async (
-    params: { file?: File; textPrompt?: string; title?: string; language?: string; brandTemplateId?: number | null }
-  ): Promise<PlanResponse> => {
-    const form = new FormData()
-    if (params.file) form.append('file', params.file)
-    if (params.textPrompt) form.append('text_prompt', params.textPrompt)
-    form.append('title', params.title ?? 'Презентация')
-    form.append('language', params.language ?? '')
-    if (params.brandTemplateId != null) form.append('brand_template_id', String(params.brandTemplateId))
-    const res = await api.post<PlanResponse>('/presentations/plan', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    return res.data
-  },
-
-  render: async (params: {
-    title: string
-    plan: SlideBlueprint[]
-    brandTemplateId?: number
-  }): Promise<RenderResponse> => {
-    const res = await api.post<RenderResponse>('/presentations/render', {
-      title: params.title,
-      plan: params.plan,
-      brand_template_id: params.brandTemplateId ?? null,
-    })
-    return res.data
-  },
-}
 
 // ─── WOPI / Collabora Online ──────────────────────────────────────────────────
 

@@ -350,71 +350,8 @@ def _add_thumbnail_slide(dest_prs, slide_entry: SlideLibraryEntry):
         )
 
 
-def _export_pptx_from_template(
-    dest_path: str,
-    slides: list,
-    template_pptx_path: str,
-    overlays_map: dict,
-) -> bool:
-    """
-    Build a proper PPTX from blueprint JSON + brand template.
-    Re-renders each AI-generated slide using the same layout/master as the original.
-    Returns True on success, False on failure (caller should fall back to thumbnail export).
-    """
-    try:
-        from pptx import Presentation as Prs
-        from services.slide_generator import _find_layout, _fill_slide_content, _add_chart_shape
-
-        prs = Prs(template_pptx_path)
-
-        # Remove all existing slides while keeping master + layouts
-        _r_ns = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-        sldIdLst = prs.slides._sldIdLst
-        rids = [sld.get(_r_ns) for sld in list(sldIdLst)]
-        for sld_id in list(sldIdLst):
-            sldIdLst.remove(sld_id)
-        for rId in rids:
-            if rId:
-                try:
-                    prs.part.drop_rel(rId)
-                except Exception:
-                    pass
-
-        for slide_entry in slides:
-            if slide_entry.blueprint_json:
-                bp = json.loads(slide_entry.blueprint_json)
-                layout_name = bp.get("layout", "title_content")
-                slide_layout = _find_layout(prs, layout_name)
-                slide = prs.slides.add_slide(slide_layout)
-                _fill_slide_content(slide, bp)
-                if layout_name in ("chart_bar", "chart_pie"):
-                    _add_chart_shape(slide, bp, prs.slide_width, prs.slide_height)
-            else:
-                # Non-AI slide (library/PDF source): embed thumbnail as image
-                _add_thumbnail_slide(prs, slide_entry)
-
-            dest_slide = prs.slides[-1]
-            _add_overlays_pptx(prs, dest_slide, str(slide_entry.id), overlays_map)
-
-        prs.save(dest_path)
-        return True
-
-    except Exception as e:
-        logger.warning(f"Template-based PPTX export failed: {e}")
-        return False
-
-
 def export_to_pptx(db: Session, assembly_id: int) -> str:
-    """Export assembly as PPTX.
-
-    For AI-generated assemblies (those with brand_template_id and blueprint_json
-    on slides), re-renders each slide from its blueprint + the brand template PPTX.
-    This gives a proper editable PPTX with the full template design and real content
-    in placeholders (not embedded thumbnail images).
-
-    For library/mixed assemblies (no template or missing blueprints), falls back to
-    embedding thumbnail PNGs as slide images.
-    """
+    """Export assembly as PPTX by embedding slide thumbnails as images."""
     from pptx import Presentation
     from pptx.util import Inches
 
@@ -433,68 +370,28 @@ def export_to_pptx(db: Session, assembly_id: int) -> str:
     export_dir.mkdir(parents=True, exist_ok=True)
     export_path = str(export_dir / f"{assembly_id}_{uuid.uuid4().hex[:8]}.pptx")
 
-    # ── Try template-first export for AI-generated presentations ─────────────
-    template_pptx_path: Optional[str] = None
+    logger.info(f"export_to_pptx: thumbnail export for assembly {assembly_id} ({len(slides)} slides)")
+    dest_prs = Presentation()
+    dest_prs.slide_width  = Inches(13.33)
+    dest_prs.slide_height = Inches(7.5)
 
-    if assembly.brand_template_id:
-        from models.brand import BrandTemplate
-        tmpl = db.query(BrandTemplate).filter(
-            BrandTemplate.id == assembly.brand_template_id
-        ).first()
-        if tmpl and tmpl.pptx_path and Path(tmpl.pptx_path).exists():
-            template_pptx_path = tmpl.pptx_path
+    for slide_entry in slides:
+        cloned = False
+        if slide_entry.video_path and slide_entry.source_id:
+            try:
+                source = slide_entry.source
+                if source and source.file_type == "pptx" and source.file_path:
+                    cloned = _clone_slide(dest_prs, source.file_path, slide_entry.slide_index)
+            except Exception as e:
+                logger.debug(f"Video slide clone failed (slide {slide_entry.id}): {e}")
 
-    if not template_pptx_path:
-        # Fall back to owner's default template
-        from models.brand import BrandTemplate
-        owner_id = assembly.owner_id
-        default_tmpl = db.query(BrandTemplate).filter(
-            BrandTemplate.owner_id == owner_id,
-            BrandTemplate.is_default == True,
-        ).first()
-        if default_tmpl and default_tmpl.pptx_path and Path(default_tmpl.pptx_path).exists():
-            template_pptx_path = default_tmpl.pptx_path
+        if not cloned:
+            _add_thumbnail_slide(dest_prs, slide_entry)
 
-    all_have_blueprints = all(s.blueprint_json for s in slides)
-    used_template_export = False
+        dest_slide = dest_prs.slides[-1]
+        _add_overlays_pptx(dest_prs, dest_slide, str(slide_entry.id), overlays_map)
 
-    if template_pptx_path and all_have_blueprints:
-        logger.info(
-            f"export_to_pptx: template-first export for assembly {assembly_id} "
-            f"({len(slides)} slides, template={template_pptx_path})"
-        )
-        used_template_export = _export_pptx_from_template(
-            export_path, slides, template_pptx_path, overlays_map
-        )
-
-    if not used_template_export:
-        # ── Fallback: thumbnail-image export ──────────────────────────────────
-        logger.info(
-            f"export_to_pptx: thumbnail export for assembly {assembly_id} "
-            f"(template={'missing' if not template_pptx_path else 'ok'}, "
-            f"blueprints={'partial' if not all_have_blueprints else 'ok'})"
-        )
-        dest_prs = Presentation()
-        dest_prs.slide_width  = Inches(13.33)
-        dest_prs.slide_height = Inches(7.5)
-
-        for slide_entry in slides:
-            cloned = False
-            if slide_entry.video_path and slide_entry.source_id:
-                try:
-                    source = slide_entry.source
-                    if source and source.file_type == "pptx" and source.file_path:
-                        cloned = _clone_slide(dest_prs, source.file_path, slide_entry.slide_index)
-                except Exception as e:
-                    logger.debug(f"Video slide clone failed (slide {slide_entry.id}): {e}")
-
-            if not cloned:
-                _add_thumbnail_slide(dest_prs, slide_entry)
-
-            dest_slide = dest_prs.slides[-1]
-            _add_overlays_pptx(dest_prs, dest_slide, str(slide_entry.id), overlays_map)
-
-        dest_prs.save(export_path)
+    dest_prs.save(export_path)
 
     assembly.export_path = export_path
     assembly.status = "exported"
