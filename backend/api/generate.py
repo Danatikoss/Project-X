@@ -3,6 +3,8 @@ Template-based slide generation API.
 
 POST /generate/presentation       — full presentation from a prompt
 POST /generate/slide              — single slide (returns PPTX)
+POST /generate/create-assembly    — generate full presentation + save to editor
+POST /generate/create-assembly-single — generate single slide + save to editor
 GET  /generate/templates          — list available templates
 POST /generate/templates/upload   — upload a new PPTX template
 DELETE /generate/templates/{id}   — remove a template
@@ -17,13 +19,19 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
+from sqlalchemy.orm import Session
 
 from api.deps import get_current_user
+from database import get_db
 from models.user import User
+from models.slide import SourcePresentation, SlideLibraryEntry
+from models.assembly import AssembledPresentation
 from services.template_generator import generate_presentation_plan, fill_single_slide
 from services.template_library import load_catalog, get_template_by_id, CATALOG_PATH, TEMPLATES_DIR
 from services.template_injector import inject_into_slide, inject_into_presentation
+from services.thumbnail import extract_pptx_slides, save_thumbnail
 from pptx import Presentation as PptxPresentation
+from config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -131,9 +139,20 @@ async def download_presentation(
     Step 2: Render a confirmed plan to PPTX and return as a download.
     Accepts the plan returned by /plan (possibly edited by user).
     """
+    out_prs = _build_pptx_from_plan(body)
+
+    if len(out_prs.slides) == 0:
+        raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")
+
+    filename = f"{body.title}.pptx"
+    buf = _pptx_to_stream(out_prs)
+    return _make_streaming_response(buf, filename)
+
+
+def _build_pptx_from_plan(body: "PresentationPlan") -> "PptxPresentation":
+    """Shared helper: render a PresentationPlan into an in-memory PPTX."""
     from pptx import Presentation as PptxPrs
     from services.template_injector import PPTX_PATH as TPL_PATH
-    from pptx.oxml.ns import qn
 
     catalog = load_catalog()
     source = PptxPrs(str(TPL_PATH))
@@ -156,12 +175,181 @@ async def download_presentation(
         except Exception as e:
             logger.error("Inject failed for slide %d: %s", i, e)
 
+    return out_prs
+
+
+def _save_pptx_and_create_assembly(
+    out_prs: "PptxPresentation",
+    plan_title: str,
+    plan_slides: list,
+    owner_id: int,
+    db: Session,
+) -> int:
+    """
+    Save the rendered PPTX to disk, extract thumbnails, create library entries
+    and an assembly. Returns assembly_id.
+    """
+    from datetime import datetime, timezone
+
+    upload_dir = Path(settings.upload_dir)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_id = uuid.uuid4().hex
+    safe_title = "".join(c for c in plan_title if c.isalnum() or c in " _-")[:80] or "presentation"
+    filename = f"{safe_title}.pptx"
+    file_path = upload_dir / f"{file_id}.pptx"
+
+    buf = _pptx_to_stream(out_prs)
+    file_path.write_bytes(buf.read())
+
+    # Create source record
+    source = SourcePresentation(
+        owner_id=owner_id,
+        filename=filename,
+        file_path=str(file_path.resolve()),
+        file_type="pptx",
+        status="pending",
+        is_ai_source=True,
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    # Extract slide thumbnails (synchronous LibreOffice → PNG)
+    try:
+        slide_data_list = extract_pptx_slides(str(file_path))
+    except Exception as e:
+        source.status = "error"
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"Ошибка извлечения слайдов: {e}")
+
+    # Create SlideLibraryEntry records
+    slide_ids: list[int] = []
+    for i, sd in enumerate(slide_data_list):
+        thumb_rel = save_thumbnail(sd.thumbnail_bytes, source.id, sd.index, settings.thumbnail_dir)
+
+        # Pull a reasonable title from the plan slots
+        slots: dict = plan_slides[i].slots if i < len(plan_slides) else {}
+        title = (
+            slots.get("slot_title")
+            or slots.get("slot_product_name")
+            or (slots.get("slot_main_card", "").split("\n")[0] if slots.get("slot_main_card") else "")
+            or f"Слайд {i + 1}"
+        )
+
+        entry = SlideLibraryEntry(
+            source_id=source.id,
+            slide_index=sd.index,
+            thumbnail_path=thumb_rel,
+            xml_blob=getattr(sd, "xml_blob", None),
+            slide_json=getattr(sd, "slide_json", None),
+            title=title[:200],
+            summary="",
+            tags_json="[]",
+            layout_type="content",
+            language="ru",
+            text_content=(sd.text[:5000] if sd.text else None),
+            is_generated=False,
+        )
+        db.add(entry)
+        db.flush()
+        slide_ids.append(entry.id)
+
+    source.status = "done"
+    source.slide_count = len(slide_ids)
+    source.indexed_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Create Assembly
+    assembly = AssembledPresentation(
+        owner_id=owner_id,
+        title=plan_title,
+        prompt="(AI генерация)",
+        slide_ids_json=json.dumps(slide_ids),
+        status="draft",
+    )
+    db.add(assembly)
+    db.commit()
+    db.refresh(assembly)
+
+    return assembly.id
+
+
+@router.post("/create-assembly")
+async def create_assembly_from_plan(
+    body: PresentationPlan,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate a presentation from a confirmed plan, save slides to the library,
+    and create an Assembly in the editor. Returns { assembly_id }.
+    """
+    out_prs = _build_pptx_from_plan(body)
     if len(out_prs.slides) == 0:
         raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")
 
-    filename = f"{body.title}.pptx"
-    buf = _pptx_to_stream(out_prs)
-    return _make_streaming_response(buf, filename)
+    assembly_id = _save_pptx_and_create_assembly(
+        out_prs=out_prs,
+        plan_title=body.title,
+        plan_slides=body.slides,
+        owner_id=current_user.id,
+        db=db,
+    )
+    return {"assembly_id": assembly_id}
+
+
+class CreateAssemblySingleRequest(BaseModel):
+    description: str = Field(..., min_length=5, max_length=1000)
+    template_id: Optional[str] = None
+
+
+@router.post("/create-assembly-single")
+async def create_assembly_single(
+    body: CreateAssemblySingleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate a single slide from a description, save to library,
+    and create an Assembly in the editor. Returns { assembly_id }.
+    """
+    try:
+        slide_plan = await fill_single_slide(
+            slide_description=body.description,
+            template_id=body.template_id,
+        )
+    except Exception as e:
+        logger.error("Single slide generation failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Ошибка генерации: {e}")
+
+    template_id = slide_plan.get("template_id")
+    slots = slide_plan.get("slots", {})
+
+    try:
+        tmpl = get_template_by_id(template_id)
+    except ValueError:
+        raise HTTPException(status_code=502, detail=f"Неизвестный шаблон: {template_id!r}")
+
+    try:
+        prs = inject_into_slide(tmpl, slots)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка рендера: {e}")
+
+    # Wrap in PresentationPlan-like structure for the helper
+    title = slots.get("slot_title") or slots.get("slot_product_name") or "Слайд"
+
+    class _FakeSlide:
+        def __init__(self, s: dict):
+            self.slots = s
+
+    assembly_id = _save_pptx_and_create_assembly(
+        out_prs=prs,
+        plan_title=title,
+        plan_slides=[_FakeSlide(slots)],
+        owner_id=current_user.id,
+        db=db,
+    )
+    return {"assembly_id": assembly_id}
 
 
 @router.post("/extract-file")

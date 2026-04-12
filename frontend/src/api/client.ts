@@ -509,6 +509,19 @@ export const generateApi = {
   deleteTemplate: async (id: string): Promise<void> => {
     await api.delete(`/generate/templates/${id}`)
   },
+
+  createAssembly: async (plan: PresentationPlan): Promise<{ assembly_id: number }> => {
+    const res = await api.post<{ assembly_id: number }>('/generate/create-assembly', plan)
+    return res.data
+  },
+
+  createAssemblySingle: async (description: string, templateId?: string): Promise<{ assembly_id: number }> => {
+    const res = await api.post<{ assembly_id: number }>('/generate/create-assembly-single', {
+      description,
+      template_id: templateId ?? null,
+    })
+    return res.data
+  },
 }
 
 // ─── Assembly Templates ───────────────────────────────────────────────────────

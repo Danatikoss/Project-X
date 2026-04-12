@@ -1,18 +1,62 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Sparkles, Upload, Trash2, ChevronDown, ChevronUp,
   LayoutTemplate, Plus, FileDown, Tag, ArrowLeft,
-  FileText, X, Layers, Check,
+  FileText, X, Layers, Check, ExternalLink, Presentation,
 } from 'lucide-react'
 import { generateApi, type SlideTemplate, type PresentationPlan } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { cn } from '../utils/cn'
 
-// ─── Step 1: Input ────────────────────────────────────────────────────────────
+type GenerationMode = '1slide' | 'full'
 
-function InputStep({ onPlanReady }: { onPlanReady: (plan: PresentationPlan) => void }) {
+// ─── Mode toggle ──────────────────────────────────────────────────────────────
+
+function ModeToggle({ mode, onChange }: { mode: GenerationMode; onChange: (m: GenerationMode) => void }) {
+  return (
+    <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+      <button
+        onClick={() => onChange('1slide')}
+        className={cn(
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+          mode === '1slide'
+            ? 'bg-white text-gray-900 shadow-sm'
+            : 'text-gray-500 hover:text-gray-700'
+        )}
+      >
+        <LayoutTemplate className="w-3.5 h-3.5" />
+        1 слайд
+      </button>
+      <button
+        onClick={() => onChange('full')}
+        className={cn(
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+          mode === 'full'
+            ? 'bg-white text-gray-900 shadow-sm'
+            : 'text-gray-500 hover:text-gray-700'
+        )}
+      >
+        <Presentation className="w-3.5 h-3.5" />
+        Презентация
+      </button>
+    </div>
+  )
+}
+
+// ─── Step 1: Input (shared) ───────────────────────────────────────────────────
+
+function InputStep({
+  mode,
+  onPlanReady,
+  onSingleSlideReady,
+}: {
+  mode: GenerationMode
+  onPlanReady: (plan: PresentationPlan) => void
+  onSingleSlideReady: (assemblyId: number) => void
+}) {
   const [prompt, setPrompt] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [extracting, setExtracting] = useState(false)
@@ -44,8 +88,13 @@ function InputStep({ onPlanReady }: { onPlanReady: (plan: PresentationPlan) => v
     if (!prompt.trim()) return
     setGenerating(true)
     try {
-      const plan = await generateApi.createPlan(prompt.trim())
-      onPlanReady(plan)
+      if (mode === '1slide') {
+        const { assembly_id } = await generateApi.createAssemblySingle(prompt.trim())
+        onSingleSlideReady(assembly_id)
+      } else {
+        const plan = await generateApi.createPlan(prompt.trim())
+        onPlanReady(plan)
+      }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка генерации'
       toast.error(msg)
@@ -53,6 +102,11 @@ function InputStep({ onPlanReady }: { onPlanReady: (plan: PresentationPlan) => v
       setGenerating(false)
     }
   }
+
+  const buttonLabel = mode === '1slide' ? 'Создать слайд' : 'Создать план'
+  const placeholderText = mode === '1slide'
+    ? 'Опишите слайд: тема, ключевые данные, стиль...'
+    : 'Опишите тему: что за продукт, ключевые цифры, цели, для кого презентация...'
 
   return (
     <div className="space-y-4">
@@ -108,7 +162,7 @@ function InputStep({ onPlanReady }: { onPlanReady: (plan: PresentationPlan) => v
         <textarea
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
-          placeholder="Опишите тему: что за продукт, ключевые цифры, цели, для кого презентация..."
+          placeholder={placeholderText}
           rows={5}
           className="w-full text-sm rounded-2xl border border-gray-200 px-4 py-3.5 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all placeholder:text-gray-300"
         />
@@ -135,12 +189,12 @@ function InputStep({ onPlanReady }: { onPlanReady: (plan: PresentationPlan) => v
         {generating ? (
           <>
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            AI создаёт план...
+            {mode === '1slide' ? 'Создаю слайд...' : 'AI создаёт план...'}
           </>
         ) : (
           <>
             <Sparkles className="w-4 h-4" />
-            Создать план
+            {buttonLabel}
           </>
         )}
       </button>
@@ -154,12 +208,15 @@ function PlanStep({
   plan,
   templates,
   onBack,
+  onOpenInEditor,
 }: {
   plan: PresentationPlan
   templates: SlideTemplate[]
   onBack: () => void
+  onOpenInEditor: (assemblyId: number) => void
 }) {
   const [downloading, setDownloading] = useState(false)
+  const [openingEditor, setOpeningEditor] = useState(false)
   const templateMap = Object.fromEntries(templates.map(t => [t.id, t]))
 
   const handleDownload = async () => {
@@ -172,6 +229,19 @@ function PlanStep({
       toast.error(msg)
     } finally {
       setDownloading(false)
+    }
+  }
+
+  const handleOpenInEditor = async () => {
+    setOpeningEditor(true)
+    try {
+      const { assembly_id } = await generateApi.createAssembly(plan)
+      onOpenInEditor(assembly_id)
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка'
+      toast.error(msg)
+    } finally {
+      setOpeningEditor(false)
     }
   }
 
@@ -220,29 +290,58 @@ function PlanStep({
         })}
       </div>
 
-      {/* Download */}
-      <button
-        onClick={handleDownload}
-        disabled={downloading}
-        className={cn(
-          'w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all',
-          !downloading
-            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md'
-            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-        )}
-      >
-        {downloading ? (
-          <>
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Собираю PPTX...
-          </>
-        ) : (
-          <>
-            <FileDown className="w-4 h-4" />
-            Скачать PPTX ({plan.slides.length} слайдов)
-          </>
-        )}
-      </button>
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleDownload}
+          disabled={downloading || openingEditor}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all border',
+            !downloading && !openingEditor
+              ? 'border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+              : 'border-gray-100 text-gray-300 cursor-not-allowed'
+          )}
+        >
+          {downloading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+              Собираю...
+            </>
+          ) : (
+            <>
+              <FileDown className="w-4 h-4" />
+              Скачать PPTX
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={handleOpenInEditor}
+          disabled={openingEditor || downloading}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all',
+            !openingEditor && !downloading
+              ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+          )}
+        >
+          {openingEditor ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Рендер слайдов...
+            </>
+          ) : (
+            <>
+              <ExternalLink className="w-4 h-4" />
+              Открыть в редакторе
+            </>
+          )}
+        </button>
+      </div>
+
+      <p className="text-center text-[11px] text-gray-400">
+        «Открыть в редакторе» сохранит {plan.slides.length} слайдов в библиотеку и откроет полный редактор
+      </p>
     </div>
   )
 }
@@ -418,8 +517,10 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Generate() {
+  const [mode, setMode] = useState<GenerationMode>('full')
   const [plan, setPlan] = useState<PresentationPlan | null>(null)
   const [showUpload, setShowUpload] = useState(false)
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
   const isAdmin = user?.is_admin ?? false
@@ -438,6 +539,16 @@ export default function Generate() {
   const builtIn = templates.filter(t => !t.id.startsWith('custom_'))
   const custom = templates.filter(t => t.id.startsWith('custom_'))
 
+  const handleModeChange = (m: GenerationMode) => {
+    setMode(m)
+    setPlan(null)
+  }
+
+  const handleOpenInEditor = (assemblyId: number) => {
+    toast.success('Презентация создана — открываю редактор')
+    navigate(`/assemble/${assemblyId}`)
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-10">
       {/* ── Generate section ── */}
@@ -452,15 +563,25 @@ export default function Generate() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-4">
+          {/* Mode toggle — only show before plan is ready */}
+          {!plan && (
+            <ModeToggle mode={mode} onChange={handleModeChange} />
+          )}
+
           {plan ? (
             <PlanStep
               plan={plan}
               templates={templates}
               onBack={() => setPlan(null)}
+              onOpenInEditor={handleOpenInEditor}
             />
           ) : (
-            <InputStep onPlanReady={setPlan} />
+            <InputStep
+              mode={mode}
+              onPlanReady={setPlan}
+              onSingleSlideReady={handleOpenInEditor}
+            />
           )}
         </div>
       </div>
