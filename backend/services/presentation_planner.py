@@ -67,6 +67,7 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
             "Это отсканированный документ — загрузите DOCX, TXT или PPTX, "
             "либо введите текст вручную."
         )
+    return result
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
