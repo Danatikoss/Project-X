@@ -157,6 +157,27 @@ FIELD LIMITS (hard constraints)
 - metrics_grid: 3–8 metrics; value ≤15 chars; label ≤5 words
 - No emoji in any field
 
+══════════════════════════════════
+AVAILABLE LAYOUTS (canonical reference)
+══════════════════════════════════
+- "metrics_grid"    — for slides with statistics, KPIs, rankings, or numeric achievements.
+                      Content must be a list of metrics, each with a short value ("26 млн", "#1", "20+") and a label (max 5 words).
+- "section_divider" — for transition slides between major topics. Title only, no content.
+- "title_content"   — for slides with explanatory text or a short list of points (max 3 bullets).
+- "two_column"      — for comparison or two parallel themes.
+- "big_stat"        — for a single standout metric with brief context.
+
+LAYOUT SELECTION RULES (follow strictly):
+1. If the slide contains numbers, statistics, rankings, or measurable achievements → use "metrics_grid".
+   Never use "title_content" or "big_stat" for a group of stats.
+2. Between major topic sections → insert one "section_divider" slide.
+3. Never create a slide where the only content is a single sentence repeating the title.
+4. Never put more than 3 bullet points on a "title_content" slide.
+5. Each section of the input should produce at least one content slide (don't merge separate topics).
+
+OUTPUT FORMAT for metrics_grid:
+{"layout":"metrics_grid","title":"...","content":{"metrics":[{"value":"8.2 млн","label":"активных пользователей"},{"value":"1 450","label":"госуслуг онлайн"}]},"speaker_notes":"..."}
+
 STRUCTURE:
 - First slide: key_message or section_divider (intro)
 - Last slide: key_message or big_stat (closing call to action)
