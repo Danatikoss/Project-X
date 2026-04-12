@@ -144,6 +144,7 @@ async def download_presentation(
     for sldId in list(sldIdLst):
         sldIdLst.remove(sldId)
 
+    source_cache: dict = {}
     for i, slide in enumerate(body.slides):
         try:
             tmpl = get_template_by_id(slide.template_id, catalog)
@@ -151,7 +152,7 @@ async def download_presentation(
             logger.warning("Unknown template_id %r at slide %d, skipping", slide.template_id, i)
             continue
         try:
-            inject_into_presentation(out_prs, tmpl, slide.slots)
+            inject_into_presentation(out_prs, tmpl, slide.slots, source_cache=source_cache)
         except Exception as e:
             logger.error("Inject failed for slide %d: %s", i, e)
 
