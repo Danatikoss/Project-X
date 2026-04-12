@@ -431,6 +431,8 @@ def _build_plan_system_prompt(
         "icon_grid", "key_message", "process_flow", "chart_bar", "chart_pie",
         "big_stat", "two_column", "comparison", "timeline", "quote",
         "section_divider", "title_content",
+        # scratch-rendered — always available regardless of template
+        "metrics_grid",
     }
     removed = all_layouts - available_layouts
     if not removed:

@@ -228,6 +228,9 @@ def get_available_layouts(template_pptx_path: str | None) -> set[str]:
     Return the set of our layout names that the given template can serve.
     Called by presentation_planner before the LLM prompt is built so the
     model is restricted to layouts the template can actually render.
+
+    Scratch-rendered layouts (_SCRATCH_LAYOUTS) are always included — they
+    build shapes from scratch and have no dependency on template placeholders.
     """
     if not template_pptx_path or not os.path.exists(template_pptx_path):
         return set(_LAYOUT_PREFS.keys())
@@ -236,6 +239,10 @@ def get_available_layouts(template_pptx_path: str | None) -> set[str]:
         tmpl_names = {lay.name.upper() for lay in prs.slide_layouts}
         available: set[str] = set()
         for our_layout, prefs in _LAYOUT_PREFS.items():
+            if our_layout in _SCRATCH_LAYOUTS:
+                # Always available — rendered without placeholders
+                available.add(our_layout)
+                continue
             for pref in prefs:
                 if pref.upper() in tmpl_names:
                     available.add(our_layout)
