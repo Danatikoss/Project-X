@@ -121,7 +121,7 @@ def migrate_db():
 
 
 def create_tables():
-    from models import slide, assembly, user, project, brand, media, template  # noqa: F401
+    from models import slide, assembly, user, project, media, template  # noqa: F401
 
     # Drop old assembly_templates if schema changed (had AI 'prompt' column)
     try:
