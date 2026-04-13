@@ -1,11 +1,17 @@
 """
 Template Generator — uses LLM to plan and fill slide templates.
 
-Flow:
-  user prompt → LLM → [{template_id, slots}, ...] → TemplateInjector → PPTX
+Flow (new):
+  user prompt
+    → Step 1 decompose: LLM returns [{intent, content}] — no template_ids
+    → Step 2 match:     embed(intent+content) → cosine search → template
+    → Step 3 fill:      LLM sees slot names + slide description → returns {slot: text}
+
+LLM never sees the catalog, never returns template_id.
 """
 import json
 import logging
+import numpy as np
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -28,86 +34,178 @@ def _get_client() -> AsyncOpenAI:
     return _client
 
 
-def _build_catalog_description(catalog: list[TemplateInfo]) -> str:
-    lines = []
-    for t in catalog:
-        slot_list = "\n".join(f"      - {k}: {v}" for k, v in t.slots.items())
-        lines.append(
-            f'  id: "{t.id}"\n'
-            f'  name: {t.name}\n'
-            f'  use when: {", ".join(t.scenario_tags[:5])}\n'
-            f'  slots:\n{slot_list}'
-        )
-    return "\n\n".join(lines)
+# ── Step 1: decompose ─────────────────────────────────────────────────────────
 
-
-SYSTEM_PROMPT_TEMPLATE = """Ты — генератор слайдов для презентаций. Твоя задача: по описанию пользователя составить план презентации и заполнить слоты каждого слайда конкретным контентом.
-
-Доступные шаблоны слайдов:
-{catalog}
+DECOMPOSE_SYSTEM = """Ты — архитектор презентаций. Твоя задача: разбить тему на логичные слайды.
 
 Правила:
-1. Выбирай шаблон исходя из смысла слайда — сопоставляй с полем "use when"
-2. Заполняй ВСЕ слоты выбранного шаблона. Не пропускай ни один.
-3. Для слотов с форматом "Значение\\nПодпись" — первая строка это цифра/заголовок, вторая — пояснение
-4. Для слотов с форматом "Название\\n\\nОписание" — две строки разделены пустой строкой (двойной \\n)
-5. Текст должен быть лаконичным — как в реальных презентациях
-6. Ответ строго в JSON, без дополнительного текста
+1. Определи оптимальное число слайдов (обычно 3–8) исходя из темы
+2. Для каждого слайда опиши: что он должен донести (intent) и какие конкретные данные/факты на нём (content)
+3. НЕ придумывай шаблоны — только смысл и содержание
+4. Ответ строго в JSON, без лишнего текста
 
-Формат ответа:
-{{
-  "title": "Название презентации",
+Формат:
+{
+  "title": "Название всей презентации",
   "slides": [
-    {{
-      "template_id": "id_шаблона",
-      "slots": {{
-        "slot_name": "контент",
-        ...
-      }}
-    }}
+    {
+      "intent": "Что этот слайд должен донести до зрителя",
+      "content": "Конкретные данные, факты, тезисы для этого слайда"
+    }
   ]
-}}"""
+}"""
 
+
+async def _decompose_prompt(prompt: str) -> dict:
+    """Step 1: ask LLM to break prompt into slide intents. Returns {title, slides:[{intent,content}]}"""
+    client = _get_client()
+    response = await client.chat.completions.create(
+        model=settings.assembly_model,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": DECOMPOSE_SYSTEM},
+            {"role": "user", "content": f"Тема презентации:\n{prompt}"},
+        ],
+        temperature=0.3,
+    )
+    raw = json.loads(response.choices[0].message.content or "{}")
+    logger.info("Decomposed into %d slides: %r", len(raw.get("slides", [])), prompt[:60])
+    return raw
+
+
+# ── Step 2: match ─────────────────────────────────────────────────────────────
+
+def _template_vector_search(
+    query_embedding: list[float],
+    catalog: list[TemplateInfo],
+    top_k: int = 1,
+) -> list[TemplateInfo]:
+    """
+    Find the most similar templates by cosine similarity against their stored embeddings.
+    Skips templates with empty or zero embeddings.
+    Returns up to top_k results, best match first.
+    """
+    candidates = [t for t in catalog if t.embedding and sum(abs(x) for x in t.embedding) > 1e-6]
+    if not candidates:
+        # No embeddings yet — fall back to returning all templates in original order
+        logger.warning("No templates with valid embeddings — falling back to first template")
+        return catalog[:top_k]
+
+    q = np.array(query_embedding, dtype=np.float32)
+    q_norm = np.linalg.norm(q)
+    if q_norm < 1e-10:
+        return candidates[:top_k]
+    q = q / q_norm
+
+    scored: list[tuple[TemplateInfo, float]] = []
+    for tmpl in candidates:
+        v = np.array(tmpl.embedding, dtype=np.float32)
+        v_norm = np.linalg.norm(v)
+        if v_norm < 1e-10:
+            continue
+        sim = float(np.dot(q, v / v_norm))
+        scored.append((tmpl, sim))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [t for t, _ in scored[:top_k]]
+
+
+# ── Step 3: fill ──────────────────────────────────────────────────────────────
+
+FILL_SYSTEM = """Ты — копирайтер для презентаций. Твоя задача: заполнить слоты слайда конкретным текстом.
+
+Правила:
+1. Заполняй ВСЕ слоты. Не пропускай ни один.
+2. Текст лаконичный — как в реальных презентациях, не эссе
+3. Для слотов вида slot_metric_N: первая строка — цифра/заголовок, вторая — пояснение (через \\n)
+4. Ответ строго в JSON: {"slot_name": "текст", ...}
+5. Не добавляй лишних ключей, только те слоты, что указаны"""
+
+
+async def _fill_slots(
+    intent: str,
+    content: str,
+    template: TemplateInfo,
+) -> dict[str, str]:
+    """Step 3: ask LLM to fill template slots for a specific slide intent."""
+    slots_list = "\n".join(f"  - {k}: {v}" for k, v in template.slots.items())
+    user_msg = (
+        f"Слайд должен показать: {intent}\n"
+        f"Данные и факты: {content}\n\n"
+        f"Шаблон слайда имеет следующие слоты:\n{slots_list}\n\n"
+        f"Заполни все слоты. Верни только JSON с парами slot_name: text."
+    )
+
+    client = _get_client()
+    response = await client.chat.completions.create(
+        model=settings.assembly_model,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": FILL_SYSTEM},
+            {"role": "user", "content": user_msg},
+        ],
+        temperature=0.3,
+    )
+    raw = json.loads(response.choices[0].message.content or "{}")
+
+    # Keep only known slot keys, fill missing ones with placeholder
+    result: dict[str, str] = {}
+    for slot_key in template.slots:
+        result[slot_key] = str(raw.get(slot_key, f"[{slot_key}]"))
+    return result
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 async def generate_presentation_plan(prompt: str, theme: str = "default") -> dict:
     """
-    Ask LLM to create a presentation plan: list of slides with template_id + filled slots.
-    LLM decides how many slides to use based on the content.
-    Only content slides (layout_role="content") from the given theme are shown to the LLM.
-
-    Returns dict with keys: title, slides (list of {template_id, slots})
+    3-step pipeline: decompose → match → fill.
+    Returns {title, slides: [{template_id, slots}]}
     """
+    from services.embedding import embed_single
+
     full_catalog = load_catalog()
     catalog = get_content_catalog(theme=theme, catalog=full_catalog)
     if not catalog:
         catalog = get_content_catalog(theme="default", catalog=full_catalog)
-    catalog_description = _build_catalog_description(catalog)
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(catalog=catalog_description)
+    if not catalog:
+        catalog = [t for t in full_catalog if t.layout_role == "content"]
 
-    user_message = (
-        f"Создай презентацию на тему:\n{prompt}\n\n"
-        f"Сам определи оптимальное количество слайдов исходя из содержания (обычно 3–8).\n"
-        f"Заполни все слоты каждого слайда реальным контентом по теме."
-    )
+    # Step 1 — decompose
+    decomposed = await _decompose_prompt(prompt)
+    title = decomposed.get("title", "Презентация")
+    slide_intents = decomposed.get("slides", [])
 
-    client = _get_client()
-    try:
-        response = await client.chat.completions.create(
-            model=settings.assembly_model,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0.3,
-        )
-        raw = response.choices[0].message.content or "{}"
-        result = json.loads(raw)
-        logger.info("Generated plan: %d slides for prompt %r", len(result.get("slides", [])), prompt[:60])
-        return result
-    except Exception as e:
-        logger.error("LLM generation failed: %s", e)
-        raise
+    if not slide_intents:
+        raise ValueError("LLM returned no slide intents")
+
+    result_slides = []
+    for item in slide_intents:
+        intent = item.get("intent", "")
+        content = item.get("content", "")
+
+        # Step 2 — match
+        search_text = f"{intent} {content}".strip()
+        try:
+            query_emb = await embed_single(search_text)
+            matches = _template_vector_search(query_emb, catalog, top_k=1)
+            template = matches[0]
+        except Exception as e:
+            logger.warning("Vector search failed for intent %r: %s — using first template", intent[:50], e)
+            template = catalog[0]
+
+        # Step 3 — fill
+        try:
+            slots = await _fill_slots(intent, content, template)
+        except Exception as e:
+            logger.warning("Fill failed for template %r: %s", template.id, e)
+            slots = {k: f"[{k}]" for k in template.slots}
+
+        result_slides.append({"template_id": template.id, "slots": slots})
+        logger.info("Slide: intent=%r → template=%r", intent[:40], template.id)
+
+    logger.info("Generated plan: %d slides for prompt %r", len(result_slides), prompt[:60])
+    return {"title": title, "slides": result_slides}
 
 
 async def extract_file_content(file_bytes: bytes, filename: str) -> str:
@@ -117,7 +215,6 @@ async def extract_file_content(file_bytes: bytes, filename: str) -> str:
     """
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
 
-    # Extract raw text
     raw_text = ""
     if ext == "pdf":
         import fitz  # PyMuPDF
@@ -137,12 +234,10 @@ async def extract_file_content(file_bytes: bytes, filename: str) -> str:
     if not raw_text.strip():
         raise ValueError("Файл не содержит текста")
 
-    # Truncate to avoid token limits (keep ~8000 chars)
     truncated = raw_text[:8000]
     if len(raw_text) > 8000:
         truncated += "\n[текст обрезан...]"
 
-    # Ask LLM to extract key facts
     client = _get_client()
     response = await client.chat.completions.create(
         model=settings.assembly_model,
@@ -173,42 +268,32 @@ async def fill_single_slide(
 ) -> dict:
     """
     Generate content for a single slide.
-    If template_id is None, LLM picks the best template from content slides.
-
+    If template_id is provided — use it directly.
+    Otherwise find best template via vector search.
     Returns {template_id, slots}
     """
+    from services.embedding import embed_single
+
     full_catalog = load_catalog()
     catalog = get_content_catalog(theme=theme, catalog=full_catalog)
     if not catalog:
         catalog = get_content_catalog(theme="default", catalog=full_catalog)
-    catalog_description = _build_catalog_description(catalog)
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(catalog=catalog_description)
+    if not catalog:
+        catalog = [t for t in full_catalog if t.layout_role == "content"]
 
     if template_id:
-        tmpl_hint = f'Используй шаблон с id="{template_id}".'
-    else:
-        tmpl_hint = "Выбери наиболее подходящий шаблон."
+        template = next((t for t in full_catalog if t.id == template_id), None)
+        if template is None:
+            logger.warning("Requested template_id %r not found — searching by embedding", template_id)
+            template = None
 
-    user_message = (
-        f"Создай ОДИН слайд:\n{slide_description}\n\n"
-        f"{tmpl_hint}\n"
-        f"Верни JSON с одним слайдом:\n"
-        f'{{"title": "...", "slides": [{{"template_id": "...", "slots": {{...}}}}]}}'
-    )
+    if not template_id or template is None:
+        try:
+            query_emb = await embed_single(slide_description)
+            matches = _template_vector_search(query_emb, catalog, top_k=1)
+            template = matches[0]
+        except Exception:
+            template = catalog[0]
 
-    client = _get_client()
-    response = await client.chat.completions.create(
-        model=settings.assembly_model,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=0.3,
-    )
-    raw = response.choices[0].message.content or "{}"
-    result = json.loads(raw)
-    slides = result.get("slides", [])
-    if not slides:
-        raise ValueError("LLM returned no slides")
-    return slides[0]
+    slots = await _fill_slots(slide_description, "", template)
+    return {"template_id": template.id, "slots": slots}
