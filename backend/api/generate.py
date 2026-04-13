@@ -786,3 +786,26 @@ def delete_template(
 
     logger.info("Deleted template %r by user %d", template_id, current_user.id)
     return None
+
+
+@router.delete("/templates", status_code=200)
+def delete_all_custom_templates(
+    current_user: User = Depends(get_current_user),
+):
+    """Remove all custom (uploaded) templates from the catalog."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор может удалять шаблоны")
+
+    with open(CATALOG_PATH, encoding="utf-8") as f:
+        catalog_data = json.load(f)
+
+    custom = [e for e in catalog_data if e.get("pptx_file", "").startswith("uploads/")]
+    kept = [e for e in catalog_data if not e.get("pptx_file", "").startswith("uploads/")]
+
+    for entry in custom:
+        pptx_path = TEMPLATES_DIR / entry["pptx_file"]
+        pptx_path.unlink(missing_ok=True)
+
+    _save_catalog(kept)
+    logger.info("Deleted %d custom templates by user %d", len(custom), current_user.id)
+    return {"deleted": len(custom)}

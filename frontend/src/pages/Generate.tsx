@@ -658,9 +658,21 @@ export default function Generate() {
     queryFn: () => generateApi.listTitleSlides(selectedTheme),
   })
 
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
+
   const deleteMutation = useMutation({
     mutationFn: generateApi.deleteTemplate,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['slide-templates'] }); toast.success('Шаблон удалён') },
+    onError: (e: unknown) => { toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка') },
+  })
+
+  const deleteAllMutation = useMutation({
+    mutationFn: generateApi.deleteAllCustomTemplates,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['slide-templates'] })
+      setShowDeleteAllConfirm(false)
+      toast.success(`Удалено ${data.deleted} шаблонов`)
+    },
     onError: (e: unknown) => { toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка') },
   })
 
@@ -741,13 +753,24 @@ export default function Generate() {
             <p className="text-xs text-gray-400 mt-0.5">{templates.length} шаблонов · AI выбирает автоматически</p>
           </div>
           {isAdmin && (
-            <button
-              onClick={() => setShowUpload(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Добавить шаблон
-            </button>
+            <div className="flex items-center gap-2">
+              {custom.length > 0 && (
+                <button
+                  onClick={() => setShowDeleteAllConfirm(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Удалить все
+                </button>
+              )}
+              <button
+                onClick={() => setShowUpload(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Добавить шаблон
+              </button>
+            </div>
           )}
         </div>
 
@@ -782,6 +805,38 @@ export default function Generate() {
           onClose={() => setShowUpload(false)}
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['slide-templates'] })}
         />
+      )}
+
+      {showDeleteAllConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Удалить все свои шаблоны?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Это удалит {custom.length} шаблон{custom.length === 1 ? '' : custom.length < 5 ? 'а' : 'ов'}. Базовые шаблоны останутся.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowDeleteAllConfirm(false)}
+                className="px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                disabled={deleteAllMutation.isPending}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => deleteAllMutation.mutate()}
+                disabled={deleteAllMutation.isPending}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60"
+              >
+                {deleteAllMutation.isPending ? 'Удаляю...' : 'Да, удалить'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
