@@ -6,7 +6,7 @@ import {
   Sparkles, Upload, Trash2, ChevronDown, ChevronUp,
   LayoutTemplate, Plus, FileDown, Tag, ArrowLeft,
   FileText, X, Layers, Check, ExternalLink, Presentation,
-  Palette, ImageIcon,
+  Palette, ImageIcon, RefreshCw,
 } from 'lucide-react'
 import { generateApi, type SlideTemplate, type PresentationPlan } from '../api/client'
 import { useAuthStore } from '../store/auth'
@@ -680,6 +680,19 @@ export default function Generate() {
     onError: (e: unknown) => { toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка') },
   })
 
+  const [reindexDone, setReindexDone] = useState(false)
+  const reindexMutation = useMutation({
+    mutationFn: generateApi.reindexTemplates,
+    onSuccess: (data) => {
+      setReindexDone(true)
+      setTimeout(() => setReindexDone(false), 4000)
+      toast.success(data.updated === 0
+        ? 'Все шаблоны уже проиндексированы'
+        : `Проиндексировано ${data.updated} из ${data.total} шаблонов`)
+    },
+    onError: (e: unknown) => { toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка') },
+  })
+
   const builtIn = templates.filter(t => !t.id.startsWith('custom_') && t.layout_role === 'content')
   const custom = templates.filter(t => t.id.startsWith('custom_') && t.layout_role === 'content')
 
@@ -767,6 +780,24 @@ export default function Generate() {
                   Удалить все
                 </button>
               )}
+              <button
+                onClick={() => { setReindexDone(false); reindexMutation.mutate() }}
+                disabled={reindexMutation.isPending}
+                title="Сгенерировать эмбеддинги для шаблонов без индекса"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  reindexDone
+                    ? 'text-green-700 bg-green-50'
+                    : 'text-gray-500 bg-gray-100 hover:bg-gray-200 disabled:opacity-50'
+                )}
+              >
+                {reindexMutation.isPending
+                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  : reindexDone
+                    ? <Check className="w-3.5 h-3.5" />
+                    : <RefreshCw className="w-3.5 h-3.5" />}
+                {reindexMutation.isPending ? 'Индексирую...' : reindexDone ? 'Готово' : 'Reindex'}
+              </button>
               <button
                 onClick={() => setShowUpload(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all"

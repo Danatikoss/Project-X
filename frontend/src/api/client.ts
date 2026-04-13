@@ -550,6 +550,11 @@ export const generateApi = {
     return res.data
   },
 
+  reindexTemplates: async (): Promise<{ updated: number; total: number }> => {
+    const res = await api.post<{ updated: number; total: number }>('/generate/templates/reindex')
+    return res.data
+  },
+
   createAssembly: async (plan: PresentationPlan): Promise<{ assembly_id: number }> => {
     const res = await api.post<{ assembly_id: number }>('/generate/create-assembly', plan)
     return res.data
