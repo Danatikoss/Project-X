@@ -492,17 +492,19 @@ async def _analyze_slide_metadata(
     client = AsyncOpenAI(**_oai_kwargs)
 
     slots_str = ", ".join(slot_names)
-    previews_str = "; ".join(text_previews[:6]) if text_previews else "—"
 
     prompt = (
-        f"You are analyzing a PowerPoint slide template.\n"
-        f"Content slots (placeholder names): {slots_str}\n"
-        f"Sample text visible in slide: {previews_str}\n\n"
+        f"You are classifying a PowerPoint slide TEMPLATE by its structure.\n"
+        f"Slot names (these define the layout, not the content): {slots_str}\n\n"
+        f"Your job: figure out what KIND of slide this is based purely on its slot structure.\n"
+        f"Ignore any specific topic — this is a reusable blank template.\n\n"
+        f"Examples of good names: '4 ключевых метрики', '2 колонки с текстом', 'До и после', "
+        f"'3 шага процесса', 'Цель и результат', 'Титульный слайд', 'Статистика + описание'\n\n"
         f"Return JSON with exactly these fields:\n"
-        f'  "name": short template name in Russian, 2-4 words (e.g. "4 ключевых метрики")\n'
-        f'  "description": one sentence in Russian: when is this slide useful?\n'
-        f'  "scenario_tags": list of 4-6 English keyword strings for semantic matching (e.g. ["key metrics", "kpi", "dashboard"])\n'
-        f'  "ai_description": 2 sentences in English describing this template type and use case\n'
+        f'  "name": structural template name in Russian, 2-5 words — describe the LAYOUT, not a topic\n'
+        f'  "description": one sentence in Russian: what kind of content fits this layout?\n'
+        f'  "scenario_tags": list of 4-6 English keywords describing layout/use case (e.g. ["key metrics", "kpi", "dashboard"])\n'
+        f'  "ai_description": 2 sentences in English describing this template structure and when to use it\n'
     )
 
     response = await client.chat.completions.create(
