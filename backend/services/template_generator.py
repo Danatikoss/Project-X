@@ -11,7 +11,7 @@ from pathlib import Path
 from openai import AsyncOpenAI
 
 from config import settings
-from services.template_library import load_catalog, TemplateInfo
+from services.template_library import load_catalog, get_content_catalog, TemplateInfo
 
 logger = logging.getLogger(__name__)
 
@@ -69,14 +69,18 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — генератор слайдов для п
 }}"""
 
 
-async def generate_presentation_plan(prompt: str) -> dict:
+async def generate_presentation_plan(prompt: str, theme: str = "default") -> dict:
     """
     Ask LLM to create a presentation plan: list of slides with template_id + filled slots.
     LLM decides how many slides to use based on the content.
+    Only content slides (layout_role="content") from the given theme are shown to the LLM.
 
     Returns dict with keys: title, slides (list of {template_id, slots})
     """
-    catalog = load_catalog()
+    full_catalog = load_catalog()
+    catalog = get_content_catalog(theme=theme, catalog=full_catalog)
+    if not catalog:
+        catalog = get_content_catalog(theme="default", catalog=full_catalog)
     catalog_description = _build_catalog_description(catalog)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(catalog=catalog_description)
 
@@ -165,14 +169,18 @@ async def extract_file_content(file_bytes: bytes, filename: str) -> str:
 async def fill_single_slide(
     slide_description: str,
     template_id: str | None = None,
+    theme: str = "default",
 ) -> dict:
     """
     Generate content for a single slide.
-    If template_id is None, LLM picks the best template.
+    If template_id is None, LLM picks the best template from content slides.
 
     Returns {template_id, slots}
     """
-    catalog = load_catalog()
+    full_catalog = load_catalog()
+    catalog = get_content_catalog(theme=theme, catalog=full_catalog)
+    if not catalog:
+        catalog = get_content_catalog(theme="default", catalog=full_catalog)
     catalog_description = _build_catalog_description(catalog)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(catalog=catalog_description)
 

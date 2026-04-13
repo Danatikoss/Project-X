@@ -23,6 +23,8 @@ class TemplateInfo:
     scenario_tags: list[str]
     slots: dict[str, str]
     pptx_file: str = "Libraryslides.pptx"
+    theme: str = "default"
+    layout_role: str = "content"  # "title" | "content"
 
     @property
     def pptx_path(self) -> Path:
@@ -32,10 +34,33 @@ class TemplateInfo:
 def load_catalog() -> list[TemplateInfo]:
     with open(CATALOG_PATH, encoding="utf-8") as f:
         raw = json.load(f)
-    return [TemplateInfo(**entry) for entry in raw]
+    # Strip unknown fields so old catalog entries without 'theme' load fine
+    known = {f.name for f in TemplateInfo.__dataclass_fields__.values()}
+    return [TemplateInfo(**{k: v for k, v in entry.items() if k in known}) for entry in raw]
 
 
-def select_template(scenario: str, catalog: Optional[list[TemplateInfo]] = None) -> TemplateInfo:
+def list_themes(catalog: Optional[list[TemplateInfo]] = None) -> list[str]:
+    """Return sorted list of distinct themes present in the catalog."""
+    if catalog is None:
+        catalog = load_catalog()
+    return sorted({t.theme for t in catalog})
+
+
+def get_title_slides(theme: str = "default", catalog: Optional[list[TemplateInfo]] = None) -> list[TemplateInfo]:
+    """Return all title slides for a given theme."""
+    if catalog is None:
+        catalog = load_catalog()
+    return [t for t in catalog if t.layout_role == "title" and t.theme == theme]
+
+
+def get_content_catalog(theme: str = "default", catalog: Optional[list[TemplateInfo]] = None) -> list[TemplateInfo]:
+    """Return only content (non-title) slides for a given theme, used by AI for plan generation."""
+    if catalog is None:
+        catalog = load_catalog()
+    return [t for t in catalog if t.layout_role == "content" and t.theme == theme]
+
+
+def select_template(scenario: str, catalog: Optional[list[TemplateInfo]] = None, theme: str = "default") -> TemplateInfo:
     """
     Select the best matching template for a given scenario description.
     Uses keyword scoring against scenario_tags and description.
@@ -43,6 +68,12 @@ def select_template(scenario: str, catalog: Optional[list[TemplateInfo]] = None)
     """
     if catalog is None:
         catalog = load_catalog()
+
+    # Only consider content slides from the requested theme
+    catalog = get_content_catalog(theme=theme, catalog=catalog)
+    if not catalog:
+        # Fallback to default theme content if requested theme has no content slides yet
+        catalog = get_content_catalog(theme="default", catalog=load_catalog())
 
     scenario_lower = scenario.lower()
     words = set(scenario_lower.split())

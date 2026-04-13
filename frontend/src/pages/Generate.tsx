@@ -6,6 +6,7 @@ import {
   Sparkles, Upload, Trash2, ChevronDown, ChevronUp,
   LayoutTemplate, Plus, FileDown, Tag, ArrowLeft,
   FileText, X, Layers, Check, ExternalLink, Presentation,
+  Palette, ImageIcon,
 } from 'lucide-react'
 import { generateApi, type SlideTemplate, type PresentationPlan } from '../api/client'
 import { useAuthStore } from '../store/auth'
@@ -46,14 +47,103 @@ function ModeToggle({ mode, onChange }: { mode: GenerationMode; onChange: (m: Ge
   )
 }
 
+// ─── Theme + title slide picker ───────────────────────────────────────────────
+
+function StylePicker({
+  themes,
+  selectedTheme,
+  onThemeChange,
+  titleSlides,
+  selectedTitleId,
+  onTitleChange,
+}: {
+  themes: string[]
+  selectedTheme: string
+  onThemeChange: (t: string) => void
+  titleSlides: SlideTemplate[]
+  selectedTitleId: string | null
+  onTitleChange: (id: string | null) => void
+}) {
+  const hasMultipleThemes = themes.length > 1
+  const hasTitleSlides = titleSlides.length > 0
+
+  if (!hasMultipleThemes && !hasTitleSlides) return null
+
+  return (
+    <div className="space-y-3">
+      {hasMultipleThemes && (
+        <div>
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Palette className="w-3 h-3" /> Тема оформления
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {themes.map(t => (
+              <button
+                key={t}
+                onClick={() => { onThemeChange(t); onTitleChange(null) }}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                  selectedTheme === t
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600'
+                )}
+              >
+                {t === 'default' ? 'Стандартная' : t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {hasTitleSlides && (
+        <div>
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <ImageIcon className="w-3 h-3" /> Титульный слайд
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => onTitleChange(null)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                selectedTitleId === null
+                  ? 'bg-gray-800 text-white border-gray-800'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-400'
+              )}
+            >
+              Без титульного
+            </button>
+            {titleSlides.map(t => (
+              <button
+                key={t.id}
+                onClick={() => onTitleChange(t.id)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                  selectedTitleId === t.id
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600'
+                )}
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Step 1: Input (shared) ───────────────────────────────────────────────────
 
 function InputStep({
   mode,
+  theme,
+  titleTemplateId,
   onPlanReady,
   onSingleSlideReady,
 }: {
   mode: GenerationMode
+  theme: string
+  titleTemplateId: string | null
   onPlanReady: (plan: PresentationPlan) => void
   onSingleSlideReady: (assemblyId: number) => void
 }) {
@@ -92,7 +182,7 @@ function InputStep({
         const { assembly_id } = await generateApi.createAssemblySingle(prompt.trim())
         onSingleSlideReady(assembly_id)
       } else {
-        const plan = await generateApi.createPlan(prompt.trim())
+        const plan = await generateApi.createPlan(prompt.trim(), theme, titleTemplateId)
         onPlanReady(plan)
       }
     } catch (e: unknown) {
@@ -426,6 +516,8 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState('')
+  const [theme, setTheme] = useState('default')
+  const [layoutRole, setLayoutRole] = useState<'content' | 'title'>('content')
   const [slideIndex, setSlideIndex] = useState(0)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -434,7 +526,7 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
     if (!file || !name.trim()) return
     setUploading(true)
     try {
-      await generateApi.uploadTemplate(file, { name: name.trim(), description: description.trim(), scenario_tags: tags, slide_index: slideIndex })
+      await generateApi.uploadTemplate(file, { name: name.trim(), description: description.trim(), scenario_tags: tags, slide_index: slideIndex, theme: theme.trim() || 'default', layout_role: layoutRole })
       toast.success(`Шаблон "${name}" добавлен`)
       onSuccess()
       onClose()
@@ -472,7 +564,7 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
                 <div className="text-gray-400 text-xs">
                   <Upload className="w-5 h-5 mx-auto mb-1 text-gray-300" />
                   Нажми для выбора .pptx
-                  <p className="mt-0.5 text-gray-300">Shapes должны быть названы slot_*</p>
+                  <p className="mt-0.5 text-gray-300">AI автоматически определит слоты</p>
                 </div>
               )}
             </div>
@@ -499,6 +591,30 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
             <input type="text" value={tags} onChange={e => setTags(e.target.value)} placeholder="diagram, chart"
               className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
           </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1.5">Тема <span className="text-gray-400 font-normal">(визуальный стиль, напр. blue, dark)</span></label>
+            <input type="text" value={theme} onChange={e => setTheme(e.target.value)} placeholder="default"
+              className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1.5">Роль слайда</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setLayoutRole('content')}
+                className={cn('flex-1 py-2 rounded-lg text-xs font-medium border transition-all',
+                  layoutRole === 'content' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:border-indigo-300')}
+              >
+                Контентный слайд
+              </button>
+              <button
+                onClick={() => setLayoutRole('title')}
+                className={cn('flex-1 py-2 rounded-lg text-xs font-medium border transition-all',
+                  layoutRole === 'title' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:border-indigo-300')}
+              >
+                Титульный слайд
+              </button>
+            </div>
+          </div>
         </div>
         <div className="flex gap-2 px-6 pb-5">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all">Отмена</button>
@@ -506,7 +622,7 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
             className={cn('flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all',
               file && name.trim() && !uploading ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed')}>
             {uploading ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-            Загрузить
+            {uploading ? 'AI анализирует слайд...' : 'Загрузить'}
           </button>
         </div>
       </div>
@@ -520,6 +636,8 @@ export default function Generate() {
   const [mode, setMode] = useState<GenerationMode>('full')
   const [plan, setPlan] = useState<PresentationPlan | null>(null)
   const [showUpload, setShowUpload] = useState(false)
+  const [selectedTheme, setSelectedTheme] = useState('default')
+  const [selectedTitleId, setSelectedTitleId] = useState<string | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
@@ -530,18 +648,33 @@ export default function Generate() {
     queryFn: generateApi.listTemplates,
   })
 
+  const { data: themes = [] } = useQuery({
+    queryKey: ['slide-themes'],
+    queryFn: generateApi.listThemes,
+  })
+
+  const { data: titleSlides = [] } = useQuery({
+    queryKey: ['title-slides', selectedTheme],
+    queryFn: () => generateApi.listTitleSlides(selectedTheme),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: generateApi.deleteTemplate,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['slide-templates'] }); toast.success('Шаблон удалён') },
     onError: (e: unknown) => { toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка') },
   })
 
-  const builtIn = templates.filter(t => !t.id.startsWith('custom_'))
-  const custom = templates.filter(t => t.id.startsWith('custom_'))
+  const builtIn = templates.filter(t => !t.id.startsWith('custom_') && t.layout_role === 'content')
+  const custom = templates.filter(t => t.id.startsWith('custom_') && t.layout_role === 'content')
 
   const handleModeChange = (m: GenerationMode) => {
     setMode(m)
     setPlan(null)
+  }
+
+  const handleThemeChange = (t: string) => {
+    setSelectedTheme(t)
+    setSelectedTitleId(null)
   }
 
   const handleOpenInEditor = (assemblyId: number) => {
@@ -569,6 +702,18 @@ export default function Generate() {
             <ModeToggle mode={mode} onChange={handleModeChange} />
           )}
 
+          {/* Theme + title slide picker — only for full presentation, before plan */}
+          {!plan && mode === 'full' && (
+            <StylePicker
+              themes={themes}
+              selectedTheme={selectedTheme}
+              onThemeChange={handleThemeChange}
+              titleSlides={titleSlides}
+              selectedTitleId={selectedTitleId}
+              onTitleChange={setSelectedTitleId}
+            />
+          )}
+
           {plan ? (
             <PlanStep
               plan={plan}
@@ -579,6 +724,8 @@ export default function Generate() {
           ) : (
             <InputStep
               mode={mode}
+              theme={selectedTheme}
+              titleTemplateId={selectedTitleId}
               onPlanReady={setPlan}
               onSingleSlideReady={handleOpenInEditor}
             />

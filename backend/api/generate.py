@@ -27,7 +27,7 @@ from models.user import User
 from models.slide import SourcePresentation, SlideLibraryEntry
 from models.assembly import AssembledPresentation
 from services.template_generator import generate_presentation_plan, fill_single_slide
-from services.template_library import load_catalog, get_template_by_id, CATALOG_PATH, TEMPLATES_DIR
+from services.template_library import load_catalog, get_template_by_id, get_title_slides, list_themes, CATALOG_PATH, TEMPLATES_DIR
 from services.template_injector import inject_into_slide, inject_into_presentation
 from services.thumbnail import extract_pptx_slides, save_thumbnail
 from pptx import Presentation as PptxPresentation
@@ -41,6 +41,8 @@ router = APIRouter()
 
 class GeneratePlanRequest(BaseModel):
     prompt: str = Field(..., min_length=5, max_length=4000)
+    theme: str = "default"
+    title_template_id: Optional[str] = None
 
 
 class SlideInPlan(BaseModel):
@@ -51,11 +53,14 @@ class SlideInPlan(BaseModel):
 class PresentationPlan(BaseModel):
     title: str
     slides: list[SlideInPlan]
+    theme: str = "default"
+    title_template_id: Optional[str] = None
 
 
 class GenerateSlideRequest(BaseModel):
     description: str = Field(..., min_length=5, max_length=1000)
     template_id: Optional[str] = None
+    theme: str = "default"
 
 
 class TemplateSlotInfo(BaseModel):
@@ -64,6 +69,8 @@ class TemplateSlotInfo(BaseModel):
     description: str
     slots: dict[str, str]
     scenario_tags: list[str]
+    theme: str = "default"
+    layout_role: str = "content"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -100,8 +107,37 @@ def list_templates(current_user: User = Depends(get_current_user)):
             description=t.description,
             slots=t.slots,
             scenario_tags=t.scenario_tags,
+            theme=t.theme,
+            layout_role=t.layout_role,
         )
         for t in catalog
+    ]
+
+
+@router.get("/themes", response_model=list[str])
+def list_available_themes(current_user: User = Depends(get_current_user)):
+    """Return all distinct themes present in the catalog."""
+    return list_themes()
+
+
+@router.get("/title-slides", response_model=list[TemplateSlotInfo])
+def list_title_slides(
+    theme: str = "default",
+    current_user: User = Depends(get_current_user),
+):
+    """Return title slides available for a given theme."""
+    slides = get_title_slides(theme=theme)
+    return [
+        TemplateSlotInfo(
+            id=t.id,
+            name=t.name,
+            description=t.description,
+            slots=t.slots,
+            scenario_tags=t.scenario_tags,
+            theme=t.theme,
+            layout_role=t.layout_role,
+        )
+        for t in slides
     ]
 
 
@@ -115,7 +151,7 @@ async def create_plan(
     Returns structured plan (template IDs + slots) for preview before rendering.
     """
     try:
-        plan = await generate_presentation_plan(prompt=body.prompt)
+        plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme)
     except Exception as e:
         logger.error("Plan generation failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Ошибка генерации плана: {e}")
@@ -127,6 +163,8 @@ async def create_plan(
     return PresentationPlan(
         title=plan.get("title", "Презентация"),
         slides=[SlideInPlan(template_id=s["template_id"], slots=s.get("slots", {})) for s in slides],
+        theme=body.theme,
+        title_template_id=body.title_template_id,
     )
 
 
@@ -164,6 +202,18 @@ def _build_pptx_from_plan(body: "PresentationPlan") -> "PptxPresentation":
         sldIdLst.remove(sldId)
 
     source_cache: dict = {}
+
+    # Prepend title slide if selected
+    if body.title_template_id:
+        try:
+            title_tmpl = get_template_by_id(body.title_template_id, catalog)
+            # Fill title slot with presentation title, rest blank
+            title_slots = {k: (body.title if "title" in k or "name" in k else "") for k in title_tmpl.slots}
+            inject_into_presentation(out_prs, title_tmpl, title_slots, source_cache=source_cache)
+            logger.info("Prepended title slide %r", body.title_template_id)
+        except Exception as e:
+            logger.warning("Could not inject title slide %r: %s", body.title_template_id, e)
+
     for i, slide in enumerate(body.slides):
         try:
             tmpl = get_template_by_id(slide.template_id, catalog)
@@ -425,6 +475,148 @@ def _save_catalog(catalog_data: list[dict]) -> None:
         json.dump(catalog_data, f, ensure_ascii=False, indent=2)
 
 
+async def _auto_detect_slots(
+    pptx_path: Path,
+    slide_index: int,
+    user_description: str,
+    user_tags: str,
+) -> tuple[dict[str, str], str, list[str]]:
+    """
+    Use GPT-4o vision to auto-detect content slots in a slide.
+    Renames shapes in the PPTX file in-place.
+    Returns (slots_dict, suggested_description, suggested_tags).
+    """
+    import base64
+    import io as _io
+    from openai import AsyncOpenAI
+    from pptx import Presentation as PptxPrs
+    from pptx.util import Emu
+    from services.thumbnail import extract_pptx_slides
+
+    # Render slide thumbnail
+    try:
+        slide_data_list = extract_pptx_slides(str(pptx_path))
+        thumbnail_bytes = slide_data_list[slide_index].thumbnail_bytes if slide_index < len(slide_data_list) else None
+    except Exception:
+        thumbnail_bytes = None
+
+    # Collect all text shapes info
+    prs = PptxPrs(str(pptx_path))
+    slide = prs.slides[slide_index]
+    slide_w = prs.slide_width or Emu(9144000)
+    slide_h = prs.slide_height or Emu(5143500)
+
+    shapes_info = []
+    for i, shape in enumerate(slide.shapes):
+        if not hasattr(shape, "has_text_frame") or not shape.has_text_frame:
+            continue
+        text = shape.text_frame.text.strip()[:100]
+        left_pct = round(shape.left / slide_w * 100, 1) if shape.left is not None else 0
+        top_pct = round(shape.top / slide_h * 100, 1) if shape.top is not None else 0
+        w_pct = round(shape.width / slide_w * 100, 1) if shape.width is not None else 0
+        h_pct = round(shape.height / slide_h * 100, 1) if shape.height is not None else 0
+        shapes_info.append({
+            "index": i,
+            "current_name": shape.name,
+            "text_preview": text,
+            "left%": left_pct,
+            "top%": top_pct,
+            "width%": w_pct,
+            "height%": h_pct,
+        })
+
+    if not shapes_info:
+        return {}, user_description, [t.strip() for t in user_tags.split(",") if t.strip()]
+
+    shapes_json = json.dumps(shapes_info, ensure_ascii=False, indent=2)
+
+    prompt = f"""You are analyzing a PowerPoint slide template to identify content slots.
+
+Text shapes in this slide (positions as % of slide dimensions):
+{shapes_json}
+
+Task:
+1. Assign a descriptive slot name (slot_XXXX) to each text shape that should be a content placeholder.
+   Use names like: slot_title, slot_subtitle, slot_body, slot_description,
+   slot_metric_1, slot_metric_2, slot_step_1..slot_step_N, slot_label, etc.
+   Skip shapes that are logos, decorative, or non-content (e.g. copyright, tiny labels).
+2. Suggest a short description of when to use this template (1 sentence, in Russian).
+3. Suggest 4-6 scenario_tags (keywords in English, e.g. "key metrics", "product overview").
+
+Return ONLY valid JSON:
+{{
+  "slots": {{"current_shape_name": "slot_suggested_name", ...}},
+  "description": "...",
+  "scenario_tags": ["tag1", "tag2", ...]
+}}"""
+
+    _oai_kwargs: dict = {"api_key": settings.openai_api_key}
+    if settings.openai_base_url:
+        _oai_kwargs["base_url"] = settings.openai_base_url
+    client = AsyncOpenAI(**_oai_kwargs)
+
+    user_content: list = []
+    if thumbnail_bytes:
+        small = thumbnail_bytes
+        try:
+            from PIL import Image
+            img = Image.open(_io.BytesIO(thumbnail_bytes))
+            if img.width > 768:
+                ratio = 768 / img.width
+                img = img.resize((768, int(img.height * ratio)), Image.LANCZOS)
+            buf = _io.BytesIO()
+            img.save(buf, "JPEG", quality=85)
+            small = buf.getvalue()
+        except Exception:
+            pass
+        user_content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{base64.b64encode(small).decode()}",
+                "detail": "low",
+            },
+        })
+    user_content.append({"type": "text", "text": prompt})
+
+    response = await client.chat.completions.create(
+        model=settings.assembly_model,
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": user_content}],
+        temperature=0.1,
+    )
+    raw = json.loads(response.choices[0].message.content or "{}")
+
+    slot_map: dict[str, str] = raw.get("slots", {})
+    suggested_desc: str = raw.get("description", user_description) or user_description
+    suggested_tags: list[str] = raw.get("scenario_tags", [])
+    if not isinstance(suggested_tags, list):
+        suggested_tags = []
+
+    # Rename shapes in PPTX in-place
+    if slot_map:
+        for shape in slide.shapes:
+            if shape.name in slot_map:
+                shape.name = slot_map[shape.name]
+        prs.save(str(pptx_path))
+
+    # Build final slots dict: slot_name → placeholder description
+    final_slots: dict[str, str] = {}
+    prs2 = PptxPrs(str(pptx_path))
+    slide2 = prs2.slides[slide_index]
+    for shape in slide2.shapes:
+        if shape.name.startswith("slot_") and hasattr(shape, "has_text_frame") and shape.has_text_frame:
+            final_slots[shape.name] = f"Слот {shape.name}"
+
+    # Merge user-provided tags with suggestions
+    if user_tags.strip():
+        user_tag_list = [t.strip() for t in user_tags.split(",") if t.strip()]
+        for t in user_tag_list:
+            if t not in suggested_tags:
+                suggested_tags.insert(0, t)
+
+    return final_slots, suggested_desc, suggested_tags
+
+
 @router.post("/templates/upload", response_model=TemplateSlotInfo)
 async def upload_template(
     file: UploadFile = File(...),
@@ -432,11 +624,14 @@ async def upload_template(
     description: str = Form(default=""),
     scenario_tags: str = Form(default=""),  # comma-separated
     slide_index: int = Form(default=0),
+    theme: str = Form(default="default"),
+    layout_role: str = Form(default="content"),  # "title" | "content"
     current_user: User = Depends(get_current_user),
 ):
     """
     Upload a new PPTX slide template.
-    The PPTX must have shapes named slot_* for content injection.
+    If shapes are already named slot_*, they are used directly.
+    Otherwise AI auto-detects and renames shapes automatically.
     Only admins can upload templates (they are shared across all users).
     """
     if not current_user.is_admin:
@@ -470,8 +665,24 @@ async def upload_template(
             if shape.name.startswith("slot_") and hasattr(shape, "has_text_frame") and shape.has_text_frame
         }
         if not slots:
-            pptx_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail="В слайде не найдено ни одного слота (shape с именем slot_*). Переименуй shapes в PowerPoint.")
+            # Auto-detect slots using AI
+            logger.info("No slot_* shapes found in template — running AI auto-detection")
+            try:
+                slots, ai_description, ai_tags = await _auto_detect_slots(
+                    pptx_path, slide_index, description, scenario_tags
+                )
+            except Exception as e:
+                logger.error("AI slot detection failed: %s", e)
+                pptx_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=502, detail=f"AI не смог определить слоты: {e}")
+            if not slots:
+                pptx_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=400, detail="AI не нашёл текстовых блоков для слотов в слайде")
+            # Use AI suggestions if user didn't provide them
+            if not description.strip():
+                description = ai_description
+            if not scenario_tags.strip():
+                scenario_tags = ",".join(ai_tags)
     except HTTPException:
         raise
     except Exception as e:
@@ -484,6 +695,9 @@ async def upload_template(
     # Parse scenario_tags
     tags = [t.strip() for t in scenario_tags.split(",") if t.strip()]
 
+    theme_clean = theme.strip() or "default"
+    role_clean = layout_role.strip() if layout_role.strip() in ("title", "content") else "content"
+
     new_entry = {
         "id": template_id,
         "slide_index": slide_index,
@@ -492,6 +706,8 @@ async def upload_template(
         "scenario_tags": tags,
         "slots": slots,
         "pptx_file": pptx_filename,
+        "theme": theme_clean,
+        "layout_role": role_clean,
     }
 
     # Append to catalog
@@ -500,13 +716,15 @@ async def upload_template(
     catalog_data.append(new_entry)
     _save_catalog(catalog_data)
 
-    logger.info("Uploaded new template %r by user %d", template_id, current_user.id)
+    logger.info("Uploaded new template %r (theme=%r, role=%r) by user %d", template_id, theme_clean, role_clean, current_user.id)
     return TemplateSlotInfo(
         id=template_id,
         name=name,
         description=description,
         slots=slots,
         scenario_tags=tags,
+        theme=theme_clean,
+        layout_role=role_clean,
     )
 
 

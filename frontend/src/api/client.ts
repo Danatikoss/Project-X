@@ -438,6 +438,8 @@ export interface SlideTemplate {
   description: string
   slots: Record<string, string>
   scenario_tags: string[]
+  theme: string
+  layout_role: string
 }
 
 function _downloadBlob(blob: Blob, filename: string) {
@@ -454,6 +456,8 @@ function _downloadBlob(blob: Blob, filename: string) {
 export interface PresentationPlan {
   title: string
   slides: { template_id: string; slots: Record<string, string> }[]
+  theme: string
+  title_template_id: string | null
 }
 
 export const generateApi = {
@@ -462,8 +466,22 @@ export const generateApi = {
     return res.data
   },
 
-  createPlan: async (prompt: string): Promise<PresentationPlan> => {
-    const res = await api.post<PresentationPlan>('/generate/plan', { prompt })
+  listThemes: async (): Promise<string[]> => {
+    const res = await api.get<string[]>('/generate/themes')
+    return res.data
+  },
+
+  listTitleSlides: async (theme: string): Promise<SlideTemplate[]> => {
+    const res = await api.get<SlideTemplate[]>('/generate/title-slides', { params: { theme } })
+    return res.data
+  },
+
+  createPlan: async (prompt: string, theme: string, titleTemplateId: string | null): Promise<PresentationPlan> => {
+    const res = await api.post<PresentationPlan>('/generate/plan', {
+      prompt,
+      theme,
+      title_template_id: titleTemplateId,
+    })
     return res.data
   },
 
@@ -492,7 +510,7 @@ export const generateApi = {
 
   uploadTemplate: async (
     file: File,
-    meta: { name: string; description: string; scenario_tags: string; slide_index: number }
+    meta: { name: string; description: string; scenario_tags: string; slide_index: number; theme?: string; layout_role?: string }
   ): Promise<SlideTemplate> => {
     const form = new FormData()
     form.append('file', file)
@@ -500,6 +518,8 @@ export const generateApi = {
     form.append('description', meta.description)
     form.append('scenario_tags', meta.scenario_tags)
     form.append('slide_index', String(meta.slide_index))
+    form.append('theme', meta.theme ?? 'default')
+    form.append('layout_role', meta.layout_role ?? 'content')
     const res = await api.post<SlideTemplate>('/generate/templates/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
