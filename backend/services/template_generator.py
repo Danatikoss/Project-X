@@ -115,11 +115,38 @@ def _template_vector_search(
 FILL_SYSTEM = """Ты — копирайтер для презентаций. Твоя задача: заполнить слоты слайда конкретным текстом.
 
 Правила:
-1. Заполняй ВСЕ слоты. Не пропускай ни один.
+1. Заполняй ВСЕ слоты без исключения
 2. Текст лаконичный — как в реальных презентациях, не эссе
-3. Для слотов вида slot_metric_N: первая строка — цифра/заголовок, вторая — пояснение (через \\n)
+3. Строго соблюдай формат каждого слота (указан в описании)
 4. Ответ строго в JSON: {"slot_name": "текст", ...}
-5. Не добавляй лишних ключей, только те слоты, что указаны"""
+5. Используй \\n для переноса строки внутри значения, если формат требует"""
+
+
+def _describe_slot_format(slot_name: str, hint: str) -> str:
+    """
+    Build a human-readable format description for one slot,
+    based on the hint text from catalog.json.
+    """
+    # Hint from actual shape text — detect format
+    if "\n\n" in hint:
+        example = hint.replace("\n\n", "\\n\\n")
+        return f'формат: ЗАГОЛОВОК\\n\\nОПИСАНИЕ (пустая строка между). Пример: "{example}"'
+    if "\n" in hint:
+        example = hint.replace("\n", "\\n")
+        return f'формат: ЗНАЧЕНИЕ\\nПОДПИСЬ (перенос строки). Пример: "{example}"'
+
+    # Infer from slot name if hint is generic
+    name_lower = slot_name.lower()
+    if any(x in name_lower for x in ("metric", "stat", "kpi", "number", "count", "rate")):
+        return 'формат: ЗНАЧЕНИЕ\\nПОДПИСЬ. Пример: "750,000+\\nПользователей"'
+    if any(x in name_lower for x in ("title", "header", "heading", "заголовок")):
+        return "plain text, короткий заголовок (3–8 слов)"
+    if any(x in name_lower for x in ("description", "body", "text", "desc", "subtitle")):
+        return "plain text, 1–2 предложения"
+    if any(x in name_lower for x in ("step", "шаг", "item", "point")):
+        return 'формат: НАЗВАНИЕ\\n\\nОПИСАНИЕ. Пример: "Анализ данных\\n\\nСобираем и обрабатываем показатели"'
+
+    return "plain text"
 
 
 async def _fill_slots(
@@ -128,12 +155,17 @@ async def _fill_slots(
     template: TemplateInfo,
 ) -> dict[str, str]:
     """Step 3: ask LLM to fill template slots for a specific slide intent."""
-    slots_list = "\n".join(f"  - {k}: {v}" for k, v in template.slots.items())
+    slots_lines = []
+    for slot_name, hint in template.slots.items():
+        fmt = _describe_slot_format(slot_name, hint)
+        slots_lines.append(f"  - {slot_name}: {fmt}")
+    slots_block = "\n".join(slots_lines)
+
     user_msg = (
         f"Слайд должен показать: {intent}\n"
         f"Данные и факты: {content}\n\n"
-        f"Шаблон слайда имеет следующие слоты:\n{slots_list}\n\n"
-        f"Заполни все слоты. Верни только JSON с парами slot_name: text."
+        f"Слоты шаблона (соблюдай формат каждого):\n{slots_block}\n\n"
+        f"Заполни все слоты. Верни только JSON: {{\"slot_name\": \"текст\", ...}}"
     )
 
     client = _get_client()
@@ -148,10 +180,14 @@ async def _fill_slots(
     )
     raw = json.loads(response.choices[0].message.content or "{}")
 
-    # Keep only known slot keys, fill missing ones with placeholder
+    # Validate: ensure all expected slots present; fall back to hint if missing
     result: dict[str, str] = {}
-    for slot_key in template.slots:
-        result[slot_key] = str(raw.get(slot_key, f"[{slot_key}]"))
+    for slot_key, hint in template.slots.items():
+        if slot_key in raw and str(raw[slot_key]).strip():
+            result[slot_key] = str(raw[slot_key])
+        else:
+            logger.warning("LLM missing slot %r for template %r — using hint as fallback", slot_key, template.id)
+            result[slot_key] = hint  # hint from catalog is better than "[slot_key]"
     return result
 
 

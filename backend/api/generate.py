@@ -815,19 +815,29 @@ async def upload_templates_batch(
 
     new_entries: list[dict] = []
     for slide_index, slide in enumerate(prs.slides):
-        slots = {
-            shape.name: f"Слот {shape.name}"
-            for shape in slide.shapes
-            if shape.name.startswith("slot_") and hasattr(shape, "has_text_frame") and shape.has_text_frame
-        }
+        # Read slot_* shapes — use actual shape text as hint (shows expected format)
+        slots: dict[str, str] = {}
+        for shape in slide.shapes:
+            if (
+                shape.name.startswith("slot_")
+                and hasattr(shape, "has_text_frame")
+                and shape.has_text_frame
+            ):
+                raw_text = shape.text_frame.text.strip()
+                slots[shape.name] = raw_text if raw_text else f"Слот {shape.name}"
         if not slots:
             continue
 
-        # Collect visible text for AI context
+        # Collect visible text for AI context (non-slot shapes only, to avoid noise)
         text_previews = [
             shape.text_frame.text.strip()[:60]
             for shape in slide.shapes
-            if hasattr(shape, "has_text_frame") and shape.has_text_frame and shape.text_frame.text.strip()
+            if (
+                hasattr(shape, "has_text_frame")
+                and shape.has_text_frame
+                and shape.text_frame.text.strip()
+                and not shape.name.startswith("slot_")
+            )
         ]
 
         try:
