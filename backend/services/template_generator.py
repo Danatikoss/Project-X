@@ -206,6 +206,8 @@ async def generate_presentation_plan(prompt: str, theme: str = "default") -> dic
         catalog = get_content_catalog(theme="default", catalog=full_catalog)
     if not catalog:
         catalog = [t for t in full_catalog if t.layout_role == "content"]
+    if not catalog:
+        raise ValueError("Каталог шаблонов пуст. Загрузите шаблоны и нажмите Reindex.")
 
     # Step 1 — decompose
     decomposed = await _decompose_prompt(prompt)

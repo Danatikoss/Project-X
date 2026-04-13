@@ -150,6 +150,24 @@ async def create_plan(
     Step 1: Ask LLM to create a presentation plan.
     Returns structured plan (template IDs + slots) for preview before rendering.
     """
+    # Guard: must have at least one content slide with a valid embedding
+    full_catalog = load_catalog()
+    content_slides = [t for t in full_catalog if t.layout_role == "content"]
+    if not content_slides:
+        raise HTTPException(
+            status_code=400,
+            detail="Нет шаблонов контентных слайдов. Загрузите шаблоны и нажмите Reindex."
+        )
+    has_embeddings = any(
+        t.embedding and sum(abs(x) for x in t.embedding) > 1e-6
+        for t in content_slides
+    )
+    if not has_embeddings:
+        raise HTTPException(
+            status_code=400,
+            detail="Шаблоны загружены, но не проиндексированы. Нажмите Reindex в библиотеке шаблонов."
+        )
+
     try:
         plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme)
     except Exception as e:
