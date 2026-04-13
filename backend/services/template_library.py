@@ -25,6 +25,12 @@ class TemplateInfo:
     pptx_file: str = "Libraryslides.pptx"
     theme: str = "default"
     layout_role: str = "content"  # "title" | "content"
+    ai_description: str = ""
+    embedding: list = None
+
+    def __post_init__(self):
+        if self.embedding is None:
+            self.embedding = []
 
     @property
     def pptx_path(self) -> Path:

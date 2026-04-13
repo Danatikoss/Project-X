@@ -475,6 +475,37 @@ def _save_catalog(catalog_data: list[dict]) -> None:
         json.dump(catalog_data, f, ensure_ascii=False, indent=2)
 
 
+async def _generate_ai_description(
+    name: str,
+    slot_names: list[str],
+    tags: list[str],
+) -> str:
+    """
+    Generate a short AI description of a slide template using gpt-4o-mini (text only, no vision).
+    """
+    from openai import AsyncOpenAI
+
+    _oai_kwargs: dict = {"api_key": settings.openai_api_key}
+    if settings.openai_base_url:
+        _oai_kwargs["base_url"] = settings.openai_base_url
+    client = AsyncOpenAI(**_oai_kwargs)
+
+    prompt = (
+        f"Template name: {name}. "
+        f"Slots: {', '.join(slot_names)}. "
+        f"Tags: {', '.join(tags)}. "
+        f"Describe in 2 sentences what kind of slide this is and when to use it."
+    )
+
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=100,
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
 async def _auto_detect_slots(
     pptx_path: Path,
     slide_index: int,
@@ -665,24 +696,11 @@ async def upload_template(
             if shape.name.startswith("slot_") and hasattr(shape, "has_text_frame") and shape.has_text_frame
         }
         if not slots:
-            # Auto-detect slots using AI
-            logger.info("No slot_* shapes found in template — running AI auto-detection")
-            try:
-                slots, ai_description, ai_tags = await _auto_detect_slots(
-                    pptx_path, slide_index, description, scenario_tags
-                )
-            except Exception as e:
-                logger.error("AI slot detection failed: %s", e)
-                pptx_path.unlink(missing_ok=True)
-                raise HTTPException(status_code=502, detail=f"AI не смог определить слоты: {e}")
-            if not slots:
-                pptx_path.unlink(missing_ok=True)
-                raise HTTPException(status_code=400, detail="AI не нашёл текстовых блоков для слотов в слайде")
-            # Use AI suggestions if user didn't provide them
-            if not description.strip():
-                description = ai_description
-            if not scenario_tags.strip():
-                scenario_tags = ",".join(ai_tags)
+            pptx_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=400,
+                detail="Шаблон не содержит слотов. Переименуй текстовые блоки в PowerPoint: названия должны начинаться с 'slot_' (например slot_title, slot_body)."
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -698,6 +716,14 @@ async def upload_template(
     theme_clean = theme.strip() or "default"
     role_clean = layout_role.strip() if layout_role.strip() in ("title", "content") else "content"
 
+    # Generate AI description from slot names and tags (text-only, no vision)
+    ai_description = ""
+    try:
+        ai_description = await _generate_ai_description(name, list(slots.keys()), tags)
+        logger.info("Generated ai_description for template %r: %r", template_id, ai_description[:80])
+    except Exception as e:
+        logger.warning("Could not generate ai_description for %r: %s", template_id, e)
+
     new_entry = {
         "id": template_id,
         "slide_index": slide_index,
@@ -708,6 +734,8 @@ async def upload_template(
         "pptx_file": pptx_filename,
         "theme": theme_clean,
         "layout_role": role_clean,
+        "ai_description": ai_description,
+        "embedding": [],
     }
 
     # Append to catalog
