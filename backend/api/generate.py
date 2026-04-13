@@ -475,13 +475,14 @@ def _save_catalog(catalog_data: list[dict]) -> None:
         json.dump(catalog_data, f, ensure_ascii=False, indent=2)
 
 
-async def _generate_ai_description(
-    name: str,
+async def _analyze_slide_metadata(
     slot_names: list[str],
-    tags: list[str],
-) -> str:
+    text_previews: list[str],
+) -> dict:
     """
-    Generate a short AI description of a slide template using gpt-4o-mini (text only, no vision).
+    Auto-generate name, description, scenario_tags, and ai_description for a slide template.
+    Uses gpt-4o-mini, text only, no vision.
+    Returns dict: {name, description, scenario_tags, ai_description}
     """
     from openai import AsyncOpenAI
 
@@ -490,20 +491,34 @@ async def _generate_ai_description(
         _oai_kwargs["base_url"] = settings.openai_base_url
     client = AsyncOpenAI(**_oai_kwargs)
 
+    slots_str = ", ".join(slot_names)
+    previews_str = "; ".join(text_previews[:6]) if text_previews else "—"
+
     prompt = (
-        f"Template name: {name}. "
-        f"Slots: {', '.join(slot_names)}. "
-        f"Tags: {', '.join(tags)}. "
-        f"Describe in 2 sentences what kind of slide this is and when to use it."
+        f"You are analyzing a PowerPoint slide template.\n"
+        f"Content slots (placeholder names): {slots_str}\n"
+        f"Sample text visible in slide: {previews_str}\n\n"
+        f"Return JSON with exactly these fields:\n"
+        f'  "name": short template name in Russian, 2-4 words (e.g. "4 ключевых метрики")\n'
+        f'  "description": one sentence in Russian: when is this slide useful?\n'
+        f'  "scenario_tags": list of 4-6 English keyword strings for semantic matching (e.g. ["key metrics", "kpi", "dashboard"])\n'
+        f'  "ai_description": 2 sentences in English describing this template type and use case\n'
     )
 
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
+        response_format={"type": "json_object"},
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
-        max_tokens=100,
+        max_tokens=200,
     )
-    return (response.choices[0].message.content or "").strip()
+    raw = json.loads(response.choices[0].message.content or "{}")
+    return {
+        "name": str(raw.get("name", "Шаблон слайда")),
+        "description": str(raw.get("description", "")),
+        "scenario_tags": raw.get("scenario_tags", []) if isinstance(raw.get("scenario_tags"), list) else [],
+        "ai_description": str(raw.get("ai_description", "")),
+    }
 
 
 async def _auto_detect_slots(
@@ -753,6 +768,124 @@ async def upload_template(
         scenario_tags=tags,
         theme=theme_clean,
         layout_role=role_clean,
+    )
+
+
+class BatchUploadResult(BaseModel):
+    created: int
+    templates: list[TemplateSlotInfo]
+
+
+@router.post("/templates/upload-batch", response_model=BatchUploadResult)
+async def upload_templates_batch(
+    file: UploadFile = File(...),
+    layout_role: str = Form(default="content"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload a PPTX with one or more slides. Each slide that has slot_* shapes becomes
+    a separate template. AI auto-generates name, description, and tags for each slide.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор может загружать шаблоны")
+
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="Файл должен быть в формате .pptx")
+
+    uploads_dir = TEMPLATES_DIR / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
+    file_id = uuid.uuid4().hex[:12]
+    pptx_filename = f"uploads/{file_id}.pptx"
+    pptx_path = TEMPLATES_DIR / pptx_filename
+
+    content = await file.read()
+    pptx_path.write_bytes(content)
+
+    role_clean = layout_role.strip() if layout_role.strip() in ("title", "content") else "content"
+
+    try:
+        from pptx import Presentation as PptxPrs
+        import io as _io
+        prs = PptxPrs(_io.BytesIO(content))
+    except Exception as e:
+        pptx_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"Не удалось прочитать PPTX: {e}")
+
+    new_entries: list[dict] = []
+    for slide_index, slide in enumerate(prs.slides):
+        slots = {
+            shape.name: f"Слот {shape.name}"
+            for shape in slide.shapes
+            if shape.name.startswith("slot_") and hasattr(shape, "has_text_frame") and shape.has_text_frame
+        }
+        if not slots:
+            continue
+
+        # Collect visible text for AI context
+        text_previews = [
+            shape.text_frame.text.strip()[:60]
+            for shape in slide.shapes
+            if hasattr(shape, "has_text_frame") and shape.has_text_frame and shape.text_frame.text.strip()
+        ]
+
+        try:
+            meta = await _analyze_slide_metadata(list(slots.keys()), text_previews)
+        except Exception as e:
+            logger.warning("AI metadata failed for slide %d: %s", slide_index, e)
+            meta = {
+                "name": f"Шаблон слайда {slide_index + 1}",
+                "description": "",
+                "scenario_tags": [],
+                "ai_description": "",
+            }
+
+        safe_name = "".join(c if c.isalnum() else "_" for c in meta["name"].lower())[:30]
+        template_id = f"custom_{safe_name}_{file_id[:6]}_{slide_index}"
+
+        new_entries.append({
+            "id": template_id,
+            "slide_index": slide_index,
+            "name": meta["name"],
+            "description": meta["description"],
+            "scenario_tags": meta["scenario_tags"],
+            "slots": slots,
+            "pptx_file": pptx_filename,
+            "theme": "default",
+            "layout_role": role_clean,
+            "ai_description": meta["ai_description"],
+            "embedding": [],
+        })
+
+    if not new_entries:
+        pptx_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail="Ни один слайд не содержит слотов. Переименуй текстовые блоки в PowerPoint: названия должны начинаться с 'slot_' (например slot_title, slot_body)."
+        )
+
+    with open(CATALOG_PATH, encoding="utf-8") as f:
+        catalog_data = json.load(f)
+    catalog_data.extend(new_entries)
+    _save_catalog(catalog_data)
+
+    logger.info(
+        "Batch upload: %d templates from %r by user %d",
+        len(new_entries), file.filename, current_user.id
+    )
+    return BatchUploadResult(
+        created=len(new_entries),
+        templates=[
+            TemplateSlotInfo(
+                id=e["id"],
+                name=e["name"],
+                description=e["description"],
+                slots=e["slots"],
+                scenario_tags=e["scenario_tags"],
+                theme=e["theme"],
+                layout_role=e["layout_role"],
+            )
+            for e in new_entries
+        ],
     )
 
 

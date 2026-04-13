@@ -513,23 +513,18 @@ function TemplateCard({ template, isAdmin, onDelete }: {
 
 function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [file, setFile] = useState<File | null>(null)
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [tags, setTags] = useState('')
-  const [theme, setTheme] = useState('default')
   const [layoutRole, setLayoutRole] = useState<'content' | 'title'>('content')
-  const [slideIndex, setSlideIndex] = useState(0)
   const [uploading, setUploading] = useState(false)
+  const [result, setResult] = useState<{ created: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = async () => {
-    if (!file || !name.trim()) return
+    if (!file) return
     setUploading(true)
     try {
-      await generateApi.uploadTemplate(file, { name: name.trim(), description: description.trim(), scenario_tags: tags, slide_index: slideIndex, theme: theme.trim() || 'default', layout_role: layoutRole })
-      toast.success(`Шаблон "${name}" добавлен`)
+      const res = await generateApi.uploadTemplatesBatch(file, layoutRole)
+      setResult({ created: res.created })
       onSuccess()
-      onClose()
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка загрузки'
       toast.error(msg)
@@ -540,91 +535,100 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Загрузить шаблон</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Загрузить шаблоны</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
-        <div className="px-6 py-5 space-y-4">
-          <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">PPTX файл</label>
-            <div
-              onClick={() => fileRef.current?.click()}
-              className={cn('border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all',
-                file ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 hover:border-gray-300')}
-            >
-              <input ref={fileRef} type="file" accept=".pptx" className="hidden"
-                onChange={e => setFile(e.target.files?.[0] ?? null)} />
-              {file ? (
-                <div className="flex items-center justify-center gap-2">
-                  <Layers className="w-4 h-4 text-indigo-500" />
-                  <span className="text-sm text-indigo-700 font-medium">{file.name}</span>
-                </div>
-              ) : (
-                <div className="text-gray-400 text-xs">
-                  <Upload className="w-5 h-5 mx-auto mb-1 text-gray-300" />
-                  Нажми для выбора .pptx
-                  <p className="mt-0.5 text-gray-300">AI автоматически определит слоты</p>
-                </div>
-              )}
+
+        {result ? (
+          <div className="px-6 py-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-green-100 flex items-center justify-center mx-auto">
+              <Check className="w-6 h-6 text-green-600" />
             </div>
+            <p className="text-sm font-semibold text-gray-900">
+              {result.created === 1 ? '1 шаблон добавлен' : `${result.created} шаблона добавлено`}
+            </p>
+            <p className="text-xs text-gray-400">AI автоматически сгенерировал названия, описания и теги</p>
+            <button onClick={onClose} className="mt-2 w-full py-2.5 rounded-xl text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-all">
+              Готово
+            </button>
           </div>
-          {file && (
-            <div>
-              <label className="text-xs font-medium text-gray-600 block mb-1.5">Номер слайда <span className="text-gray-400 font-normal">(0 = первый)</span></label>
-              <input type="number" min={0} value={slideIndex} onChange={e => setSlideIndex(Number(e.target.value))}
-                className="w-20 text-sm rounded-lg border border-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
-            </div>
-          )}
-          <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">Название</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Продукт + диаграмма"
-              className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">Описание</label>
-            <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Когда использовать"
-              className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">Теги <span className="text-gray-400 font-normal">(через запятую)</span></label>
-            <input type="text" value={tags} onChange={e => setTags(e.target.value)} placeholder="diagram, chart"
-              className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">Тема <span className="text-gray-400 font-normal">(визуальный стиль, напр. blue, dark)</span></label>
-            <input type="text" value={theme} onChange={e => setTheme(e.target.value)} placeholder="default"
-              className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">Роль слайда</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setLayoutRole('content')}
-                className={cn('flex-1 py-2 rounded-lg text-xs font-medium border transition-all',
-                  layoutRole === 'content' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:border-indigo-300')}
+        ) : (
+          <>
+            <div className="px-6 py-5 space-y-4">
+              <div
+                onClick={() => !uploading && fileRef.current?.click()}
+                className={cn(
+                  'border-2 border-dashed rounded-xl p-6 text-center transition-all',
+                  uploading ? 'border-indigo-200 bg-indigo-50/50 cursor-default' :
+                  file ? 'border-indigo-300 bg-indigo-50 cursor-pointer' :
+                  'border-gray-200 hover:border-indigo-300 cursor-pointer'
+                )}
               >
-                Контентный слайд
+                <input ref={fileRef} type="file" accept=".pptx" className="hidden"
+                  onChange={e => setFile(e.target.files?.[0] ?? null)} />
+                {uploading ? (
+                  <div className="space-y-2">
+                    <div className="w-6 h-6 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin mx-auto" />
+                    <p className="text-xs text-indigo-600 font-medium">AI анализирует слайды...</p>
+                    <p className="text-[11px] text-gray-400">Генерирую названия и теги для каждого шаблона</p>
+                  </div>
+                ) : file ? (
+                  <div className="space-y-1">
+                    <Layers className="w-5 h-5 text-indigo-500 mx-auto" />
+                    <p className="text-sm text-indigo-700 font-medium">{file.name}</p>
+                    <p className="text-[11px] text-gray-400">Нажми чтобы выбрать другой файл</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Upload className="w-6 h-6 mx-auto text-gray-300" />
+                    <p className="text-sm text-gray-600 font-medium">Выбери .pptx файл</p>
+                    <p className="text-[11px] text-gray-400">Все слайды со слотами станут отдельными шаблонами</p>
+                    <p className="text-[11px] text-gray-300">AI сам сгенерирует название, описание и теги</p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-2">Тип слайдов</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setLayoutRole('content')}
+                    disabled={uploading}
+                    className={cn('flex-1 py-2 rounded-lg text-xs font-medium border transition-all',
+                      layoutRole === 'content' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:border-indigo-300')}
+                  >
+                    Контентные
+                  </button>
+                  <button
+                    onClick={() => setLayoutRole('title')}
+                    disabled={uploading}
+                    className={cn('flex-1 py-2 rounded-lg text-xs font-medium border transition-all',
+                      layoutRole === 'title' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:border-indigo-300')}
+                  >
+                    Титульные
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 px-6 pb-5">
+              <button onClick={onClose} disabled={uploading}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50">
+                Отмена
               </button>
-              <button
-                onClick={() => setLayoutRole('title')}
-                className={cn('flex-1 py-2 rounded-lg text-xs font-medium border transition-all',
-                  layoutRole === 'title' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:border-indigo-300')}
-              >
-                Титульный слайд
+              <button onClick={handleUpload} disabled={!file || uploading}
+                className={cn('flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all',
+                  file && !uploading ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed')}>
+                {uploading
+                  ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : <Sparkles className="w-3.5 h-3.5" />}
+                {uploading ? 'Обрабатываю...' : 'Загрузить'}
               </button>
             </div>
-          </div>
-        </div>
-        <div className="flex gap-2 px-6 pb-5">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all">Отмена</button>
-          <button onClick={handleUpload} disabled={!file || !name.trim() || uploading}
-            className={cn('flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all',
-              file && name.trim() && !uploading ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed')}>
-            {uploading ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-            {uploading ? 'AI анализирует слайд...' : 'Загрузить'}
-          </button>
-        </div>
+          </>
+        )}
       </div>
     </div>
   )

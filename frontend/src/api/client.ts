@@ -526,6 +526,21 @@ export const generateApi = {
     return res.data
   },
 
+  uploadTemplatesBatch: async (
+    file: File,
+    layoutRole: 'content' | 'title' = 'content'
+  ): Promise<{ created: number; templates: SlideTemplate[] }> => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('layout_role', layoutRole)
+    const res = await api.post<{ created: number; templates: SlideTemplate[] }>(
+      '/generate/templates/upload-batch',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
+    return res.data
+  },
+
   deleteTemplate: async (id: string): Promise<void> => {
     await api.delete(`/generate/templates/${id}`)
   },
