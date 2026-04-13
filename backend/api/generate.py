@@ -772,13 +772,11 @@ def delete_template(
     if not entry:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
 
+    # Remove file (only uploaded files, built-in pptx files are shared — don't delete them)
     pptx_file = entry.get("pptx_file", "")
-    if not pptx_file.startswith("uploads/"):
-        raise HTTPException(status_code=400, detail="Встроенные шаблоны нельзя удалить")
-
-    # Remove file
-    pptx_path = TEMPLATES_DIR / pptx_file
-    pptx_path.unlink(missing_ok=True)
+    if pptx_file.startswith("uploads/"):
+        pptx_path = TEMPLATES_DIR / pptx_file
+        pptx_path.unlink(missing_ok=True)
 
     # Remove from catalog
     catalog_data = [e for e in catalog_data if e["id"] != template_id]
@@ -792,20 +790,19 @@ def delete_template(
 def delete_all_custom_templates(
     current_user: User = Depends(get_current_user),
 ):
-    """Remove all custom (uploaded) templates from the catalog."""
+    """Remove all templates from the catalog. Uploaded files are deleted from disk; built-in pptx files are kept."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администратор может удалять шаблоны")
 
     with open(CATALOG_PATH, encoding="utf-8") as f:
         catalog_data = json.load(f)
 
-    custom = [e for e in catalog_data if e.get("pptx_file", "").startswith("uploads/")]
-    kept = [e for e in catalog_data if not e.get("pptx_file", "").startswith("uploads/")]
+    total = len(catalog_data)
+    for entry in catalog_data:
+        if entry.get("pptx_file", "").startswith("uploads/"):
+            pptx_path = TEMPLATES_DIR / entry["pptx_file"]
+            pptx_path.unlink(missing_ok=True)
 
-    for entry in custom:
-        pptx_path = TEMPLATES_DIR / entry["pptx_file"]
-        pptx_path.unlink(missing_ok=True)
-
-    _save_catalog(kept)
-    logger.info("Deleted %d custom templates by user %d", len(custom), current_user.id)
-    return {"deleted": len(custom)}
+    _save_catalog([])
+    logger.info("Deleted all %d templates by user %d", total, current_user.id)
+    return {"deleted": total}

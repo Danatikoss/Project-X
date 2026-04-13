@@ -754,7 +754,7 @@ export default function Generate() {
           </div>
           {isAdmin && (
             <div className="flex items-center gap-2">
-              {custom.length > 0 && (
+              {templates.length > 0 && (
                 <button
                   onClick={() => setShowDeleteAllConfirm(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-all"
@@ -816,7 +816,7 @@ export default function Generate() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">Удалить все свои шаблоны?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Это удалит {custom.length} шаблон{custom.length === 1 ? '' : custom.length < 5 ? 'а' : 'ов'}. Базовые шаблоны останутся.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Это удалит все {templates.length} шаблон{templates.length === 1 ? '' : templates.length < 5 ? 'а' : 'ов'} из каталога. Действие необратимо.</p>
               </div>
             </div>
             <div className="flex gap-2 justify-end">
