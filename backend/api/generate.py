@@ -841,6 +841,20 @@ async def upload_templates_batch(
                 "ai_description": "",
             }
 
+        # Generate embedding: concatenation of all semantic fields
+        embed_text = " ".join(filter(None, [
+            meta["name"],
+            meta["description"],
+            " ".join(meta["scenario_tags"]),
+            meta["ai_description"],
+        ]))
+        try:
+            from services.embedding import embed_single
+            embedding = await embed_single(embed_text)
+        except Exception as e:
+            logger.warning("Embedding failed for slide %d: %s", slide_index, e)
+            embedding = []
+
         safe_name = "".join(c if c.isalnum() else "_" for c in meta["name"].lower())[:30]
         template_id = f"custom_{safe_name}_{file_id[:6]}_{slide_index}"
 
@@ -855,7 +869,7 @@ async def upload_templates_batch(
             "theme": "default",
             "layout_role": role_clean,
             "ai_description": meta["ai_description"],
-            "embedding": [],
+            "embedding": embedding,
         })
 
     if not new_entries:
@@ -889,6 +903,50 @@ async def upload_templates_batch(
             for e in new_entries
         ],
     )
+
+
+@router.post("/templates/reindex", status_code=200)
+async def reindex_templates(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Regenerate embeddings for all templates that have an empty or near-zero embedding.
+    Safe to run multiple times — skips templates that already have valid embeddings.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор может запускать переиндексацию")
+
+    from services.embedding import embed_single
+
+    with open(CATALOG_PATH, encoding="utf-8") as f:
+        catalog_data = json.load(f)
+
+    def _needs_reindex(entry: dict) -> bool:
+        emb = entry.get("embedding", [])
+        if not emb:
+            return True
+        return sum(abs(x) for x in emb) < 1e-6
+
+    updated = 0
+    for entry in catalog_data:
+        if not _needs_reindex(entry):
+            continue
+        embed_text = " ".join(filter(None, [
+            entry.get("name", ""),
+            entry.get("description", ""),
+            " ".join(entry.get("scenario_tags", [])),
+            entry.get("ai_description", ""),
+        ]))
+        try:
+            entry["embedding"] = await embed_single(embed_text)
+            updated += 1
+            logger.info("Reindexed template %r", entry["id"])
+        except Exception as e:
+            logger.warning("Embedding failed for template %r: %s", entry["id"], e)
+
+    _save_catalog(catalog_data)
+    logger.info("Reindex complete: %d templates updated", updated)
+    return {"updated": updated, "total": len(catalog_data)}
 
 
 @router.delete("/templates/{template_id}", status_code=204)
