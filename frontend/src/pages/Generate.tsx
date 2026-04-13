@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -661,6 +661,12 @@ export default function Generate() {
     queryKey: ['title-slides', selectedTheme],
     queryFn: () => generateApi.listTitleSlides(selectedTheme),
   })
+
+  useEffect(() => {
+    if (themes.length > 0 && !themes.includes(selectedTheme)) {
+      setSelectedTheme(themes[0])
+    }
+  }, [themes])
 
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
 

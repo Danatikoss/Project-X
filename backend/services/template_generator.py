@@ -203,8 +203,7 @@ async def generate_presentation_plan(prompt: str, theme: str = "default") -> dic
     full_catalog = load_catalog()
     catalog = get_content_catalog(theme=theme, catalog=full_catalog)
     if not catalog:
-        catalog = get_content_catalog(theme="default", catalog=full_catalog)
-    if not catalog:
+        logger.warning("No templates for theme %r — ignoring theme filter", theme)
         catalog = [t for t in full_catalog if t.layout_role == "content"]
     if not catalog:
         raise ValueError("Каталог шаблонов пуст. Загрузите шаблоны и нажмите Reindex.")
@@ -315,8 +314,7 @@ async def fill_single_slide(
     full_catalog = load_catalog()
     catalog = get_content_catalog(theme=theme, catalog=full_catalog)
     if not catalog:
-        catalog = get_content_catalog(theme="default", catalog=full_catalog)
-    if not catalog:
+        logger.warning("No templates for theme %r in fill_single_slide — ignoring theme filter", theme)
         catalog = [t for t in full_catalog if t.layout_role == "content"]
 
     if template_id:
