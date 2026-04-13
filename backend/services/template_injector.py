@@ -85,29 +85,36 @@ def _make_run(text: str, rPr=None) -> etree._Element:
 
 
 def _set_shape_text(shape, new_text: str):
-    """Replace text in a shape's text frame while preserving run formatting."""
+    """Replace text in a shape's text frame while preserving per-paragraph formatting."""
     if not shape.has_text_frame:
         return
 
     txBody = shape.text_frame._txBody
-    first_para = txBody.find(qn("a:p"))
-    rPr = None
-    pPr = None
 
-    if first_para is not None:
-        first_run = first_para.find(qn("a:r"))
-        if first_run is not None:
-            rPr = _copy_run_format(first_run)
-        pPr_elem = first_para.find(qn("a:pPr"))
-        if pPr_elem is not None:
-            pPr = copy.deepcopy(pPr_elem)
+    # Collect formatting from each original paragraph: (pPr, rPr)
+    para_formats: list[tuple] = []
+    for p in txBody.findall(qn("a:p")):
+        pPr_elem = p.find(qn("a:pPr"))
+        pPr = copy.deepcopy(pPr_elem) if pPr_elem is not None else None
+
+        # Use the first run's rPr in this paragraph
+        first_run = p.find(qn("a:r"))
+        rPr = _copy_run_format(first_run) if first_run is not None else None
+
+        para_formats.append((pPr, rPr))
+
+    # Fallback if no paragraphs found
+    if not para_formats:
+        para_formats = [(None, None)]
 
     lines = new_text.split("\n")
 
     for p in txBody.findall(qn("a:p")):
         txBody.remove(p)
 
-    for line in lines:
+    for i, line in enumerate(lines):
+        # Use corresponding format, or reuse last one for extra lines
+        pPr, rPr = para_formats[min(i, len(para_formats) - 1)]
         p = etree.SubElement(txBody, qn("a:p"))
         if pPr is not None:
             p.append(copy.deepcopy(pPr))
