@@ -1,4 +1,27 @@
 
+## Memory management
+
+During every conversation, actively watch for information worth remembering:
+- New facts about the user (role changes, new goals, preferences)
+- Project decisions, pivots, or milestones
+- Corrections to existing memories (something that was true before is no longer true)
+- Feedback about how to work together
+
+When something comes up that looks worth saving or updating, ask the user:
+**"Стоит ли внести это в память?"** — before writing anything.
+
+If the user says yes: save or update the relevant memory file and update MEMORY.md index.
+If the user says no: skip it, don't ask again about the same thing in the same session.
+
+At the end of longer sessions, do a quick scan: is anything in memory now stale or outdated? If yes, ask whether to update it.
+
+## Health Stack
+
+- typecheck: cd frontend && npx tsc --noEmit
+- lint: cd frontend && npm run lint
+- test: cd backend && source venv/bin/activate && python -m pytest tests/ -v
+- py_syntax: find backend -name "*.py" -not -path "*/venv/*" | xargs python3 -m py_compile
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
