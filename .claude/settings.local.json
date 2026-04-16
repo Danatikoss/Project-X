@@ -122,7 +122,12 @@
       "Bash(git fetch:*)",
       "Skill(office-hours)",
       "Bash(mkdir -p /Users/danatikoss/Desktop/project2/backend/slide_templates)",
-      "Bash(cp /Users/danatikoss/Desktop/Libraryslides.pptx /Users/danatikoss/Desktop/project2/backend/slide_templates/)"
+      "Bash(cp /Users/danatikoss/Desktop/Libraryslides.pptx /Users/danatikoss/Desktop/project2/backend/slide_templates/)",
+      "Skill(health)",
+      "Bash(npx biome:*)",
+      "mcp__notion__notion-search",
+      "mcp__notion__notion-create-pages",
+      "Skill(qa)"
     ]
   }
 }
