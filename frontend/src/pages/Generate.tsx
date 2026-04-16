@@ -174,7 +174,17 @@ function InputStep({
 	const [extracting, setExtracting] = useState(false);
 	const [generating, setGenerating] = useState(false);
 	const [hasMedia, setHasMedia] = useState(false);
+	const [slowHint, setSlowHint] = useState(false);
 	const fileRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		if (!generating) {
+			setSlowHint(false);
+			return;
+		}
+		const timer = setTimeout(() => setSlowHint(true), 12000);
+		return () => clearTimeout(timer);
+	}, [generating]);
 
 	const handleFileChange = async (f: File) => {
 		setFile(f);
@@ -349,6 +359,12 @@ function InputStep({
 					</>
 				)}
 			</button>
+
+			{slowHint && generating && (
+				<p className="text-center text-xs text-indigo-400 animate-pulse">
+					AI подбирает шаблоны и заполняет слоты — ещё немного...
+				</p>
+			)}
 		</div>
 	);
 }

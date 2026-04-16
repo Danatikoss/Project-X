@@ -12,6 +12,7 @@ import {
 	Sparkles,
 	Trash2,
 	Upload,
+	Wand2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -82,6 +83,75 @@ function formatDate(iso: string) {
 	});
 }
 
+// ─── WelcomeCard ──────────────────────────────────────────────────────────────
+
+function WelcomeCard() {
+	const navigate = useNavigate();
+
+	const steps = [
+		{
+			num: "1",
+			title: "Загрузите слайды",
+			desc: "Загрузите PPTX или PDF — AI проиндексирует каждый слайд",
+			icon: Upload,
+			action: () => navigate("/library/upload"),
+			cta: "Загрузить",
+		},
+		{
+			num: "2",
+			title: "Создайте шаблон",
+			desc: "Отберите лучшие слайды из библиотеки в шаблон",
+			icon: BookImage,
+			action: () => navigate("/templates/new"),
+			cta: "Создать шаблон",
+		},
+		{
+			num: "3",
+			title: "Генерируйте с AI",
+			desc: "AI подберёт слайды и заполнит их вашим контентом",
+			icon: Wand2,
+			action: () => navigate("/generate"),
+			cta: "Попробовать",
+		},
+	];
+
+	return (
+		<div className="mb-6 rounded-2xl bg-gradient-to-br from-brand-50 to-indigo-50 border border-brand-100 p-5">
+			<div className="flex items-center gap-2.5 mb-4">
+				<div className="w-8 h-8 rounded-xl bg-gradient-brand flex items-center justify-center shadow-sm shrink-0">
+					<Wand2 className="w-4 h-4 text-white" />
+				</div>
+				<div>
+					<p className="text-sm font-bold text-slate-900">Добро пожаловать в SLIDEX!</p>
+					<p className="text-xs text-slate-500">Три шага, чтобы начать</p>
+				</div>
+			</div>
+			<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+				{steps.map(({ num, title, desc, icon: Icon, action, cta }) => (
+					<button
+						key={num}
+						onClick={action}
+						className="text-left p-4 rounded-xl bg-white border border-white/80 hover:border-brand-200 hover:shadow-sm transition-all group"
+					>
+						<div className="flex items-center gap-2 mb-2.5">
+							<div className="w-6 h-6 rounded-lg bg-gradient-brand text-white text-xs font-bold flex items-center justify-center shadow-sm shrink-0">
+								{num}
+							</div>
+							<Icon className="w-3.5 h-3.5 text-brand-500" />
+						</div>
+						<p className="text-sm font-semibold text-slate-800">{title}</p>
+						<p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
+						<p className="text-xs font-semibold text-brand-600 mt-2.5 flex items-center gap-1 group-hover:text-brand-700">
+							{cta}
+							<ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+						</p>
+					</button>
+				))}
+			</div>
+		</div>
+	);
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -103,7 +173,7 @@ export default function Dashboard() {
 		queryFn: assemblyApi.list,
 	});
 
-	const { data: userTemplates = [] } = useQuery({
+	const { data: userTemplates = [], isLoading: templatesLoading } = useQuery({
 		queryKey: ["templates"],
 		queryFn: templatesApi.list,
 	});
@@ -234,6 +304,11 @@ export default function Dashboard() {
 
 			{/* ── Template grid ────────────────────────────────────────────────────── */}
 			<div className="max-w-3xl mx-auto px-6 pt-6 pb-4">
+				{/* Onboarding welcome — only for brand new users */}
+				{!isLoading && !templatesLoading && assemblies?.length === 0 && userTemplates.length === 0 && (
+					<WelcomeCard />
+				)}
+
 				<div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
 					{allTemplates.map((t) => {
 						const isThisBuilding = isBuilding && activeTemplateId === t.id;
