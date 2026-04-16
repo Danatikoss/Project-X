@@ -98,6 +98,7 @@ class AssemblyResponse(BaseModel):
     overlays: dict = {}
     status: str
     share_token: Optional[str] = None
+    edit_token: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

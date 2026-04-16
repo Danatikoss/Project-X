@@ -31,6 +31,7 @@ from api.schemas import (
 )
 from api.utils import slide_to_response
 from api.deps import get_current_user
+from api.ws import assembly_room
 from services.assembly import run_assembly
 from services.export import export_to_pptx, export_to_pdf
 
@@ -62,6 +63,7 @@ def _assembly_to_response(assembly: AssembledPresentation, db: Session) -> Assem
         overlays=json.loads(assembly.overlays_json or "{}"),
         status=assembly.status,
         share_token=assembly.share_token,
+        edit_token=assembly.edit_token,
         created_at=assembly.created_at,
         updated_at=assembly.updated_at,
     )
@@ -176,7 +178,7 @@ def get_assembly(assembly_id: int, db: Session = Depends(get_db), user: User = D
 
 
 @router.patch("/{assembly_id}", response_model=AssemblyResponse)
-def update_assembly(assembly_id: int, body: AssemblyPatchRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def update_assembly(assembly_id: int, body: AssemblyPatchRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     assembly = db.query(AssembledPresentation).get(assembly_id)
     if not assembly:
         raise HTTPException(404, detail="Сборка не найдена")
@@ -191,7 +193,12 @@ def update_assembly(assembly_id: int, body: AssemblyPatchRequest, db: Session = 
 
     db.commit()
     db.refresh(assembly)
-    return _assembly_to_response(assembly, db)
+    response = _assembly_to_response(assembly, db)
+    await assembly_room.broadcast(assembly_id, {
+        "type": "assembly_updated",
+        "data": response.model_dump(mode="json"),
+    })
+    return response
 
 
 @router.post("/{assembly_id}/export")
@@ -247,7 +254,7 @@ def delete_assembly(assembly_id: int, db: Session = Depends(get_db), user: User 
 
 @router.post("/{assembly_id}/share")
 def share_assembly(assembly_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Generate (or return existing) share token for the assembly."""
+    """Generate (or return existing) view-only share token."""
     assembly = db.query(AssembledPresentation).get(assembly_id)
     if not assembly:
         raise HTTPException(404, detail="Сборка не найдена")
@@ -259,6 +266,55 @@ def share_assembly(assembly_id: int, db: Session = Depends(get_db), user: User =
         db.refresh(assembly)
 
     return {"share_token": assembly.share_token}
+
+
+@router.post("/{assembly_id}/share-edit")
+def share_assembly_edit(assembly_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Generate (or return existing) collaborative edit token."""
+    assembly = db.query(AssembledPresentation).get(assembly_id)
+    if not assembly:
+        raise HTTPException(404, detail="Сборка не найдена")
+    _check_owner(assembly, user.id)
+
+    if not assembly.edit_token:
+        assembly.edit_token = secrets.token_urlsafe(20)
+        db.commit()
+        db.refresh(assembly)
+
+    return {"edit_token": assembly.edit_token}
+
+
+@router.get("/edit/{edit_token}", response_model=AssemblyResponse)
+def get_collab_assembly(edit_token: str, db: Session = Depends(get_db)):
+    """Return assembly by edit token — no auth required (token is the credential)."""
+    assembly = db.query(AssembledPresentation).filter_by(edit_token=edit_token).first()
+    if not assembly:
+        raise HTTPException(404, detail="Ссылка недействительна или была отозвана")
+    return _assembly_to_response(assembly, db)
+
+
+@router.patch("/edit/{edit_token}", response_model=AssemblyResponse)
+async def update_collab_assembly(edit_token: str, body: AssemblyPatchRequest, db: Session = Depends(get_db)):
+    """Update assembly via edit token — no auth required."""
+    assembly = db.query(AssembledPresentation).filter_by(edit_token=edit_token).first()
+    if not assembly:
+        raise HTTPException(404, detail="Ссылка недействительна или была отозвана")
+
+    if body.slide_ids is not None:
+        assembly.slide_ids_json = json.dumps(body.slide_ids)
+    if body.title is not None:
+        assembly.title = body.title[:200]
+    if body.overlays is not None:
+        assembly.overlays_json = json.dumps(body.overlays)
+
+    db.commit()
+    db.refresh(assembly)
+    response = _assembly_to_response(assembly, db)
+    await assembly_room.broadcast(assembly.id, {
+        "type": "assembly_updated",
+        "data": response.model_dump(mode="json"),
+    })
+    return response
 
 
 @router.post("/{assembly_id}/duplicate", response_model=AssemblyResponse, status_code=201)

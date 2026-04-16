@@ -62,15 +62,24 @@ def migrate_db():
             _add_column_if_missing(conn, "assembled_presentations", "share_token", "TEXT")
             _add_column_if_missing(conn, "assembled_presentations", "overlays_json", "TEXT DEFAULT '{}'")
             _add_column_if_missing(conn, "assembled_presentations", "brand_template_id", "INTEGER REFERENCES brand_templates(id)")
+            _add_column_if_missing(conn, "assembled_presentations", "edit_token", "TEXT")
             if _is_sqlite:
                 conn.execute(text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_assembled_presentations_share_token "
                     "ON assembled_presentations(share_token) WHERE share_token IS NOT NULL"
                 ))
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_assembled_presentations_edit_token "
+                    "ON assembled_presentations(edit_token) WHERE edit_token IS NOT NULL"
+                ))
             else:
                 conn.execute(text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_assembled_presentations_share_token "
                     "ON assembled_presentations(share_token) WHERE share_token IS NOT NULL"
+                ))
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_assembled_presentations_edit_token "
+                    "ON assembled_presentations(edit_token) WHERE edit_token IS NOT NULL"
                 ))
         if "slide_library_entries" in tables:
             _add_column_if_missing(conn, "slide_library_entries", "project_id", "INTEGER REFERENCES projects(id)")

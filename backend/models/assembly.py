@@ -16,6 +16,7 @@ class AssembledPresentation(Base):
     status = Column(String, default="draft")
     export_path = Column(String, nullable=True)
     share_token = Column(String, nullable=True, unique=True, index=True)
+    edit_token = Column(String, nullable=True, unique=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

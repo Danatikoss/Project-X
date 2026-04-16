@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from config import settings
 from database import create_tables
 from api.router import router
-from api.ws import websocket_endpoint
+from api.ws import websocket_endpoint, assembly_room_endpoint
 from api.wopi import wopi_router
 
 limiter = Limiter(key_func=get_remote_address)
@@ -80,11 +80,16 @@ app.include_router(router, prefix="/api")
 # WOPI callbacks — called directly by Collabora Online (no /api prefix)
 app.include_router(wopi_router, prefix="/wopi")
 
-# WebSocket endpoint
+# WebSocket endpoints
 from fastapi import WebSocket
+
 @app.websocket("/ws/indexing/{ws_token}")
 async def ws_indexing(websocket: WebSocket, ws_token: str):
     await websocket_endpoint(websocket, ws_token)
+
+@app.websocket("/ws/assembly/{assembly_id}")
+async def ws_assembly(websocket: WebSocket, assembly_id: int):
+    await assembly_room_endpoint(websocket, assembly_id)
 
 # Static file serving (thumbnails + exports + media)
 thumbnail_dir = Path(settings.thumbnail_dir)

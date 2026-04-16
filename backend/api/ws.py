@@ -1,6 +1,7 @@
 """
-WebSocket manager for real-time indexing progress updates.
-Endpoint: /ws/indexing/{ws_token}
+WebSocket manager for real-time updates.
+  /ws/indexing/{ws_token}   — indexing progress (1:1)
+  /ws/assembly/{assembly_id} — collaborative editing room (1:N)
 """
 import asyncio
 import json
@@ -61,6 +62,59 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+# ─── Assembly collaboration room ──────────────────────────────────────────────
+
+class AssemblyRoomManager:
+    """Manages N WebSocket connections per assembly room."""
+
+    def __init__(self):
+        self._rooms: dict[int, set[WebSocket]] = {}
+
+    async def join(self, assembly_id: int, websocket: WebSocket):
+        await websocket.accept()
+        self._rooms.setdefault(assembly_id, set()).add(websocket)
+        logger.info(f"Assembly WS join: room={assembly_id}, total={len(self._rooms[assembly_id])}")
+
+    def leave(self, assembly_id: int, websocket: WebSocket):
+        room = self._rooms.get(assembly_id)
+        if room:
+            room.discard(websocket)
+            if not room:
+                del self._rooms[assembly_id]
+        logger.info(f"Assembly WS leave: room={assembly_id}")
+
+    async def broadcast(self, assembly_id: int, data: dict):
+        """Send a message to all clients in the room."""
+        room = self._rooms.get(assembly_id, set())
+        dead: set[WebSocket] = set()
+        for ws in room:
+            try:
+                await ws.send_text(json.dumps(data, ensure_ascii=False))
+            except Exception as e:
+                logger.warning(f"Assembly WS broadcast failed: {e}")
+                dead.add(ws)
+        for ws in dead:
+            self.leave(assembly_id, ws)
+
+
+assembly_room = AssemblyRoomManager()
+
+
+async def assembly_room_endpoint(websocket: WebSocket, assembly_id: int):
+    await assembly_room.join(assembly_id, websocket)
+    try:
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await websocket.send_text(json.dumps({"type": "ping"}))
+            except Exception:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        assembly_room.leave(assembly_id, websocket)
 
 
 async def websocket_endpoint(websocket: WebSocket, ws_token: str):
