@@ -193,7 +193,7 @@ async def _fill_slots(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def generate_presentation_plan(prompt: str, theme: str = "default") -> dict:
+async def generate_presentation_plan(prompt: str, theme: str = "default", has_media: bool = False) -> dict:
     """
     3-step pipeline: decompose → match → fill.
     Returns {title, slides: [{template_id, slots}]}
@@ -205,6 +205,13 @@ async def generate_presentation_plan(prompt: str, theme: str = "default") -> dic
     if not catalog:
         logger.warning("No templates for theme %r — ignoring theme filter", theme)
         catalog = [t for t in full_catalog if t.layout_role == "content"]
+
+    if has_media:
+        media_catalog = [t for t in catalog if any(k.startswith("slot_media_") for k in t.slots)]
+        if media_catalog:
+            catalog = media_catalog
+        else:
+            logger.warning("has_media=True but no templates with slot_media_* found — using full catalog")
     if not catalog:
         raise ValueError("Каталог шаблонов пуст. Загрузите шаблоны и нажмите Reindex.")
 
@@ -302,6 +309,7 @@ async def fill_single_slide(
     slide_description: str,
     template_id: str | None = None,
     theme: str = "default",
+    has_media: bool = False,
 ) -> dict:
     """
     Generate content for a single slide.
@@ -316,6 +324,13 @@ async def fill_single_slide(
     if not catalog:
         logger.warning("No templates for theme %r in fill_single_slide — ignoring theme filter", theme)
         catalog = [t for t in full_catalog if t.layout_role == "content"]
+
+    if has_media and not template_id:
+        media_catalog = [t for t in catalog if any(k.startswith("slot_media_") for k in t.slots)]
+        if media_catalog:
+            catalog = media_catalog
+        else:
+            logger.warning("has_media=True but no templates with slot_media_* found — using full catalog")
 
     if template_id:
         template = next((t for t in full_catalog if t.id == template_id), None)

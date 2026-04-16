@@ -43,6 +43,7 @@ class GeneratePlanRequest(BaseModel):
     prompt: str = Field(..., min_length=5, max_length=4000)
     theme: str = "default"
     title_template_id: Optional[str] = None
+    has_media: bool = False
 
 
 class SlideInPlan(BaseModel):
@@ -169,7 +170,7 @@ async def create_plan(
         )
 
     try:
-        plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme)
+        plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme, has_media=body.has_media)
     except Exception as e:
         logger.error("Plan generation failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Ошибка генерации плана: {e}")
@@ -369,6 +370,7 @@ async def create_assembly_from_plan(
 class CreateAssemblySingleRequest(BaseModel):
     description: str = Field(..., min_length=5, max_length=1000)
     template_id: Optional[str] = None
+    has_media: bool = False
 
 
 @router.post("/create-assembly-single")
@@ -385,6 +387,7 @@ async def create_assembly_single(
         slide_plan = await fill_single_slide(
             slide_description=body.description,
             template_id=body.template_id,
+            has_media=body.has_media,
         )
     except Exception as e:
         logger.error("Single slide generation failed: %s", e)

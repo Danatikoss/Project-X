@@ -532,12 +532,14 @@ export const generateApi = {
 	createPlan: async (
 		prompt: string,
 		theme: string,
-		titleTemplateId: string | null
+		titleTemplateId: string | null,
+		hasMedia?: boolean
 	): Promise<PresentationPlan> => {
 		const res = await api.post<PresentationPlan>("/generate/plan", {
 			prompt,
 			theme,
 			title_template_id: titleTemplateId,
+			has_media: hasMedia ?? false,
 		});
 		return res.data;
 	},
@@ -636,11 +638,13 @@ export const generateApi = {
 
 	createAssemblySingle: async (
 		description: string,
-		templateId?: string
+		templateId?: string,
+		hasMedia?: boolean
 	): Promise<{ assembly_id: number }> => {
 		const res = await api.post<{ assembly_id: number }>("/generate/create-assembly-single", {
 			description,
 			template_id: templateId ?? null,
+			has_media: hasMedia ?? false,
 		});
 		return res.data;
 	},
