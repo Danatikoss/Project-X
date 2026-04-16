@@ -289,7 +289,7 @@ export default function Upload() {
 
 				{/* Instructions (only when no uploads in progress and no history) */}
 				{uploadQueue.length === 0 && sources.length === 0 && !sourcesLoading && (
-					<div className="mt-8 grid grid-cols-3 gap-4">
+					<div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
 						{[
 							{ step: "1", title: "Загрузите", desc: "PPTX или PDF файлы с вашими слайдами" },
 							{

@@ -954,7 +954,7 @@ export default function Generate() {
 
 			{/* ── Template library ── */}
 			<div>
-				<div className="flex items-center justify-between mb-4">
+				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
 					<div>
 						<h2 className="text-sm font-semibold text-gray-900">Библиотека шаблонов</h2>
 						<p className="text-xs text-gray-400 mt-0.5">
@@ -962,7 +962,7 @@ export default function Generate() {
 						</p>
 					</div>
 					{isAdmin && (
-						<div className="flex items-center gap-2">
+						<div className="flex items-center gap-2 flex-wrap">
 							{templates.length > 0 && (
 								<button
 									onClick={() => setShowDeleteAllConfirm(true)}

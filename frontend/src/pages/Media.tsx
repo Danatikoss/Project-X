@@ -578,7 +578,7 @@ export default function Media() {
 		>
 			<div className="flex h-full">
 				{/* ── Sidebar ──────────────────────────────────────────────────────── */}
-				<aside className="w-52 shrink-0 border-r border-slate-200 bg-white flex flex-col py-4 px-2 gap-0.5">
+				<aside className="hidden md:flex w-52 shrink-0 border-r border-slate-200 bg-white flex-col py-4 px-2 gap-0.5">
 					<p className="px-3 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
 						Тип
 					</p>
@@ -718,6 +718,48 @@ export default function Media() {
 
 				{/* ── Main content ─────────────────────────────────────────────────── */}
 				<div className="flex-1 flex flex-col min-w-0">
+					{/* Mobile filter bar */}
+					<div className="md:hidden flex items-center gap-1.5 px-3 py-2 border-b border-slate-200 bg-white overflow-x-auto shrink-0">
+						{TYPE_TABS.map(({ value, label, icon, color }) => {
+							const isActive = activeFolder === "all" && typeFilter === value;
+							return (
+								<button
+									key={value}
+									onClick={() => { setActiveFolder("all"); setTypeFilter(value); }}
+									className={cn(
+										"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0",
+										isActive ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600"
+									)}
+								>
+									<span className={isActive ? "text-white" : color || "text-slate-400"}>{icon}</span>
+									{label}
+								</button>
+							);
+						})}
+						<div className="w-px h-4 bg-slate-200 shrink-0 mx-1" />
+						<button
+							onClick={() => { setActiveFolder("unfiled"); setTypeFilter("all"); }}
+							className={cn(
+								"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0",
+								activeFolder === "unfiled" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600"
+							)}
+						>
+							Без папки
+						</button>
+						{folders.map((f) => (
+							<button
+								key={f.id}
+								onClick={() => { setActiveFolder(f.id); setTypeFilter("all"); }}
+								className={cn(
+									"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0",
+									activeFolder === f.id ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600"
+								)}
+							>
+								{f.name}
+							</button>
+						))}
+					</div>
+
 					{/* Top bar */}
 					<div className="border-b border-slate-200 px-5 py-3 flex items-center gap-3 bg-white sticky top-0 z-10 shadow-sm">
 						<div>
@@ -758,7 +800,7 @@ export default function Media() {
 								className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-brand text-white text-sm font-semibold hover:opacity-90 transition-all shadow-sm"
 							>
 								<Plus className="w-4 h-4" />
-								Загрузить медиа
+								<span className="hidden sm:inline">Загрузить медиа</span>
 							</button>
 						</div>
 					</div>

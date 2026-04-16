@@ -257,7 +257,7 @@ export default function Profile() {
 			<div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
 				<h2 className="text-sm font-semibold text-slate-700 mb-4">Основная информация</h2>
 				<div className="flex flex-col gap-3">
-					<div className="grid grid-cols-2 gap-3">
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 						<div>
 							<label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
 								Имя
