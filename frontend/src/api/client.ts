@@ -506,9 +506,15 @@ function _downloadBlob(blob: Blob, filename: string) {
 	setTimeout(() => window.URL.revokeObjectURL(url), 5000);
 }
 
+export interface SlideInPlan {
+	template_id: string;
+	slots: Record<string, string>;
+	has_media?: boolean;
+}
+
 export interface PresentationPlan {
 	title: string;
-	slides: { template_id: string; slots: Record<string, string> }[];
+	slides: SlideInPlan[];
 	theme: string;
 	title_template_id: string | null;
 }

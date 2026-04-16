@@ -49,6 +49,7 @@ class GeneratePlanRequest(BaseModel):
 class SlideInPlan(BaseModel):
     template_id: str
     slots: dict[str, str]
+    has_media: bool = False
 
 
 class PresentationPlan(BaseModel):
@@ -196,6 +197,7 @@ async def download_presentation(
     Step 2: Render a confirmed plan to PPTX and return as a download.
     Accepts the plan returned by /plan (possibly edited by user).
     """
+    body.slides = await _resolve_media_slides(body.slides)
     out_prs = _build_pptx_from_plan(body)
 
     if len(out_prs.slides) == 0:
@@ -204,6 +206,50 @@ async def download_presentation(
     filename = f"{body.title}.pptx"
     buf = _pptx_to_stream(out_prs)
     return _make_streaming_response(buf, filename)
+
+
+async def _resolve_media_slides(slides: list[SlideInPlan]) -> list[SlideInPlan]:
+    """
+    For slides marked has_media=True that don't already use a media template,
+    re-match to a media template and re-fill slots using current slot values as context.
+    Falls back to the original slide silently if no media templates exist.
+    """
+    from services.template_generator import fill_single_slide
+
+    full_catalog = load_catalog()
+    result = []
+    for slide in slides:
+        if not slide.has_media:
+            result.append(slide)
+            continue
+
+        # Already using a media template — nothing to do
+        try:
+            tmpl = get_template_by_id(slide.template_id, full_catalog)
+            if any(k.startswith("slot_media_") for k in tmpl.slots):
+                result.append(slide)
+                continue
+        except ValueError:
+            pass
+
+        # Build a content description from existing slots for re-filling
+        content_desc = " ".join(v for v in slide.slots.values() if v)[:500]
+        try:
+            new_plan = await fill_single_slide(
+                slide_description=content_desc or "Медиа слайд",
+                has_media=True,
+            )
+            result.append(SlideInPlan(
+                template_id=new_plan["template_id"],
+                slots=new_plan["slots"],
+                has_media=True,
+            ))
+            logger.info("Re-matched slide to media template %r", new_plan["template_id"])
+        except Exception as e:
+            logger.warning("Could not re-match slide to media template: %s — keeping original", e)
+            result.append(slide)
+
+    return result
 
 
 def _build_pptx_from_plan(body: "PresentationPlan") -> "PptxPresentation":
@@ -353,6 +399,7 @@ async def create_assembly_from_plan(
     Generate a presentation from a confirmed plan, save slides to the library,
     and create an Assembly in the editor. Returns { assembly_id }.
     """
+    body.slides = await _resolve_media_slides(body.slides)
     out_prs = _build_pptx_from_plan(body)
     if len(out_prs.slides) == 0:
         raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")

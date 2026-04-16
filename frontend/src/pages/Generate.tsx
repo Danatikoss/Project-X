@@ -18,12 +18,13 @@ import {
 	Tag,
 	Trash2,
 	Upload,
+	Video,
 	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { generateApi, type PresentationPlan, type SlideTemplate } from "../api/client";
+import { generateApi, type PresentationPlan, type SlideInPlan, type SlideTemplate } from "../api/client";
 import { useAuthStore } from "../store/auth";
 import { cn } from "../utils/cn";
 
@@ -306,23 +307,25 @@ function InputStep({
 				)}
 			</div>
 
-			{/* Media checkbox */}
-			<label className="flex items-center gap-2.5 cursor-pointer select-none group">
-				<div
-					onClick={() => setHasMedia((v) => !v)}
-					className={cn(
-						"w-4 h-4 rounded flex items-center justify-center border transition-all shrink-0",
-						hasMedia
-							? "bg-indigo-600 border-indigo-600"
-							: "border-gray-300 group-hover:border-indigo-400"
-					)}
-				>
-					{hasMedia && <Check className="w-2.5 h-2.5 text-white" />}
-				</div>
-				<span className="text-xs text-gray-600">
-					Слайд должен содержать место для видео&nbsp;/ GIF
-				</span>
-			</label>
+			{/* Media checkbox — only for single slide mode */}
+			{mode === "1slide" && (
+				<label className="flex items-center gap-2.5 cursor-pointer select-none group">
+					<div
+						onClick={() => setHasMedia((v) => !v)}
+						className={cn(
+							"w-4 h-4 rounded flex items-center justify-center border transition-all shrink-0",
+							hasMedia
+								? "bg-indigo-600 border-indigo-600"
+								: "border-gray-300 group-hover:border-indigo-400"
+						)}
+					>
+						{hasMedia && <Check className="w-2.5 h-2.5 text-white" />}
+					</div>
+					<span className="text-xs text-gray-600">
+						Слайд должен содержать место для видео&nbsp;/ GIF
+					</span>
+				</label>
+			)}
 
 			<button
 				onClick={handleGenerate}
@@ -365,12 +368,21 @@ function PlanStep({
 }) {
 	const [downloading, setDownloading] = useState(false);
 	const [openingEditor, setOpeningEditor] = useState(false);
+	const [slides, setSlides] = useState<SlideInPlan[]>(plan.slides);
 	const templateMap = Object.fromEntries(templates.map((t) => [t.id, t]));
+
+	const toggleMedia = (i: number) => {
+		setSlides((prev) =>
+			prev.map((s, idx) => (idx === i ? { ...s, has_media: !s.has_media } : s))
+		);
+	};
+
+	const currentPlan = { ...plan, slides };
 
 	const handleDownload = async () => {
 		setDownloading(true);
 		try {
-			await generateApi.downloadPresentation(plan);
+			await generateApi.downloadPresentation(currentPlan);
 			toast.success("Презентация скачана");
 		} catch (e: unknown) {
 			const msg =
@@ -384,7 +396,7 @@ function PlanStep({
 	const handleOpenInEditor = async () => {
 		setOpeningEditor(true);
 		try {
-			const { assembly_id } = await generateApi.createAssembly(plan);
+			const { assembly_id } = await generateApi.createAssembly(currentPlan);
 			onOpenInEditor(assembly_id);
 		} catch (e: unknown) {
 			const msg =
@@ -414,7 +426,7 @@ function PlanStep({
 
 			{/* Slide list */}
 			<div className="space-y-2">
-				{plan.slides.map((slide, i) => {
+				{slides.map((slide, i) => {
 					const tmpl = templateMap[slide.template_id];
 					const mainSlot = slide.slots.slot_product_name || slide.slots.slot_main_card || "";
 					const previewText = mainSlot.split("\n")[0] || slide.template_id;
@@ -422,7 +434,12 @@ function PlanStep({
 					return (
 						<div
 							key={i}
-							className="flex items-start gap-3 bg-white border border-gray-200 rounded-xl p-3.5 hover:border-gray-300 transition-all"
+							className={cn(
+								"flex items-start gap-3 bg-white border rounded-xl p-3.5 transition-all",
+								slide.has_media
+									? "border-indigo-300 bg-indigo-50/40"
+									: "border-gray-200 hover:border-gray-300"
+							)}
 						>
 							<div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
 								<span className="text-xs font-bold text-indigo-500">{i + 1}</span>
@@ -433,11 +450,28 @@ function PlanStep({
 									<span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full shrink-0">
 										{tmpl?.name || slide.template_id}
 									</span>
+									{slide.has_media && (
+										<span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium shrink-0">
+											видео / GIF
+										</span>
+									)}
 								</div>
 								<p className="text-xs text-gray-400 mt-0.5 truncate">
 									{Object.keys(slide.slots).length} слотов заполнено
 								</p>
 							</div>
+							<button
+								onClick={() => toggleMedia(i)}
+								title={slide.has_media ? "Убрать место для медиа" : "Добавить место для видео / GIF"}
+								className={cn(
+									"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all",
+									slide.has_media
+										? "bg-indigo-600 text-white"
+										: "text-gray-300 hover:text-indigo-500 hover:bg-indigo-50"
+								)}
+							>
+								<Video className="w-3.5 h-3.5" />
+							</button>
 						</div>
 					);
 				})}
