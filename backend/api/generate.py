@@ -50,6 +50,10 @@ class SlideInPlan(BaseModel):
     template_id: str
     slots: dict[str, str]
     has_media: bool = False
+    slide_type: str = "template"        # "template" | "library"
+    library_slide_id: Optional[int] = None
+    library_thumbnail_url: Optional[str] = None
+    library_title: Optional[str] = None
 
 
 class PresentationPlan(BaseModel):
@@ -57,6 +61,7 @@ class PresentationPlan(BaseModel):
     slides: list[SlideInPlan]
     theme: str = "default"
     title_template_id: Optional[str] = None
+    plan_elapsed_seconds: Optional[float] = None
 
 
 class GenerateSlideRequest(BaseModel):
@@ -73,9 +78,63 @@ class TemplateSlotInfo(BaseModel):
     scenario_tags: list[str]
     theme: str = "default"
     layout_role: str = "content"
+    elapsed_seconds: Optional[float] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _enrich_plan_with_library_slides(
+    slides: list[SlideInPlan],
+    db: Session,
+    user_id: int,
+    threshold: float = 0.90,
+) -> list[SlideInPlan]:
+    """
+    For each slide in plan, check if a relevant *user-uploaded* library slide exists.
+    If similarity >= threshold, substitute with the library slide.
+    Falls back to the original template slide if nothing matches.
+    AI-generated slides are excluded from substitution to avoid circular references.
+    """
+    from services.embedding import embed_single
+    from services.vector_search import hybrid_search
+
+    result = []
+    for slide in slides:
+        query = " ".join(v for v in slide.slots.values() if v)[:500]
+        if not query:
+            result.append(slide)
+            continue
+
+        try:
+            embedding = await embed_single(query)
+            candidates = hybrid_search(db, query_embedding=embedding, query_text=query, top_k=10, user_id=user_id)
+        except Exception:
+            result.append(slide)
+            continue
+
+        # Only consider slides from user-uploaded presentations (not AI-generated)
+        human_candidates = [
+            (entry, score) for entry, score in candidates
+            if entry.source and not entry.source.is_ai_source
+        ]
+
+        if human_candidates and human_candidates[0][1] >= threshold:
+            best, score = human_candidates[0]
+            thumb_url = f"/thumbnails/{best.thumbnail_path}" if best.thumbnail_path else None
+            result.append(SlideInPlan(
+                template_id=slide.template_id,
+                slots=slide.slots,
+                has_media=slide.has_media,
+                slide_type="library",
+                library_slide_id=best.id,
+                library_thumbnail_url=thumb_url,
+                library_title=best.title or slide.slots.get("slot_title") or f"Слайд {best.id}",
+            ))
+        else:
+            result.append(slide)
+
+    return result
+
 
 def _pptx_to_stream(prs: PptxPresentation) -> io.BytesIO:
     buf = io.BytesIO()
@@ -146,6 +205,7 @@ def list_title_slides(
 @router.post("/plan", response_model=PresentationPlan)
 async def create_plan(
     body: GeneratePlanRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -170,6 +230,9 @@ async def create_plan(
             detail="Шаблоны загружены, но не проиндексированы. Нажмите Reindex в библиотеке шаблонов."
         )
 
+    import time as _time
+    _t0 = _time.perf_counter()
+
     try:
         plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme, has_media=body.has_media)
     except Exception as e:
@@ -180,32 +243,58 @@ async def create_plan(
     if not slides:
         raise HTTPException(status_code=502, detail="LLM не вернул слайды")
 
+    base_slides = [SlideInPlan(template_id=s["template_id"], slots=s.get("slots", {})) for s in slides]
+    enriched = await _enrich_plan_with_library_slides(base_slides, db=db, user_id=current_user.id)
+
+    elapsed = round(_time.perf_counter() - _t0, 2)
+    logger.info("Plan generated: %d slides in %.2fs (user=%d)", len(enriched), elapsed, current_user.id)
+    try:
+        from api.admin import log_generation
+        log_generation(db, "plan", elapsed, user_id=current_user.id, slide_count=len(enriched))
+    except Exception:
+        pass
+
     return PresentationPlan(
         title=plan.get("title", "Презентация"),
-        slides=[SlideInPlan(template_id=s["template_id"], slots=s.get("slots", {})) for s in slides],
+        slides=enriched,
         theme=body.theme,
         title_template_id=body.title_template_id,
+        plan_elapsed_seconds=elapsed,
     )
 
 
 @router.post("/download")
 async def download_presentation(
     body: PresentationPlan,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     Step 2: Render a confirmed plan to PPTX and return as a download.
     Accepts the plan returned by /plan (possibly edited by user).
     """
+    import time as _time
+    _t0 = _time.perf_counter()
+
     body.slides = await _resolve_media_slides(body.slides)
-    out_prs = _build_pptx_from_plan(body)
+    out_prs = _build_pptx_from_plan(body, db=db)
 
     if len(out_prs.slides) == 0:
         raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")
 
+    elapsed = round(_time.perf_counter() - _t0, 2)
+    logger.info("Presentation rendered: %d slides in %.2fs (user=%d)", len(out_prs.slides), elapsed, current_user.id)
+    try:
+        from api.admin import log_generation
+        log_generation(db, "download", elapsed, user_id=current_user.id, slide_count=len(out_prs.slides))
+    except Exception:
+        pass
+
     filename = f"{body.title}.pptx"
     buf = _pptx_to_stream(out_prs)
-    return _make_streaming_response(buf, filename)
+    response = _make_streaming_response(buf, filename)
+    response.headers["X-Generation-Time"] = str(elapsed)
+    return response
 
 
 async def _resolve_media_slides(slides: list[SlideInPlan]) -> list[SlideInPlan]:
@@ -252,10 +341,11 @@ async def _resolve_media_slides(slides: list[SlideInPlan]) -> list[SlideInPlan]:
     return result
 
 
-def _build_pptx_from_plan(body: "PresentationPlan") -> "PptxPresentation":
+def _build_pptx_from_plan(body: "PresentationPlan", db: Session | None = None) -> "PptxPresentation":
     """Shared helper: render a PresentationPlan into an in-memory PPTX."""
     from pptx import Presentation as PptxPrs
     from services.template_injector import PPTX_PATH as TPL_PATH
+    from services.export import _clone_slide
 
     catalog = load_catalog()
     source = PptxPrs(str(TPL_PATH))
@@ -272,7 +362,6 @@ def _build_pptx_from_plan(body: "PresentationPlan") -> "PptxPresentation":
     if body.title_template_id:
         try:
             title_tmpl = get_template_by_id(body.title_template_id, catalog)
-            # Fill title slot with presentation title, rest blank
             title_slots = {k: (body.title if "title" in k or "name" in k else "") for k in title_tmpl.slots}
             inject_into_presentation(out_prs, title_tmpl, title_slots, source_cache=source_cache)
             logger.info("Prepended title slide %r", body.title_template_id)
@@ -280,6 +369,18 @@ def _build_pptx_from_plan(body: "PresentationPlan") -> "PptxPresentation":
             logger.warning("Could not inject title slide %r: %s", body.title_template_id, e)
 
     for i, slide in enumerate(body.slides):
+        # Library slide: clone directly from source PPTX
+        if slide.slide_type == "library" and slide.library_slide_id and db is not None:
+            entry = db.query(SlideLibraryEntry).get(slide.library_slide_id)
+            if entry and entry.source and entry.source.file_path:
+                try:
+                    if _clone_slide(out_prs, entry.source.file_path, entry.slide_index):
+                        logger.info("Cloned library slide %d into position %d", entry.id, i)
+                        continue
+                except Exception as e:
+                    logger.warning("Library slide clone failed for id=%d: %s, falling back to template", entry.id, e)
+
+        # Template slide (default path)
         try:
             tmpl = get_template_by_id(slide.template_id, catalog)
         except ValueError:
@@ -342,10 +443,13 @@ def _save_pptx_and_create_assembly(
     for i, sd in enumerate(slide_data_list):
         thumb_rel = save_thumbnail(sd.thumbnail_bytes, source.id, sd.index, settings.thumbnail_dir)
 
-        # Pull a reasonable title from the plan slots
-        slots: dict = plan_slides[i].slots if i < len(plan_slides) else {}
+        # Pull a reasonable title from plan slide (library or template)
+        plan_slide = plan_slides[i] if i < len(plan_slides) else None
+        lib_title = getattr(plan_slide, "library_title", None) if getattr(plan_slide, "slide_type", "template") == "library" else None
+        slots: dict = getattr(plan_slide, "slots", {}) or {}
         title = (
-            slots.get("slot_title")
+            lib_title
+            or slots.get("slot_title")
             or slots.get("slot_product_name")
             or (slots.get("slot_main_card", "").split("\n")[0] if slots.get("slot_main_card") else "")
             or f"Слайд {i + 1}"
@@ -399,8 +503,11 @@ async def create_assembly_from_plan(
     Generate a presentation from a confirmed plan, save slides to the library,
     and create an Assembly in the editor. Returns { assembly_id }.
     """
+    import time as _time
+    _t0 = _time.perf_counter()
+
     body.slides = await _resolve_media_slides(body.slides)
-    out_prs = _build_pptx_from_plan(body)
+    out_prs = _build_pptx_from_plan(body, db=db)
     if len(out_prs.slides) == 0:
         raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")
 
@@ -411,7 +518,14 @@ async def create_assembly_from_plan(
         owner_id=current_user.id,
         db=db,
     )
-    return {"assembly_id": assembly_id}
+    elapsed = round(_time.perf_counter() - _t0, 2)
+    logger.info("Assembly created: id=%d, %d slides in %.2fs (user=%d)", assembly_id, len(body.slides), elapsed, current_user.id)
+    try:
+        from api.admin import log_generation
+        log_generation(db, "assembly", elapsed, user_id=current_user.id, slide_count=len(body.slides))
+    except Exception:
+        pass
+    return {"assembly_id": assembly_id, "elapsed_seconds": elapsed}
 
 
 class CreateAssemblySingleRequest(BaseModel):
@@ -733,6 +847,79 @@ Return ONLY valid JSON:
     return final_slots, suggested_desc, suggested_tags
 
 
+class SlotPreview(BaseModel):
+    slide_index: int
+    shapes: list[dict]  # [{original_name, suggested_slot, text_preview, position}]
+    description: str
+    scenario_tags: list[str]
+
+
+@router.post("/templates/preview-slots", response_model=SlotPreview)
+async def preview_slots(
+    file: UploadFile = File(...),
+    slide_index: int = Form(default=0),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Dry-run: анализирует PPTX и возвращает предполагаемые slot-имена без сохранения файла.
+    Используй перед загрузкой, чтобы проверить точность автодетекции.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор")
+
+    if not file.filename or not file.filename.lower().endswith(".pptx"):
+        raise HTTPException(status_code=400, detail="Файл должен быть .pptx")
+
+    import tempfile, shutil
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        from pptx import Presentation as PptxPrs
+        import io as _io
+        prs = PptxPrs(_io.BytesIO(content))
+        if slide_index >= len(prs.slides):
+            raise HTTPException(status_code=400, detail=f"Слайд {slide_index} не существует")
+
+        # Read original shape names before AI renames them
+        slide = prs.slides[slide_index]
+        original_names = {i: shape.name for i, shape in enumerate(slide.shapes)}
+
+        ai_slots, ai_desc, ai_tags = await _auto_detect_slots(tmp_path, slide_index, "", "")
+
+        # Map back: original_name → suggested slot name
+        prs2 = PptxPrs(str(tmp_path))
+        slide2 = prs2.slides[slide_index]
+        from pptx.util import Emu
+        slide_w = prs2.slide_width or Emu(9144000)
+        slide_h = prs2.slide_height or Emu(5143500)
+
+        shapes_out = []
+        for i, shape in enumerate(slide2.shapes):
+            if not hasattr(shape, "has_text_frame") or not shape.has_text_frame:
+                continue
+            shapes_out.append({
+                "original_name": original_names.get(i, shape.name),
+                "suggested_slot": shape.name if shape.name.startswith("slot_") else None,
+                "text_preview": shape.text_frame.text.strip()[:80],
+                "position": {
+                    "left%": round(shape.left / slide_w * 100, 1) if shape.left else 0,
+                    "top%": round(shape.top / slide_h * 100, 1) if shape.top else 0,
+                },
+            })
+
+        return SlotPreview(
+            slide_index=slide_index,
+            shapes=shapes_out,
+            description=ai_desc,
+            scenario_tags=ai_tags,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 @router.post("/templates/upload", response_model=TemplateSlotInfo)
 async def upload_template(
     file: UploadFile = File(...),
@@ -750,6 +937,9 @@ async def upload_template(
     Otherwise AI auto-detects and renames shapes automatically.
     Only admins can upload templates (they are shared across all users).
     """
+    import time as _time
+    _t0 = _time.perf_counter()
+
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администратор может загружать шаблоны")
 
@@ -781,10 +971,27 @@ async def upload_template(
             if shape.name.startswith("slot_") and hasattr(shape, "has_text_frame") and shape.has_text_frame
         }
         if not slots:
+            # AI auto-detects and renames shapes in-place
+            try:
+                ai_slots, ai_desc, ai_tags = await _auto_detect_slots(
+                    pptx_path, slide_index, description, scenario_tags
+                )
+                slots = ai_slots
+                if not description and ai_desc:
+                    description = ai_desc
+                if not scenario_tags and ai_tags:
+                    scenario_tags = ",".join(ai_tags)
+            except Exception as ai_err:
+                pptx_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Не удалось автоматически определить слоты: {ai_err}"
+                )
+        if not slots:
             pptx_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=400,
-                detail="Шаблон не содержит слотов. Переименуй текстовые блоки в PowerPoint: названия должны начинаться с 'slot_' (например slot_title, slot_body)."
+                detail="ИИ не смог найти текстовые блоки в слайде. Убедись, что слайд содержит текстовые элементы."
             )
     except HTTPException:
         raise
@@ -829,7 +1036,8 @@ async def upload_template(
     catalog_data.append(new_entry)
     _save_catalog(catalog_data)
 
-    logger.info("Uploaded new template %r (theme=%r, role=%r) by user %d", template_id, theme_clean, role_clean, current_user.id)
+    elapsed = round(_time.perf_counter() - _t0, 2)
+    logger.info("Uploaded new template %r in %.2fs (theme=%r, role=%r) by user %d", template_id, elapsed, theme_clean, role_clean, current_user.id)
     return TemplateSlotInfo(
         id=template_id,
         name=name,
@@ -838,12 +1046,14 @@ async def upload_template(
         scenario_tags=tags,
         theme=theme_clean,
         layout_role=role_clean,
+        elapsed_seconds=elapsed,
     )
 
 
 class BatchUploadResult(BaseModel):
     created: int
     templates: list[TemplateSlotInfo]
+    elapsed_seconds: float = 0.0
 
 
 @router.post("/templates/upload-batch", response_model=BatchUploadResult)
@@ -856,6 +1066,9 @@ async def upload_templates_batch(
     Upload a PPTX with one or more slides. Each slide that has slot_* shapes becomes
     a separate template. AI auto-generates name, description, and tags for each slide.
     """
+    import time as _time
+    _t0 = _time.perf_counter()
+
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администратор может загружать шаблоны")
 
@@ -894,7 +1107,14 @@ async def upload_templates_batch(
                 raw_text = shape.text_frame.text.strip()
                 slots[shape.name] = raw_text if raw_text else f"Слот {shape.name}"
         if not slots:
-            continue
+            # AI auto-detects and renames shapes in-place
+            try:
+                ai_slots, ai_desc, ai_tags = await _auto_detect_slots(pptx_path, slide_index, "", "")
+                slots = ai_slots
+            except Exception as e:
+                logger.warning("Auto-detect slots failed for slide %d: %s, skipping", slide_index, e)
+            if not slots:
+                continue
 
         # Collect visible text for AI context (non-slot shapes only, to avoid noise)
         text_previews = [
@@ -962,12 +1182,14 @@ async def upload_templates_batch(
     catalog_data.extend(new_entries)
     _save_catalog(catalog_data)
 
+    elapsed = round(_time.perf_counter() - _t0, 2)
     logger.info(
-        "Batch upload: %d templates from %r by user %d",
-        len(new_entries), file.filename, current_user.id
+        "Batch upload: %d templates from %r by user %d in %.2fs",
+        len(new_entries), file.filename, current_user.id, elapsed
     )
     return BatchUploadResult(
         created=len(new_entries),
+        elapsed_seconds=elapsed,
         templates=[
             TemplateSlotInfo(
                 id=e["id"],

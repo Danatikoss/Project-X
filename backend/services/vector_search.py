@@ -51,8 +51,9 @@ def search_slides(
     """
     from models.slide import SlideLibraryEntry, SourcePresentation
 
-    # Load all slides with embeddings
-    query = db.query(SlideLibraryEntry).filter(
+    # Load all slides with embeddings (joinedload source to avoid N+1)
+    from sqlalchemy.orm import joinedload
+    query = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).filter(
         SlideLibraryEntry.embedding_json.isnot(None),
         SlideLibraryEntry.is_outdated == False,  # noqa: E712
     )
