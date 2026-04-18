@@ -83,6 +83,24 @@ class TemplateSlotInfo(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _source_has_slots(file_path: str, _cache: dict = {}) -> bool:
+    """Return True if the PPTX at file_path has at least one slot_* named shape."""
+    if file_path in _cache:
+        return _cache[file_path]
+    try:
+        from pptx import Presentation as _Prs
+        prs = _Prs(file_path)
+        has = any(
+            shape.name.startswith("slot_")
+            for slide in prs.slides
+            for shape in slide.shapes
+        )
+    except Exception:
+        has = False
+    _cache[file_path] = has
+    return has
+
+
 async def _enrich_plan_with_library_slides(
     slides: list[SlideInPlan],
     db: Session,
@@ -94,6 +112,7 @@ async def _enrich_plan_with_library_slides(
     If similarity >= threshold, substitute with the library slide.
     Falls back to the original template slide if nothing matches.
     AI-generated slides are excluded from substitution to avoid circular references.
+    Only library slides from slot-named PPTX sources are used (ensures visual consistency).
     """
     from services.embedding import embed_single
     from services.vector_search import hybrid_search
@@ -113,9 +132,13 @@ async def _enrich_plan_with_library_slides(
             continue
 
         # Only consider slides from user-uploaded presentations (not AI-generated)
+        # AND only from sources that use slot_* named shapes (ensures visual consistency with templates)
         human_candidates = [
             (entry, score) for entry, score in candidates
-            if entry.source and not entry.source.is_ai_source
+            if entry.source
+            and not entry.source.is_ai_source
+            and entry.source.file_path
+            and _source_has_slots(entry.source.file_path)
         ]
 
         if human_candidates and human_candidates[0][1] >= threshold:
