@@ -813,6 +813,7 @@ Return ONLY valid JSON:
         response_format={"type": "json_object"},
         messages=[{"role": "user", "content": user_content}],
         temperature=0.1,
+        max_tokens=1000,
     )
     raw = json.loads(response.choices[0].message.content or "{}")
 

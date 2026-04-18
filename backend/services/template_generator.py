@@ -67,6 +67,7 @@ async def _decompose_prompt(prompt: str) -> dict:
             {"role": "user", "content": f"Тема презентации:\n{prompt}"},
         ],
         temperature=0.3,
+        max_tokens=2000,
     )
     raw = json.loads(response.choices[0].message.content or "{}")
     logger.info("Decomposed into %d slides: %r", len(raw.get("slides", [])), prompt[:60])
@@ -177,6 +178,7 @@ async def _fill_slots(
             {"role": "user", "content": user_msg},
         ],
         temperature=0.3,
+        max_tokens=1000,
     )
     raw = json.loads(response.choices[0].message.content or "{}")
 
@@ -299,6 +301,7 @@ async def extract_file_content(file_bytes: bytes, filename: str) -> str:
             {"role": "user", "content": f"Документ:\n{truncated}"},
         ],
         temperature=0.1,
+        max_tokens=1000,
     )
     summary = response.choices[0].message.content or raw_text[:1000]
     logger.info("Extracted %d chars from %r → %d char summary", len(raw_text), filename, len(summary))
