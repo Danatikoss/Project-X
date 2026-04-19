@@ -21,6 +21,7 @@ import {
 	Search,
 	Share2,
 	Trash2,
+	Upload,
 	Users,
 	X,
 } from "lucide-react";
@@ -338,6 +339,9 @@ const MEDIA_TYPE_TABS = [
 function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 	const [selectedFolder, setSelectedFolder] = useState<number | "all" | "unfoldered">("all");
 	const [typeTab, setTypeTab] = useState<"all" | "gif" | "video" | "image">("all");
+	const [isDragging, setIsDragging] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const qc = useQueryClient();
 
 	const { data: folders = [] } = useQuery<MediaFolder[]>({
 		queryKey: ["media-folders"],
@@ -354,6 +358,27 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 		},
 	});
 
+	const uploadMutation = useMutation({
+		mutationFn: (file: File) => mediaApi.upload(file, file.name),
+		onSuccess: (asset) => {
+			qc.invalidateQueries({ queryKey: ["media-assets"] });
+			toast.success(`«${asset.name}» загружен`);
+			onAdd(asset);
+		},
+		onError: () => toast.error("Не удалось загрузить файл"),
+	});
+
+	function handleFiles(files: FileList | null) {
+		if (!files || files.length === 0) return;
+		Array.from(files).forEach((f) => uploadMutation.mutate(f));
+	}
+
+	function handleDrop(e: React.DragEvent) {
+		e.preventDefault();
+		setIsDragging(false);
+		handleFiles(e.dataTransfer.files);
+	}
+
 	if (isLoading)
 		return (
 			<div className="flex justify-center py-8">
@@ -362,9 +387,23 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 		);
 
 	return (
-		<div className="flex flex-col h-full">
-			{/* Type tabs */}
-			<div className="px-2 pt-2 pb-1 flex gap-1">
+		<div
+			className={cn("flex flex-col h-full transition-colors", isDragging && "bg-brand-50")}
+			onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+			onDragLeave={() => setIsDragging(false)}
+			onDrop={handleDrop}
+		>
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept="video/*,image/gif,image/*"
+				multiple
+				className="hidden"
+				onChange={(e) => handleFiles(e.target.files)}
+			/>
+
+			{/* Type tabs + upload button */}
+			<div className="px-2 pt-2 pb-1 flex gap-1 items-center">
 				{MEDIA_TYPE_TABS.map(({ value, label }) => (
 					<button
 						key={value}
@@ -379,6 +418,14 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 						{label}
 					</button>
 				))}
+				<button
+					onClick={() => fileInputRef.current?.click()}
+					disabled={uploadMutation.isPending}
+					className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600 transition-colors disabled:opacity-50"
+					title="Загрузить файл"
+				>
+					{uploadMutation.isPending ? <Spinner className="w-3 h-3" /> : <Upload className="w-3.5 h-3.5" />}
+				</button>
 			</div>
 
 			{/* Folder chips */}
@@ -417,20 +464,20 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 			)}
 
 			{assets.length === 0 ? (
-				<div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 p-4">
-					<Film className="w-8 h-8 opacity-20" />
-					<p className="text-xs text-center">
-						{typeTab === "gif"
-							? "Нет GIF-анимаций"
-							: typeTab === "video"
-								? "Нет видеофайлов"
-								: typeTab === "image"
-									? "Нет фотографий"
-									: "Нет медиафайлов"}
-					</p>
-					{typeTab === "all" && (
-						<p className="text-[10px] text-gray-400 text-center">Загрузите в разделе «Медиа»</p>
+				<div
+					className={cn(
+						"flex flex-col items-center justify-center flex-1 gap-2 p-4 border-2 border-dashed m-2 rounded-xl transition-colors cursor-pointer",
+						isDragging
+							? "border-brand-400 bg-brand-50 text-brand-600"
+							: "border-gray-200 text-gray-400"
 					)}
+					onClick={() => fileInputRef.current?.click()}
+				>
+					<Upload className={cn("w-7 h-7", isDragging ? "opacity-80" : "opacity-20")} />
+					<p className="text-xs text-center font-medium">
+						{isDragging ? "Отпустите для загрузки" : "Перетащите или нажмите"}
+					</p>
+					<p className="text-[10px] text-center opacity-70">Видео, GIF, фото</p>
 				</div>
 			) : (
 				<div className="flex-1 overflow-y-auto p-2">
