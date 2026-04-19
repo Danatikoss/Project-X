@@ -336,12 +336,18 @@ const MEDIA_TYPE_TABS = [
 	{ value: "image" as const, label: "Фото" },
 ];
 
-function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
+function MediaPanel({
+	onAdd,
+	onUploadFiles,
+	isUploading,
+}: {
+	onAdd: (asset: MediaAsset) => void;
+	onUploadFiles: (files: FileList) => void;
+	isUploading: boolean;
+}) {
 	const [selectedFolder, setSelectedFolder] = useState<number | "all" | "unfoldered">("all");
 	const [typeTab, setTypeTab] = useState<"all" | "gif" | "video" | "image">("all");
-	const [isDragging, setIsDragging] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
-	const qc = useQueryClient();
 
 	const { data: folders = [] } = useQuery<MediaFolder[]>({
 		queryKey: ["media-folders"],
@@ -358,27 +364,6 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 		},
 	});
 
-	const uploadMutation = useMutation({
-		mutationFn: (file: File) => mediaApi.upload(file, file.name),
-		onSuccess: (asset) => {
-			qc.invalidateQueries({ queryKey: ["media-assets"] });
-			toast.success(`«${asset.name}» загружен`);
-			onAdd(asset);
-		},
-		onError: () => toast.error("Не удалось загрузить файл"),
-	});
-
-	function handleFiles(files: FileList | null) {
-		if (!files || files.length === 0) return;
-		Array.from(files).forEach((f) => uploadMutation.mutate(f));
-	}
-
-	function handleDrop(e: React.DragEvent) {
-		e.preventDefault();
-		setIsDragging(false);
-		handleFiles(e.dataTransfer.files);
-	}
-
 	if (isLoading)
 		return (
 			<div className="flex justify-center py-8">
@@ -387,19 +372,14 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 		);
 
 	return (
-		<div
-			className={cn("flex flex-col h-full transition-colors", isDragging && "bg-brand-50")}
-			onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-			onDragLeave={() => setIsDragging(false)}
-			onDrop={handleDrop}
-		>
+		<div className="flex flex-col h-full">
 			<input
 				ref={fileInputRef}
 				type="file"
 				accept="video/*,image/gif,image/*"
 				multiple
 				className="hidden"
-				onChange={(e) => handleFiles(e.target.files)}
+				onChange={(e) => e.target.files && onUploadFiles(e.target.files)}
 			/>
 
 			{/* Type tabs + upload button */}
@@ -420,11 +400,11 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 				))}
 				<button
 					onClick={() => fileInputRef.current?.click()}
-					disabled={uploadMutation.isPending}
+					disabled={isUploading}
 					className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600 transition-colors disabled:opacity-50"
 					title="Загрузить файл"
 				>
-					{uploadMutation.isPending ? <Spinner className="w-3 h-3" /> : <Upload className="w-3.5 h-3.5" />}
+					{isUploading ? <Spinner className="w-3 h-3" /> : <Upload className="w-3.5 h-3.5" />}
 				</button>
 			</div>
 
@@ -465,18 +445,11 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 
 			{assets.length === 0 ? (
 				<div
-					className={cn(
-						"flex flex-col items-center justify-center flex-1 gap-2 p-4 border-2 border-dashed m-2 rounded-xl transition-colors cursor-pointer",
-						isDragging
-							? "border-brand-400 bg-brand-50 text-brand-600"
-							: "border-gray-200 text-gray-400"
-					)}
+					className="flex flex-col items-center justify-center flex-1 gap-2 p-4 border-2 border-dashed m-2 rounded-xl text-gray-400 border-gray-200 cursor-pointer hover:border-brand-400 hover:text-brand-500 transition-colors"
 					onClick={() => fileInputRef.current?.click()}
 				>
-					<Upload className={cn("w-7 h-7", isDragging ? "opacity-80" : "opacity-20")} />
-					<p className="text-xs text-center font-medium">
-						{isDragging ? "Отпустите для загрузки" : "Перетащите или нажмите"}
-					</p>
+					<Upload className="w-7 h-7 opacity-20" />
+					<p className="text-xs text-center font-medium">Перетащите или нажмите</p>
 					<p className="text-[10px] text-center opacity-70">Видео, GIF, фото</p>
 				</div>
 			) : (
@@ -839,6 +812,8 @@ export default function Assemble() {
 		searchParams.get("tab") === "library" ? "library" : "library"
 	);
 	const [rightCollapsed, setRightCollapsed] = useState(false);
+	const [isPageDragging, setIsPageDragging] = useState(false);
+	const dragCounterRef = useRef(0);
 
 	const containerRef = useRef<HTMLDivElement>(null);
 	const overlaysRef = useRef<Record<string, SlideOverlay[]>>({});
@@ -981,6 +956,21 @@ export default function Assemble() {
 		[localSlides, selectedIndex, updateMutation]
 	);
 
+	const uploadMediaMutation = useMutation({
+		mutationFn: (file: File) => mediaApi.upload(file, file.name),
+		onSuccess: (asset) => {
+			queryClient.invalidateQueries({ queryKey: ["media-assets"] });
+			toast.success(`«${asset.name}» загружен`);
+			handleAddOverlay(asset);
+			if (rightTab !== "media") setRightTab("media");
+		},
+		onError: () => toast.error("Не удалось загрузить файл"),
+	});
+
+	function handlePageFiles(files: FileList) {
+		Array.from(files).forEach((f) => uploadMediaMutation.mutate(f));
+	}
+
 	const deleteOverlay = useCallback(
 		(slideId: string, overlayId: string) => {
 			const newOverlays = {
@@ -1074,7 +1064,35 @@ export default function Assemble() {
 	const isSaving = updateMutation.isPending;
 
 	return (
-		<div className="flex flex-col h-full overflow-hidden bg-gray-50">
+		<div
+			className="flex flex-col h-full overflow-hidden bg-gray-50 relative"
+			onDragEnter={(e) => {
+				if (!e.dataTransfer.types.includes("Files")) return;
+				dragCounterRef.current += 1;
+				setIsPageDragging(true);
+			}}
+			onDragLeave={() => {
+				dragCounterRef.current -= 1;
+				if (dragCounterRef.current === 0) setIsPageDragging(false);
+			}}
+			onDragOver={(e) => e.preventDefault()}
+			onDrop={(e) => {
+				e.preventDefault();
+				dragCounterRef.current = 0;
+				setIsPageDragging(false);
+				if (e.dataTransfer.files.length > 0) handlePageFiles(e.dataTransfer.files);
+			}}
+		>
+			{/* ── Fullscreen drop overlay ─────────────────────────────────────────── */}
+			{isPageDragging && (
+				<div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-brand-600/10 border-4 border-dashed border-brand-500 rounded-none">
+					<div className="bg-white rounded-2xl shadow-xl px-10 py-8 flex flex-col items-center gap-3">
+						<Upload className="w-10 h-10 text-brand-500" />
+						<p className="text-base font-semibold text-brand-700">Отпустите для загрузки медиа</p>
+						<p className="text-xs text-gray-400">Видео, GIF, фото</p>
+					</div>
+				</div>
+			)}
 			{/* ── Top toolbar ─────────────────────────────────────────────────────── */}
 			<header className="shrink-0 flex items-center gap-3 px-4 h-[52px] bg-white border-b border-gray-200">
 				{/* Back */}
@@ -1561,7 +1579,11 @@ export default function Assemble() {
 												</div>
 											)}
 											<div className="flex-1 overflow-hidden">
-												<MediaPanel onAdd={handleAddOverlay} />
+												<MediaPanel
+													onAdd={handleAddOverlay}
+													onUploadFiles={handlePageFiles}
+													isUploading={uploadMediaMutation.isPending}
+												/>
 											</div>
 										</>
 									)}
