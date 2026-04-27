@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Briefcase, Check, Globe, Layers, LogOut, Search, Sparkles, Tag, X } from "lucide-react";
+import { Briefcase, Check, GalleryHorizontal, Globe, LayoutTemplate, LogOut, Search, Sparkles, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { libraryApi, profileApi, searchApi } from "../api/client";
+import { authApi, libraryApi, profileApi, searchApi } from "../api/client";
 import { SlideCard } from "../components/common/SlideCard";
 import { Spinner } from "../components/common/Spinner";
 import { useAuthStore } from "../store/auth";
@@ -113,7 +113,12 @@ export default function Profile() {
 	const navigate = useNavigate();
 	const { clearAuth, user: authUser } = useAuthStore();
 
-	const handleLogout = () => {
+	const refreshToken = useAuthStore((s) => s.refreshToken);
+
+	const handleLogout = async () => {
+		if (refreshToken) {
+			try { await authApi.logout(refreshToken); } catch { /* ignore */ }
+		}
 		clearAuth();
 		queryClient.clear();
 		navigate("/login");
@@ -240,13 +245,13 @@ export default function Profile() {
 			{/* ── Статистика ─────────────────────────────────────────────────── */}
 			<div className="grid grid-cols-2 gap-3">
 				<StatCard
-					icon={Layers}
+					icon={LayoutTemplate}
 					label="Презентации"
 					value={stats?.assemblies_count}
 					color="bg-brand-600"
 				/>
 				<StatCard
-					icon={Layers}
+					icon={GalleryHorizontal}
 					label="Слайдов"
 					value={stats?.slides_count}
 					color="bg-emerald-500"
