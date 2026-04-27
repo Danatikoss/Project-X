@@ -14,6 +14,7 @@ import {
 	Wand2,
 	X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { authApi } from "../../api/client";
@@ -166,7 +167,10 @@ function UserMenu() {
 const GUIDE_STEPS = [
 	{
 		icon: Upload,
-		color: "bg-orange-100 text-orange-600",
+		gradient: "from-orange-400 to-rose-500",
+		bg: "bg-orange-50",
+		border: "border-orange-100",
+		num: "01",
 		title: "Загрузите слайды",
 		desc: "Загрузите PPTX или PDF. AI проиндексирует каждый слайд — распознает содержимое, назначит теги и создаст эмбеддинг для поиска.",
 		link: "/library/upload",
@@ -174,7 +178,10 @@ const GUIDE_STEPS = [
 	},
 	{
 		icon: BookImage,
-		color: "bg-sky-100 text-sky-600",
+		gradient: "from-sky-400 to-blue-600",
+		bg: "bg-sky-50",
+		border: "border-sky-100",
+		num: "02",
 		title: "Создайте шаблон",
 		desc: "Отберите нужные слайды из библиотеки и сохраните как шаблон. Один клик по шаблону — и AI соберёт новую презентацию.",
 		link: "/templates/new",
@@ -182,7 +189,10 @@ const GUIDE_STEPS = [
 	},
 	{
 		icon: Wand2,
-		color: "bg-indigo-100 text-indigo-600",
+		gradient: "from-violet-500 to-purple-700",
+		bg: "bg-violet-50",
+		border: "border-violet-100",
+		num: "03",
 		title: "Генерируйте с AI",
 		desc: "Опишите тему или загрузите документ. AI подберёт шаблоны из каталога, заполнит все слоты вашим контентом и сформирует план.",
 		link: "/generate",
@@ -190,7 +200,10 @@ const GUIDE_STEPS = [
 	},
 	{
 		icon: Sparkles,
-		color: "bg-emerald-100 text-emerald-600",
+		gradient: "from-emerald-400 to-teal-600",
+		bg: "bg-emerald-50",
+		border: "border-emerald-100",
+		num: "04",
 		title: "Редактируйте и скачайте",
 		desc: "В редакторе сборки можно менять порядок слайдов, добавлять слайды вручную и скачать готовую презентацию в PPTX.",
 		link: "/dashboard",
@@ -198,83 +211,180 @@ const GUIDE_STEPS = [
 	},
 ];
 
+const backdropVariants = {
+	hidden: { opacity: 0 },
+	visible: { opacity: 1 },
+};
+
+const modalVariants = {
+	hidden: { opacity: 0, y: 40, scale: 0.97 },
+	visible: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 320, damping: 28 } },
+	exit: { opacity: 0, y: 24, scale: 0.97, transition: { duration: 0.18 } },
+};
+
+const staggerContainer = {
+	visible: { transition: { staggerChildren: 0.07, delayChildren: 0.15 } },
+};
+
+const stepVariants = {
+	hidden: { opacity: 0, x: -16 },
+	visible: { opacity: 1, x: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } },
+};
+
 function HelpModal({ onClose }: { onClose: () => void }) {
 	const navigate = useNavigate();
+	const [active, setActive] = useState<number | null>(null);
 
 	return (
-		<div
-			className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+		<motion.div
+			className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+			variants={backdropVariants}
+			initial="hidden"
+			animate="visible"
+			exit="hidden"
+			transition={{ duration: 0.2 }}
 			onClick={onClose}
 		>
-			<div
-				className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+			{/* Backdrop */}
+			<div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+
+			<motion.div
+				className="relative bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+				variants={modalVariants}
+				initial="hidden"
+				animate="visible"
+				exit="exit"
 				onClick={(e) => e.stopPropagation()}
 			>
-				{/* Header */}
-				<div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl">
-					<div className="flex items-center gap-2.5">
-						<div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center shadow-sm">
-							<HelpCircle className="w-3.5 h-3.5 text-white" />
-						</div>
-						<div>
-							<p className="text-sm font-bold text-gray-900">Как пользоваться SLIDEX</p>
-							<p className="text-[11px] text-gray-400">Четыре шага до готовой презентации</p>
-						</div>
-					</div>
+				{/* Gradient header */}
+				<div className="relative bg-gradient-to-br from-brand-600 to-violet-700 px-6 pt-6 pb-7 shrink-0">
+					{/* Decorative circles */}
+					<div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-white/5" />
+					<div className="absolute top-2 right-8 w-12 h-12 rounded-full bg-white/5" />
+
 					<button
 						onClick={onClose}
-						className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+						className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
 					>
 						<X className="w-4 h-4" />
 					</button>
+
+					<div className="flex items-center gap-3 mb-3">
+						<div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
+							<HelpCircle className="w-5 h-5 text-white" />
+						</div>
+						<div>
+							<p className="text-sm font-bold text-white">Как работает SLIDEX</p>
+							<p className="text-xs text-white/60">4 шага до готовой презентации</p>
+						</div>
+					</div>
+
+					{/* Progress dots */}
+					<div className="flex gap-1.5">
+						{GUIDE_STEPS.map((_, i) => (
+							<motion.div
+								key={i}
+								className="h-1 rounded-full bg-white/30"
+								animate={{ width: active === i ? 20 : 8, backgroundColor: active === i ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.3)" }}
+								transition={{ type: "spring", stiffness: 300, damping: 25 }}
+							/>
+						))}
+					</div>
 				</div>
 
 				{/* Steps */}
-				<div className="px-6 py-5 space-y-3">
-					{GUIDE_STEPS.map(({ icon: Icon, color, title, desc, link, cta }, i) => (
-						<div
-							key={i}
-							className="flex gap-4 p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 transition-all"
-						>
-							<div
-								className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${color}`}
+				<motion.div
+					className="px-4 py-4 space-y-2 overflow-y-auto"
+					variants={staggerContainer}
+					initial="hidden"
+					animate="visible"
+				>
+					{GUIDE_STEPS.map(({ icon: Icon, gradient, bg, border, num, title, desc, link, cta }, i) => (
+						<motion.div key={i} variants={stepVariants}>
+							<motion.button
+								className={cn(
+									"w-full text-left rounded-2xl border transition-colors overflow-hidden",
+									active === i ? `${bg} ${border}` : "border-slate-100 hover:border-slate-200 hover:bg-slate-50/60"
+								)}
+								onClick={() => setActive(active === i ? null : i)}
+								whileHover={{ scale: 1.01 }}
+								whileTap={{ scale: 0.99 }}
+								transition={{ type: "spring", stiffness: 400, damping: 25 }}
 							>
-								<Icon className="w-4 h-4" />
-							</div>
-							<div className="flex-1 min-w-0">
-								<div className="flex items-center gap-2 mb-1">
-									<span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">
-										Шаг {i + 1}
-									</span>
-								</div>
-								<p className="text-sm font-semibold text-gray-900">{title}</p>
-								<p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{desc}</p>
-							</div>
-							<button
-								onClick={() => {
-									onClose();
-									navigate(link);
-								}}
-								className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-800 shrink-0 self-center transition-colors"
-							>
-								{cta}
-								<ArrowRight className="w-3 h-3" />
-							</button>
-						</div>
-					))}
-				</div>
+								<div className="flex items-center gap-3.5 px-4 py-3.5">
+									{/* Icon */}
+									<div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0 shadow-sm`}>
+										<Icon className="w-4 h-4 text-white" />
+									</div>
 
-				{/* Footer tip */}
-				<div className="px-6 pb-5">
-					<div className="bg-indigo-50 rounded-xl px-4 py-3">
+									{/* Title + num */}
+									<div className="flex-1 min-w-0">
+										<div className="flex items-center gap-2">
+											<span className="text-[10px] font-bold text-slate-300 tabular-nums">{num}</span>
+											<p className="text-sm font-semibold text-slate-800">{title}</p>
+										</div>
+									</div>
+
+									{/* Chevron */}
+									<motion.div
+										animate={{ rotate: active === i ? 180 : 0 }}
+										transition={{ type: "spring", stiffness: 300, damping: 22 }}
+										className="text-slate-300 shrink-0"
+									>
+										<ChevronDown className="w-4 h-4" />
+									</motion.div>
+								</div>
+
+								{/* Expandable content */}
+								<AnimatePresence initial={false}>
+									{active === i && (
+										<motion.div
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={{ type: "spring", stiffness: 300, damping: 28 }}
+										>
+											<div className="px-4 pb-4 pt-0">
+												<p className="text-xs text-slate-500 leading-relaxed mb-3">{desc}</p>
+												<motion.button
+													onClick={(e) => {
+														e.stopPropagation();
+														onClose();
+														navigate(link);
+													}}
+													className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r ${gradient} text-white text-xs font-semibold shadow-sm`}
+													whileHover={{ scale: 1.03, opacity: 0.92 }}
+													whileTap={{ scale: 0.97 }}
+												>
+													{cta}
+													<ArrowRight className="w-3.5 h-3.5" />
+												</motion.button>
+											</div>
+										</motion.div>
+									)}
+								</AnimatePresence>
+							</motion.button>
+						</motion.div>
+					))}
+				</motion.div>
+
+				{/* Footer */}
+				<div className="px-4 pb-5 shrink-0">
+					<motion.div
+						className="flex items-start gap-2.5 bg-indigo-50 rounded-2xl px-4 py-3"
+						initial={{ opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.45 }}
+					>
+						<Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
 						<p className="text-[11px] text-indigo-600 leading-relaxed">
 							<span className="font-semibold">Совет:</span> начните с загрузки хотя бы одной
 							презентации — после индексации AI сможет подобрать слайды под любой запрос.
 						</p>
-					</div>
+					</motion.div>
 				</div>
-			</div>
-		</div>
+			</motion.div>
+		</motion.div>
 	);
 }
 
