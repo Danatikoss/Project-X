@@ -3,11 +3,14 @@ User profile routes.
 GET  /api/profile
 PATCH /api/profile
 GET  /api/profile/stats
+POST /api/profile/change-password
 """
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from passlib.context import CryptContext
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -16,6 +19,13 @@ from models.assembly import AssembledPresentation
 from models.slide import SlideLibraryEntry, SourcePresentation
 from api.schemas import UserProfileResponse, UserProfilePatchRequest, ProfileStatsResponse
 from api.deps import get_current_user
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6)
 
 router = APIRouter()
 
@@ -59,9 +69,12 @@ def get_stats(db: Session = Depends(get_db), user: User = Depends(get_current_us
         if source_ids else 0
     )
 
+    sources_count = db.query(SourcePresentation).filter_by(owner_id=user.id).count()
+
     return ProfileStatsResponse(
         assemblies_count=assemblies_count,
         slides_count=slides_count,
+        sources_count=sources_count,
     )
 
 
@@ -98,3 +111,15 @@ def update_profile(
     db.commit()
     db.refresh(profile)
     return _profile_to_response(profile)
+
+
+@router.post("/change-password", status_code=204)
+def change_password(
+    body: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not pwd_context.verify(body.current_password, user.hashed_password):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Неверный текущий пароль")
+    user.hashed_password = pwd_context.hash(body.new_password)
+    db.commit()

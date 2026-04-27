@@ -183,3 +183,4 @@ class UserProfilePatchRequest(BaseModel):
 class ProfileStatsResponse(BaseModel):
     assemblies_count: int
     slides_count: int
+    sources_count: int = 0

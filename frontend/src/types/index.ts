@@ -190,6 +190,7 @@ export interface UserProfilePatchRequest {
 export interface ProfileStats {
 	assemblies_count: number;
 	slides_count: number;
+	sources_count: number;
 }
 
 // ─── Media Library ───────────────────────────────────────────────────────────

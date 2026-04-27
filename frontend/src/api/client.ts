@@ -445,6 +445,10 @@ export const profileApi = {
 		const res = await api.get<ProfileStats>("/profile/stats");
 		return res.data;
 	},
+
+	changePassword: async (current_password: string, new_password: string): Promise<void> => {
+		await api.post("/profile/change-password", { current_password, new_password });
+	},
 };
 
 // ─── Media Library ────────────────────────────────────────────────────────────

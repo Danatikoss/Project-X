@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Briefcase, Check, GalleryHorizontal, Globe, LayoutTemplate, LogOut, Search, Sparkles, Tag, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Briefcase, Check, Eye, EyeOff, GalleryHorizontal, Globe, KeyRound, LayoutTemplate, LogOut, Search, Sparkles, Tag, Upload, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { authApi, libraryApi, profileApi, searchApi } from "../api/client";
@@ -112,7 +112,6 @@ export default function Profile() {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const { clearAuth, user: authUser } = useAuthStore();
-
 	const refreshToken = useAuthStore((s) => s.refreshToken);
 
 	const handleLogout = async () => {
@@ -147,6 +146,13 @@ export default function Profile() {
 	const [slideSearch, setSlideSearch] = useState("");
 	const [showSlidePicker, setShowSlidePicker] = useState(false);
 
+	// Change password
+	const [showPasswordForm, setShowPasswordForm] = useState(false);
+	const [currentPassword, setCurrentPassword] = useState("");
+	const [newPassword, setNewPassword] = useState("");
+	const [showCurrentPw, setShowCurrentPw] = useState(false);
+	const [showNewPw, setShowNewPw] = useState(false);
+
 	// Sync form state from fetched profile
 	useEffect(() => {
 		if (!profile) return;
@@ -157,6 +163,19 @@ export default function Profile() {
 		setLang(profile.default_language || "ru");
 		setStyle(profile.ai_style || "official");
 	}, [profile]);
+
+	// Detect unsaved changes
+	const isDirty = useMemo(() => {
+		if (!profile) return false;
+		return (
+			name !== (profile.name || "") ||
+			company !== (profile.company || "") ||
+			position !== (profile.position || "") ||
+			lang !== (profile.default_language || "ru") ||
+			style !== (profile.ai_style || "official") ||
+			JSON.stringify(tags) !== JSON.stringify(profile.preferred_tags || [])
+		);
+	}, [profile, name, company, position, tags, lang, style]);
 
 	const { data: contactSlideData } = useQuery({
 		queryKey: ["slide", profile?.contact_slide_id],
@@ -187,15 +206,29 @@ export default function Profile() {
 		onError: () => toast.error("Не удалось сохранить"),
 	});
 
+	const changePasswordMutation = useMutation({
+		mutationFn: ({ current, next }: { current: string; next: string }) =>
+			profileApi.changePassword(current, next),
+		onSuccess: () => {
+			toast.success("Пароль изменён");
+			setCurrentPassword("");
+			setNewPassword("");
+			setShowPasswordForm(false);
+		},
+		onError: (err: any) =>
+			toast.error(err.response?.data?.detail ?? "Не удалось изменить пароль"),
+	});
+
 	const handleSave = () => {
-		updateMutation.mutate({
-			name,
-			company,
-			position,
-			preferred_tags: tags,
-			default_language: lang,
-			ai_style: style,
-		});
+		updateMutation.mutate({ name, company, position, preferred_tags: tags, default_language: lang, ai_style: style });
+	};
+
+	const handleChangePassword = () => {
+		if (newPassword.length < 6) {
+			toast.error("Новый пароль должен быть не менее 6 символов");
+			return;
+		}
+		changePasswordMutation.mutate({ current: currentPassword, next: newPassword });
 	};
 
 	const handleSelectContactSlide = (slide: Slide) => {
@@ -243,7 +276,7 @@ export default function Profile() {
 			</div>
 
 			{/* ── Статистика ─────────────────────────────────────────────────── */}
-			<div className="grid grid-cols-2 gap-3">
+			<div className="grid grid-cols-3 gap-3">
 				<StatCard
 					icon={LayoutTemplate}
 					label="Презентации"
@@ -255,6 +288,12 @@ export default function Profile() {
 					label="Слайдов"
 					value={stats?.slides_count}
 					color="bg-emerald-500"
+				/>
+				<StatCard
+					icon={Upload}
+					label="Загрузок"
+					value={stats?.sources_count}
+					color="bg-violet-500"
 				/>
 			</div>
 
@@ -310,7 +349,6 @@ export default function Profile() {
 			<div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
 				<h2 className="text-sm font-semibold text-slate-700 mb-4">Предпочтения для ИИ</h2>
 				<div className="flex flex-col gap-4">
-					{/* Preferred tags */}
 					<div>
 						<label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
 							<Tag className="w-3.5 h-3.5" /> Любимые темы
@@ -321,7 +359,6 @@ export default function Profile() {
 						</p>
 					</div>
 
-					{/* Default language */}
 					<div>
 						<label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
 							<Globe className="w-3.5 h-3.5" /> Язык по умолчанию
@@ -347,7 +384,6 @@ export default function Profile() {
 						</p>
 					</div>
 
-					{/* AI style */}
 					<div>
 						<label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
 							<Sparkles className="w-3.5 h-3.5" /> Стиль ИИ
@@ -380,20 +416,6 @@ export default function Profile() {
 					</div>
 				</div>
 			</div>
-
-			{/* ── Save button ────────────────────────────────────────────────── */}
-			<button
-				onClick={handleSave}
-				disabled={updateMutation.isPending}
-				className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-brand text-white rounded-2xl text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-sm"
-			>
-				{updateMutation.isPending ? (
-					<Spinner size="sm" className="border-white border-t-transparent" />
-				) : (
-					<Check className="w-4 h-4" />
-				)}
-				Сохранить изменения
-			</button>
 
 			{/* ── Контактный слайд ───────────────────────────────────────────── */}
 			<div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
@@ -453,6 +475,100 @@ export default function Profile() {
 							className="w-full mt-2 py-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors"
 						>
 							Отмена
+						</button>
+					</div>
+				)}
+			</div>
+
+			{/* ── Save button ────────────────────────────────────────────────── */}
+			<button
+				onClick={handleSave}
+				disabled={!isDirty || updateMutation.isPending}
+				className={cn(
+					"w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all shadow-sm",
+					isDirty
+						? "bg-gradient-brand text-white hover:opacity-90"
+						: "bg-slate-100 text-slate-400 cursor-default"
+				)}
+			>
+				{updateMutation.isPending ? (
+					<Spinner size="sm" className="border-white border-t-transparent" />
+				) : (
+					<Check className="w-4 h-4" />
+				)}
+				{isDirty ? "Сохранить изменения" : "Изменений нет"}
+			</button>
+
+			{/* ── Смена пароля ───────────────────────────────────────────────── */}
+			<div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+				<button
+					onClick={() => setShowPasswordForm((v) => !v)}
+					className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+				>
+					<span className="flex items-center gap-2">
+						<KeyRound className="w-4 h-4 text-slate-400" />
+						Сменить пароль
+					</span>
+					<span className={cn("text-xs text-slate-400 transition-transform", showPasswordForm && "rotate-180")}>▾</span>
+				</button>
+
+				{showPasswordForm && (
+					<div className="px-5 pb-5 flex flex-col gap-3 border-t border-slate-100">
+						<div className="mt-4">
+							<label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
+								Текущий пароль
+							</label>
+							<div className="relative">
+								<input
+									type={showCurrentPw ? "text" : "password"}
+									value={currentPassword}
+									onChange={(e) => setCurrentPassword(e.target.value)}
+									placeholder="••••••••"
+									className="w-full px-3 pr-10 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 text-slate-800 placeholder-slate-400"
+								/>
+								<button
+									type="button"
+									onClick={() => setShowCurrentPw((v) => !v)}
+									className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+								>
+									{showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+								</button>
+							</div>
+						</div>
+
+						<div>
+							<label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
+								Новый пароль
+							</label>
+							<div className="relative">
+								<input
+									type={showNewPw ? "text" : "password"}
+									value={newPassword}
+									onChange={(e) => setNewPassword(e.target.value)}
+									placeholder="Минимум 6 символов"
+									className="w-full px-3 pr-10 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 text-slate-800 placeholder-slate-400"
+								/>
+								<button
+									type="button"
+									onClick={() => setShowNewPw((v) => !v)}
+									className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+								>
+									{showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+								</button>
+							</div>
+						</div>
+
+						<button
+							onClick={handleChangePassword}
+							disabled={!currentPassword || !newPassword || changePasswordMutation.isPending}
+							className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-semibold hover:bg-slate-700 disabled:opacity-50 transition-all"
+						>
+							{changePasswordMutation.isPending ? (
+								<Spinner size="sm" className="border-white border-t-transparent" />
+							) : (
+								<KeyRound className="w-4 h-4" />
+							)}
+							Сохранить новый пароль
 						</button>
 					</div>
 				)}
