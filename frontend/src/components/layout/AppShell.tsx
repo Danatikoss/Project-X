@@ -34,7 +34,7 @@ const PRIMARY_NAV = [
 const SECONDARY_NAV: { to: string; icon: React.ElementType; label: string }[] = [];
 
 const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = [
-	{ to: "/admin", icon: BarChart2, label: "Статистика" },
+	{ to: "/admin", icon: BarChart2, label: "Админ" },
 ];
 
 // ─── Nav link ─────────────────────────────────────────────────────────────────
