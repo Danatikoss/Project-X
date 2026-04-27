@@ -17,6 +17,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { authApi } from "../../api/client";
+import { WelcomeModal } from "../onboarding/WelcomeModal";
 import { useAuthStore } from "../../store/auth";
 import { cn } from "../../utils/cn";
 import { IndexingBell } from "./IndexingBell";
@@ -351,6 +352,8 @@ export function AppShell() {
 			>
 				<Outlet />
 			</main>
+
+			<WelcomeModal />
 
 			{/* ── Bottom nav — mobile ─────────────────────────────────────────────── */}
 			<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center px-1 bg-white border-t border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">

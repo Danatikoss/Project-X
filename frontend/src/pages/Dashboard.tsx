@@ -3,6 +3,7 @@ import {
 	ArrowRight,
 	BookImage,
 	Check,
+	CheckSquare,
 	ChevronDown,
 	Clock,
 	Copy,
@@ -10,10 +11,13 @@ import {
 	PenLine,
 	Plus,
 	Sparkles,
+	Square,
 	Trash2,
 	Upload,
 	Wand2,
+	X,
 } from "lucide-react";
+import { OnboardingChecklist } from "../components/onboarding/OnboardingChecklist";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -162,6 +166,7 @@ export default function Dashboard() {
 	const [manualOpen, setManualOpen] = useState(false);
 	const [editingId, setEditingId] = useState<number | null>(null);
 	const [editTitle, setEditTitle] = useState("");
+	const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 	const editInputRef = useRef<HTMLInputElement>(null);
 	const cancelRenameRef = useRef(false);
 	const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -232,6 +237,25 @@ export default function Dashboard() {
 			toast.success("Сборка удалена");
 		},
 	});
+
+	const deleteSelectedMutation = useMutation({
+		mutationFn: (ids: number[]) => Promise.all(ids.map((id) => assemblyApi.delete(id))),
+		onSuccess: (_, ids) => {
+			queryClient.invalidateQueries({ queryKey: ["assemblies"] });
+			setSelectedIds(new Set());
+			toast.success(`Удалено сборок: ${ids.length}`);
+		},
+		onError: () => toast.error("Не удалось удалить некоторые сборки"),
+	});
+
+	const toggleSelect = (e: React.MouseEvent, id: number) => {
+		e.stopPropagation();
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			next.has(id) ? next.delete(id) : next.add(id);
+			return next;
+		});
+	};
 
 	const renameMutation = useMutation({
 		mutationFn: ({ id, title }: { id: number; title: string }) => assemblyApi.update(id, { title }),
@@ -304,10 +328,7 @@ export default function Dashboard() {
 
 			{/* ── Template grid ────────────────────────────────────────────────────── */}
 			<div className="max-w-3xl mx-auto px-6 pt-6 pb-4">
-				{/* Onboarding welcome — only for brand new users */}
-				{!isLoading && !templatesLoading && assemblies?.length === 0 && userTemplates.length === 0 && (
-					<WelcomeCard />
-				)}
+				<OnboardingChecklist />
 
 				<div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
 					{allTemplates.map((t) => {
@@ -517,6 +538,29 @@ export default function Dashboard() {
 					<h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
 						Недавние сборки
 					</h2>
+					{selectedIds.size > 0 && (
+						<div className="ml-auto flex items-center gap-2">
+							<span className="text-xs text-slate-500">Выбрано: {selectedIds.size}</span>
+							<button
+								onClick={() => {
+									if (!confirm(`Удалить ${selectedIds.size} сборок?`)) return;
+									deleteSelectedMutation.mutate(Array.from(selectedIds));
+								}}
+								disabled={deleteSelectedMutation.isPending}
+								className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+							>
+								<Trash2 className="w-3.5 h-3.5" />
+								Удалить выбранные
+							</button>
+							<button
+								onClick={() => setSelectedIds(new Set())}
+								className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+								title="Снять выделение"
+							>
+								<X className="w-3.5 h-3.5" />
+							</button>
+						</div>
+					)}
 				</div>
 
 				{isLoading ? (
@@ -550,15 +594,44 @@ export default function Dashboard() {
 					<div className="flex flex-col gap-2">
 						{assemblies.map((a: AssemblyListItem) => {
 							const isManual = a.prompt === "(создано вручную)";
+							const isSelected = selectedIds.has(a.id);
+							const isAnySelected = selectedIds.size > 0;
 							return (
 								<div
 									key={a.id}
 									className={cn(
-										"flex items-center gap-4 p-3.5 rounded-2xl border border-slate-200 bg-white",
-										"hover:border-brand-300 hover:shadow-card-hover transition-all group cursor-pointer"
+										"flex items-center gap-4 p-3.5 rounded-2xl border transition-all group cursor-pointer",
+										isSelected
+											? "border-brand-400 bg-brand-50 shadow-sm"
+											: "border-slate-200 bg-white hover:border-brand-300 hover:shadow-card-hover"
 									)}
-									onClick={() => navigate(`/assemble/${a.id}`)}
+									onClick={() =>
+										isAnySelected
+											? setSelectedIds((prev) => {
+													const next = new Set(prev);
+													next.has(a.id) ? next.delete(a.id) : next.add(a.id);
+													return next;
+												})
+											: navigate(`/assemble/${a.id}`)
+									}
 								>
+									{/* Checkbox */}
+									<button
+										onClick={(e) => toggleSelect(e, a.id)}
+										className={cn(
+											"shrink-0 transition-all",
+											isSelected || isAnySelected
+												? "opacity-100"
+												: "opacity-0 group-hover:opacity-100"
+										)}
+									>
+										{isSelected ? (
+											<CheckSquare className="w-4 h-4 text-brand-500" />
+										) : (
+											<Square className="w-4 h-4 text-slate-300" />
+										)}
+									</button>
+
 									{/* Thumbnail */}
 									<div
 										className="shrink-0 rounded-xl overflow-hidden border border-slate-100 bg-slate-50 flex"
@@ -662,7 +735,9 @@ export default function Dashboard() {
 										</button>
 									</div>
 
-									<ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+									{!isAnySelected && (
+										<ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+									)}
 								</div>
 							);
 						})}

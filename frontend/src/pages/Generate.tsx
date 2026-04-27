@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { generateApi, type PresentationPlan, type SlideInPlan, type SlideTemplate } from "../api/client";
+import { GenerationCelebration, markGenerationCelebrated, shouldShowCelebration } from "../components/onboarding/GenerationCelebration";
 import { useAuthStore } from "../store/auth";
 import { cn } from "../utils/cn";
 
@@ -399,6 +400,7 @@ function PlanStep({
 		setDownloading(true);
 		try {
 			await generateApi.downloadPresentation(currentPlan);
+			localStorage.setItem("slidex_pptx_downloaded", "1");
 			toast.success("Презентация скачана");
 		} catch (e: unknown) {
 			const msg =
@@ -443,9 +445,39 @@ function PlanStep({
 			{/* Slide list */}
 			<div className="space-y-2">
 				{slides.map((slide, i) => {
+					const isLibrary = slide.slide_type === "library";
 					const tmpl = templateMap[slide.template_id];
 					const mainSlot = slide.slots.slot_product_name || slide.slots.slot_main_card || "";
-					const previewText = mainSlot.split("\n")[0] || slide.template_id;
+					const previewText = slide.library_title || mainSlot.split("\n")[0] || slide.template_id;
+
+					if (isLibrary) {
+						return (
+							<div
+								key={i}
+								className="flex items-start gap-3 bg-white border border-emerald-200 bg-emerald-50/30 rounded-xl p-3.5"
+							>
+								<div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0 mt-0.5">
+									<span className="text-xs font-bold text-emerald-600">{i + 1}</span>
+								</div>
+								{slide.library_thumbnail_url && (
+									<img
+										src={slide.library_thumbnail_url}
+										alt={previewText}
+										className="w-16 h-10 object-cover rounded-lg shrink-0 border border-emerald-100"
+									/>
+								)}
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2 flex-wrap">
+										<span className="text-sm font-medium text-gray-900 truncate">{previewText}</span>
+										<span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full shrink-0 font-medium">
+											из библиотеки
+										</span>
+									</div>
+									<p className="text-xs text-gray-400 mt-0.5">готовый слайд, без изменений</p>
+								</div>
+							</div>
+						);
+					}
 
 					return (
 						<div
@@ -851,6 +883,7 @@ export default function Generate() {
 		}
 	}, [themes, selectedTheme]);
 
+	const [showCelebration, setShowCelebration] = useState(false);
 	const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
 
 	const deleteMutation = useMutation({
@@ -914,6 +947,14 @@ export default function Generate() {
 		setSelectedTitleId(null);
 	};
 
+	const handlePlanReady = (p: PresentationPlan) => {
+		setPlan(p);
+		if (shouldShowCelebration()) {
+			markGenerationCelebrated();
+			setShowCelebration(true);
+		}
+	};
+
 	const handleOpenInEditor = (assemblyId: number) => {
 		toast.success("Презентация создана — открываю редактор");
 		navigate(`/assemble/${assemblyId}`);
@@ -921,6 +962,18 @@ export default function Generate() {
 
 	return (
 		<div className="max-w-3xl mx-auto px-4 py-8 space-y-10">
+			{showCelebration && plan && (
+				<GenerationCelebration
+					slideCount={plan.slides.length}
+					onDownload={async () => {
+						localStorage.setItem("slidex_pptx_downloaded", "1");
+						try { await generateApi.downloadPresentation(plan); } catch { /* handled in PlanStep */ }
+					}}
+					onOpenEditor={() => navigate("/dashboard")}
+					onClose={() => setShowCelebration(false)}
+				/>
+			)}
+
 			{/* ── Generate section ── */}
 			<div>
 				<div className="flex items-center gap-2.5 mb-5">
@@ -961,7 +1014,7 @@ export default function Generate() {
 							mode={mode}
 							theme={selectedTheme}
 							titleTemplateId={selectedTitleId}
-							onPlanReady={setPlan}
+							onPlanReady={handlePlanReady}
 							onSingleSlideReady={handleOpenInEditor}
 						/>
 					)}
