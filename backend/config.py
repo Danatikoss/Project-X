@@ -1,6 +1,6 @@
+import sys
 from pydantic_settings import BaseSettings
-from pydantic import Field
-import os
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
@@ -16,7 +16,15 @@ class Settings(BaseSettings):
     # GPT-4o Vision post-render validator. Set to "" to disable (default off).
     vision_model: str = Field(default="", env="VISION_MODEL")
     max_upload_size_mb: int = Field(default=500, env="MAX_UPLOAD_SIZE_MB")
-    jwt_secret: str = Field(default="change-me-in-production-use-random-32-chars", env="JWT_SECRET")
+    jwt_secret: str = Field(default="dev-secret-change-in-production-min32ch!!", env="JWT_SECRET")
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _check_jwt_secret(cls, v: str) -> str:
+        insecure_defaults = {"dev-secret-change-in-production-min32ch!!", "change-me-in-production-use-random-32-chars"}
+        if v in insecure_defaults or len(v) < 32:
+            print("WARNING: JWT_SECRET is insecure. Set a strong random value in .env before going to production.", file=sys.stderr)
+        return v
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7

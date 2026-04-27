@@ -1,8 +1,9 @@
 """
-Auth routes: register, login, refresh, me.
+Auth routes: register, login, refresh, logout, me.
 POST /api/auth/register
 POST /api/auth/login
 POST /api/auth/refresh
+POST /api/auth/logout
 GET  /api/auth/me
 """
 from datetime import datetime, timedelta, timezone
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import get_db
-from models.user import User, UserProfile
+from models.user import User, UserProfile, RefreshToken
 from api.deps import get_current_user
 
 router = APIRouter()
@@ -78,10 +79,22 @@ def _make_refresh_token(user_id: int) -> str:
                       settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def _token_response(user: User) -> TokenResponse:
+def _store_refresh_token(db: Session, user_id: int, token: str) -> None:
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    db.add(RefreshToken(
+        user_id=user_id,
+        token_hash=RefreshToken.hash(token),
+        expires_at=expires_at,
+    ))
+
+
+def _token_response(user: User, db: Session) -> TokenResponse:
+    refresh = _make_refresh_token(user.id)
+    _store_refresh_token(db, user.id, refresh)
+    db.commit()
     return TokenResponse(
         access_token=_make_access_token(user.id),
-        refresh_token=_make_refresh_token(user.id),
+        refresh_token=refresh,
         user=UserOut(id=user.id, email=user.email, name=user.name,
                      is_admin=bool(user.is_admin)),
     )
@@ -100,14 +113,13 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         name=body.name or None,
     )
     db.add(user)
-    db.flush()  # get user.id before commit
+    db.flush()
 
-    # Create empty profile
     profile = UserProfile(user_id=user.id)
     db.add(profile)
-    db.commit()
+    db.flush()
     db.refresh(user)
-    return _token_response(user)
+    return _token_response(user, db)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -117,7 +129,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Аккаунт деактивирован")
-    return _token_response(user)
+    return _token_response(user, db)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -132,10 +144,26 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
     except (JWTError, ValueError, KeyError):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Недействительный refresh token")
 
+    token_hash = RefreshToken.hash(body.refresh_token)
+    stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+    if not stored:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Недействительный refresh token")
+
+    db.delete(stored)
+
     user = db.query(User).get(user_id)
     if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден")
-    return _token_response(user)
+    return _token_response(user, db)
+
+
+@router.post("/logout", status_code=204)
+def logout(body: RefreshRequest, db: Session = Depends(get_db)):
+    token_hash = RefreshToken.hash(body.refresh_token)
+    stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+    if stored:
+        db.delete(stored)
+        db.commit()
 
 
 @router.get("/me", response_model=UserOut)

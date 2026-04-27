@@ -112,6 +112,10 @@ export const authApi = {
 		const res = await api.post<AuthResponse>("/auth/refresh", { refresh_token });
 		return res.data;
 	},
+
+	logout: async (refresh_token: string): Promise<void> => {
+		await api.post("/auth/logout", { refresh_token });
+	},
 };
 
 // ─── Library ─────────────────────────────────────────────────────────────────
@@ -389,7 +393,31 @@ export const adminApi = {
 		const res = await api.patch<AdminUser>(`/admin/users/${userId}`, { is_admin });
 		return res.data;
 	},
+
+	getStats: async (): Promise<AdminStats> => {
+		const res = await api.get<AdminStats>("/admin/stats");
+		return res.data;
+	},
 };
+
+export interface AdminStats {
+	users: { total: number; new_7d: number; returning: number; retention_rate: number };
+	presentations: { total: number; new_7d: number; avg_slides: number | null };
+	templates: { total: number };
+	funnel: { plans: number; downloads: number; conversion_rate: number };
+	cycle_time: {
+		avg_total_seconds: number | null;
+		avg_plan_seconds: number | null;
+		avg_download_seconds: number | null;
+	};
+	top_users: { name: string; email: string; presentations: number }[];
+	recent_activity: {
+		action: string;
+		elapsed_seconds: number;
+		slide_count: number | null;
+		created_at: string | null;
+	}[];
+}
 
 // ─── Search ──────────────────────────────────────────────────────────────────
 
@@ -510,6 +538,10 @@ export interface SlideInPlan {
 	template_id: string;
 	slots: Record<string, string>;
 	has_media?: boolean;
+	slide_type?: "template" | "library";
+	library_slide_id?: number | null;
+	library_thumbnail_url?: string | null;
+	library_title?: string | null;
 }
 
 export interface PresentationPlan {

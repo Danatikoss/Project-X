@@ -1,5 +1,6 @@
 import {
 	ArrowRight,
+	BarChart2,
 	BookImage,
 	ChevronDown,
 	Film,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { authApi } from "../../api/client";
 import { useAuthStore } from "../../store/auth";
 import { cn } from "../../utils/cn";
 import { IndexingBell } from "./IndexingBell";
@@ -31,7 +33,9 @@ const PRIMARY_NAV = [
 
 const SECONDARY_NAV: { to: string; icon: React.ElementType; label: string }[] = [];
 
-const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = [];
+const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = [
+	{ to: "/admin", icon: BarChart2, label: "Статистика" },
+];
 
 // ─── Nav link ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +78,7 @@ function TopNavLink({
 function UserMenu() {
 	const user = useAuthStore((s) => s.user);
 	const clearAuth = useAuthStore((s) => s.clearAuth);
+	const refreshToken = useAuthStore((s) => s.refreshToken);
 	const navigate = useNavigate();
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
@@ -137,7 +142,10 @@ function UserMenu() {
 					</button>
 					<div className="my-1 border-t border-gray-100" />
 					<button
-						onClick={() => {
+						onClick={async () => {
+							if (refreshToken) {
+								try { await authApi.logout(refreshToken); } catch { /* ignore */ }
+							}
 							clearAuth();
 							navigate("/login");
 						}}

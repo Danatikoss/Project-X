@@ -1,3 +1,4 @@
+import hashlib
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -37,3 +38,19 @@ class UserProfile(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="profile")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String, unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User")
+
+    @staticmethod
+    def hash(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()
