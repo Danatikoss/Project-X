@@ -389,8 +389,13 @@ export const adminApi = {
 		return res.data;
 	},
 
-	toggleAdmin: async (userId: number, is_admin: boolean): Promise<AdminUser> => {
-		const res = await api.patch<AdminUser>(`/admin/users/${userId}`, { is_admin });
+	patchUser: async (userId: number, data: { is_admin?: boolean; is_active?: boolean }): Promise<AdminUser> => {
+		const res = await api.patch<AdminUser>(`/admin/users/${userId}`, data);
+		return res.data;
+	},
+
+	resetPassword: async (userId: number): Promise<{ temp_password: string }> => {
+		const res = await api.post<{ temp_password: string }>(`/admin/users/${userId}/reset-password`);
 		return res.data;
 	},
 

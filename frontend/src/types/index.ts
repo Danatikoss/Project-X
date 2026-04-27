@@ -162,6 +162,8 @@ export interface AdminUser {
 	name: string | null;
 	is_admin: boolean;
 	is_active: boolean;
+	created_at: string | null;
+	presentations_count: number;
 }
 
 // ─── User Profile ────────────────────────────────────────────────────────────
