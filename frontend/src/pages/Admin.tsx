@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowDownToLine,
+	Bug,
 	Clock,
 	KeyRound,
 	LayoutTemplate,
+	Lightbulb,
+	MessageCircle,
+	MessageSquare,
 	RefreshCw,
 	Repeat2,
 	ShieldCheck,
@@ -16,7 +20,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { adminApi, type AdminStats } from "../api/client";
+import { adminApi, feedbackApi, type AdminStats } from "../api/client";
 import type { AdminUser } from "../types";
 import { cn } from "../utils/cn";
 
@@ -263,10 +267,63 @@ function UsersTab() {
 	);
 }
 
+// ─── Feedback Tab ─────────────────────────────────────────────────────────────
+
+interface FeedbackItem {
+	id: number;
+	user_id: number;
+	user_email: string;
+	category: string;
+	message: string;
+	created_at: string;
+}
+
+const CATEGORY_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+	template_idea: { label: "Идея шаблона", icon: Lightbulb, color: "text-amber-500 bg-amber-50" },
+	bug: { label: "Баг", icon: Bug, color: "text-red-500 bg-red-50" },
+	general: { label: "Отзыв", icon: MessageSquare, color: "text-blue-500 bg-blue-50" },
+};
+
+function FeedbackTab() {
+	const { data: items = [], isLoading } = useQuery<FeedbackItem[]>({
+		queryKey: ["admin-feedback"],
+		queryFn: async () => {
+			const res = await feedbackApi.list();
+			return res;
+		},
+	});
+
+	if (isLoading) return <div className="py-16 text-center text-sm text-gray-400">Загрузка...</div>;
+	if (!items.length) return <div className="py-16 text-center text-sm text-gray-400">Отзывов пока нет</div>;
+
+	return (
+		<div className="space-y-3">
+			{items.map((fb) => {
+				const meta = CATEGORY_META[fb.category] ?? CATEGORY_META.general;
+				const Icon = meta.icon;
+				return (
+					<div key={fb.id} className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
+						<div className="flex items-center justify-between gap-2">
+							<span className={cn("flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full", meta.color)}>
+								<Icon className="w-3 h-3" /> {meta.label}
+							</span>
+							<span className="text-[11px] text-gray-400">
+								{new Date(fb.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+							</span>
+						</div>
+						<p className="text-sm text-gray-800 leading-relaxed">{fb.message}</p>
+						<p className="text-[11px] text-gray-400">{fb.user_email}</p>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Admin() {
-	const [tab, setTab] = useState<"stats" | "users">("stats");
+	const [tab, setTab] = useState<"stats" | "users" | "feedback">("stats");
 
 	const { data: stats, isLoading, isError, refetch, isFetching } = useQuery<AdminStats>({
 		queryKey: ["admin-stats"],
@@ -297,6 +354,15 @@ export default function Admin() {
 					>
 						<Users className="w-4 h-4" /> Пользователи
 					</button>
+					<button
+						onClick={() => setTab("feedback")}
+						className={cn(
+							"flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+							tab === "feedback" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+						)}
+					>
+						<MessageCircle className="w-4 h-4" /> Отзывы
+					</button>
 				</div>
 				{tab === "stats" && (
 					<button
@@ -312,6 +378,9 @@ export default function Admin() {
 
 			{/* Users tab */}
 			{tab === "users" && <UsersTab />}
+
+			{/* Feedback tab */}
+			{tab === "feedback" && <FeedbackTab />}
 
 			{/* Stats tab */}
 			{tab === "stats" && isLoading && (

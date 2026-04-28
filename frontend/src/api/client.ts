@@ -733,3 +733,13 @@ export const templatesApi = {
 		await api.delete(`/templates/${id}`);
 	},
 };
+
+export const feedbackApi = {
+	submit: async (category: string, message: string): Promise<void> => {
+		await api.post("/feedback", { category, message });
+	},
+	list: async () => {
+		const res = await api.get("/feedback");
+		return res.data;
+	},
+};

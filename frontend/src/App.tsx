@@ -15,6 +15,7 @@ import CollabAssemble from "./pages/CollabAssemble";
 import SharedAssembly from "./pages/SharedAssembly";
 import TemplateEditor from "./pages/TemplateEditor";
 import Upload from "./pages/Upload";
+import Admin from "./pages/Admin";
 import { useAuthStore } from "./store/auth";
 
 const queryClient = new QueryClient({
@@ -36,6 +37,12 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function PublicRoute({ children }: { children: React.ReactNode }) {
 	const isAuthenticated = useAuthStore((s) => s.isAuthenticated());
 	return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
+}
+
+// Роут только для администратора
+function AdminRoute({ children }: { children: React.ReactNode }) {
+	const user = useAuthStore((s) => s.user);
+	return user?.is_admin ? children : <Navigate to="/dashboard" replace />;
 }
 
 export default function App() {
@@ -91,9 +98,11 @@ export default function App() {
 						<Route
 							path="/library/upload"
 							element={
-								<ErrorBoundary>
-									<Upload />
-								</ErrorBoundary>
+								<AdminRoute>
+									<ErrorBoundary>
+										<Upload />
+									</ErrorBoundary>
+								</AdminRoute>
 							}
 						/>
 						<Route
@@ -142,6 +151,16 @@ export default function App() {
 								<ErrorBoundary>
 									<TemplateEditor />
 								</ErrorBoundary>
+							}
+						/>
+						<Route
+							path="/admin"
+							element={
+								<AdminRoute>
+									<ErrorBoundary>
+										<Admin />
+									</ErrorBoundary>
+								</AdminRoute>
 							}
 						/>
 					</Route>

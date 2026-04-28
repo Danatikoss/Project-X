@@ -22,6 +22,7 @@ import { WelcomeModal } from "../onboarding/WelcomeModal";
 import { useAuthStore } from "../../store/auth";
 import { cn } from "../../utils/cn";
 import { IndexingBell } from "./IndexingBell";
+import { FeedbackWidget } from "../common/FeedbackWidget";
 
 // ─── Nav config ───────────────────────────────────────────────────────────────
 
@@ -29,13 +30,13 @@ const PRIMARY_NAV = [
 	{ to: "/dashboard", icon: LayoutDashboard, label: "Главная" },
 	{ to: "/generate", icon: Sparkles, label: "Генерация" },
 	{ to: "/library", icon: BookImage, label: "Библиотека" },
-	{ to: "/library/upload", icon: Upload, label: "Загрузить" },
 	{ to: "/media", icon: Film, label: "Медиа" },
 ];
 
 const SECONDARY_NAV: { to: string; icon: React.ElementType; label: string }[] = [];
 
 const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = [
+	{ to: "/library/upload", icon: Upload, label: "Загрузить" },
 	{ to: "/admin", icon: BarChart2, label: "Админ" },
 ];
 
@@ -464,6 +465,7 @@ export function AppShell() {
 			</main>
 
 			<WelcomeModal />
+			<FeedbackWidget />
 
 			{/* ── Bottom nav — mobile ─────────────────────────────────────────────── */}
 			<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center px-1 bg-white border-t border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">

@@ -28,7 +28,7 @@ from api.schemas import (
     SlideResponse, SlidePatchRequest, SlideListResponse,
 )
 from api.utils import slide_to_response
-from api.deps import get_current_user
+from api.deps import get_current_user, get_admin_user
 from services.indexing import index_presentation
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ def _check_slide_owner(slide: SlideLibraryEntry, user_id: int):
 async def upload_presentation(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_admin_user),
 ):
     filename = file.filename or "upload"
     ext = Path(filename).suffix.lower().lstrip(".")
@@ -647,35 +647,9 @@ def save_text_edits(
         thumb_path = Path(settings.thumbnail_dir) / slide.thumbnail_path
         if thumb_path.parent.exists():
             try:
-                import fitz
-                from services.thumbnail import _pptx_to_pdf_via_libreoffice
-
-                with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
-                    f.write(updated_bytes)
-                    tmp_pptx = f.name
-
-                try:
-                    pdf_path = _pptx_to_pdf_via_libreoffice(tmp_pptx)
-                    if pdf_path:
-                        doc = fitz.open(pdf_path)
-                        pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
-                        pix.save(str(thumb_path))
-                        try:
-                            os.unlink(pdf_path)
-                        except Exception:
-                            pass
-                    else:
-                        # Fallback: direct PyMuPDF render
-                        doc = fitz.open(tmp_pptx)
-                        if doc.page_count > 0:
-                            pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
-                            pix.save(str(thumb_path))
-                finally:
-                    try:
-                        os.unlink(tmp_pptx)
-                    except Exception:
-                        pass
-
+                from services.thumbnail import render_single_slide_thumbnail
+                png_bytes = render_single_slide_thumbnail(updated_bytes, slide_index=slide.slide_index)
+                thumb_path.write_bytes(png_bytes)
                 thumb_version = int(time.time())
             except Exception as e:
                 logger.warning(f"Thumbnail regen failed for slide {slide_id}: {e}")
@@ -778,32 +752,9 @@ def rollback_edit_version(
         thumb_path = Path(settings.thumbnail_dir) / slide.thumbnail_path
         if thumb_path.parent.exists():
             try:
-                import fitz
-                from services.thumbnail import _pptx_to_pdf_via_libreoffice
-
-                with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
-                    f.write(updated_bytes)
-                    tmp_pptx = f.name
-                try:
-                    pdf_path = _pptx_to_pdf_via_libreoffice(tmp_pptx)
-                    if pdf_path:
-                        doc = fitz.open(pdf_path)
-                        pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
-                        pix.save(str(thumb_path))
-                        try:
-                            os.unlink(pdf_path)
-                        except Exception:
-                            pass
-                    else:
-                        doc = fitz.open(tmp_pptx)
-                        if doc.page_count > 0:
-                            pix = doc[0].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
-                            pix.save(str(thumb_path))
-                finally:
-                    try:
-                        os.unlink(tmp_pptx)
-                    except Exception:
-                        pass
+                from services.thumbnail import render_single_slide_thumbnail
+                png_bytes = render_single_slide_thumbnail(updated_bytes, slide_index=slide.slide_index)
+                thumb_path.write_bytes(png_bytes)
                 thumb_version = int(time.time())
             except Exception as e:
                 logger.warning(f"Thumbnail regen failed on rollback for slide {slide_id}: {e}")
