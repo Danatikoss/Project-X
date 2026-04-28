@@ -86,13 +86,10 @@ def list_folders(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    folders = db.query(MediaFolder).filter(MediaFolder.owner_id == user.id).all()
+    folders = db.query(MediaFolder).all()
     result = []
     for f in folders:
-        count = db.query(MediaAsset).filter(
-            MediaAsset.folder_id == f.id,
-            MediaAsset.owner_id == user.id,
-        ).count()
+        count = db.query(MediaAsset).filter(MediaAsset.folder_id == f.id).count()
         result.append(FolderResponse(id=f.id, name=f.name, asset_count=count))
     return result
 
@@ -120,12 +117,11 @@ def rename_folder(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    folder = db.query(MediaFolder).filter(
-        MediaFolder.id == folder_id,
-        MediaFolder.owner_id == user.id,
-    ).first()
+    folder = db.query(MediaFolder).filter(MediaFolder.id == folder_id).first()
     if not folder:
         raise HTTPException(404, "Папка не найдена")
+    if folder.owner_id != user.id and not user.is_admin:
+        raise HTTPException(403, "Нет доступа")
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "Название не может быть пустым")
@@ -142,12 +138,11 @@ def delete_folder(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    folder = db.query(MediaFolder).filter(
-        MediaFolder.id == folder_id,
-        MediaFolder.owner_id == user.id,
-    ).first()
+    folder = db.query(MediaFolder).filter(MediaFolder.id == folder_id).first()
     if not folder:
         raise HTTPException(404, "Папка не найдена")
+    if folder.owner_id != user.id and not user.is_admin:
+        raise HTTPException(403, "Нет доступа")
     # Move assets to root before deleting folder
     db.query(MediaAsset).filter(MediaAsset.folder_id == folder_id).update({"folder_id": None})
     db.delete(folder)
@@ -164,7 +159,7 @@ def list_assets(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    q = db.query(MediaAsset).filter(MediaAsset.owner_id == user.id)
+    q = db.query(MediaAsset)
     if unfoldered:
         q = q.filter(MediaAsset.folder_id.is_(None))
     elif folder_id is not None:
@@ -207,12 +202,9 @@ async def upload_asset(
     elif ext in {".mp4", ".mov", ".webm"}:
         file_type = "video"
 
-    # Validate folder ownership
+    # Validate folder exists
     if folder_id is not None:
-        folder = db.query(MediaFolder).filter(
-            MediaFolder.id == folder_id,
-            MediaFolder.owner_id == user.id,
-        ).first()
+        folder = db.query(MediaFolder).filter(MediaFolder.id == folder_id).first()
         if not folder:
             raise HTTPException(404, "Папка не найдена")
 
@@ -268,12 +260,11 @@ def update_asset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    asset = db.query(MediaAsset).filter(
-        MediaAsset.id == asset_id,
-        MediaAsset.owner_id == user.id,
-    ).first()
+    asset = db.query(MediaAsset).filter(MediaAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(404, "Медиа не найдено")
+    if asset.owner_id != user.id and not user.is_admin:
+        raise HTTPException(403, "Нет доступа")
 
     if body.name is not None:
         name = body.name.strip()
@@ -283,10 +274,7 @@ def update_asset(
     if body.clear_folder:
         asset.folder_id = None
     elif body.folder_id is not None:
-        folder = db.query(MediaFolder).filter(
-            MediaFolder.id == body.folder_id,
-            MediaFolder.owner_id == user.id,
-        ).first()
+        folder = db.query(MediaFolder).filter(MediaFolder.id == body.folder_id).first()
         if not folder:
             raise HTTPException(404, "Папка не найдена")
         asset.folder_id = body.folder_id
@@ -311,12 +299,11 @@ def delete_asset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    asset = db.query(MediaAsset).filter(
-        MediaAsset.id == asset_id,
-        MediaAsset.owner_id == user.id,
-    ).first()
+    asset = db.query(MediaAsset).filter(MediaAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(404, "Медиа не найдено")
+    if asset.owner_id != user.id and not user.is_admin:
+        raise HTTPException(403, "Нет доступа")
 
     # Remove file from disk
     file_path = MEDIA_DIR / asset.file_path
