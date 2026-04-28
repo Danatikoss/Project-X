@@ -5,9 +5,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-from api.deps import get_current_user
+from api.deps import get_admin_user, get_current_user
 from database import get_db
 from models.template import AssemblyTemplate
 from models.slide import SlideLibraryEntry
@@ -43,7 +44,9 @@ class TemplateResponse(BaseModel):
     description: str
     slide_ids: list[int]
     overlays: dict
-    slides_preview: list[SlidePreview]  # first 4 slides thumbnails
+    slides_preview: list[SlidePreview]
+    is_public: bool
+    owner_name: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -54,7 +57,6 @@ def _template_to_response(template: AssemblyTemplate, db: Session) -> TemplateRe
     slide_ids = json.loads(template.slide_ids_json or "[]")
     overlays = json.loads(template.overlays_json or "{}")
 
-    # Load first 4 slides for preview
     preview_ids = slide_ids[:4]
     if preview_ids:
         slides_map = {
@@ -74,6 +76,10 @@ def _template_to_response(template: AssemblyTemplate, db: Session) -> TemplateRe
     else:
         slides_preview = []
 
+    owner_name = None
+    if template.owner:
+        owner_name = template.owner.name or template.owner.email
+
     return TemplateResponse(
         id=template.id,
         name=template.name,
@@ -81,21 +87,30 @@ def _template_to_response(template: AssemblyTemplate, db: Session) -> TemplateRe
         slide_ids=slide_ids,
         overlays=overlays,
         slides_preview=slides_preview,
+        is_public=bool(template.is_public),
+        owner_name=owner_name,
         created_at=template.created_at,
     )
 
+
+# ── List: own + public for users; all for admin ────────────────────────────────
 
 @router.get("", response_model=list[TemplateResponse])
 def list_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    templates = (
-        db.query(AssemblyTemplate)
-        .filter(AssemblyTemplate.owner_id == current_user.id)
-        .order_by(AssemblyTemplate.created_at.desc())
-        .all()
-    )
+    q = db.query(AssemblyTemplate)
+    if current_user.is_admin:
+        pass  # admin sees everything
+    else:
+        q = q.filter(
+            or_(
+                AssemblyTemplate.owner_id == current_user.id,
+                AssemblyTemplate.is_public == True,  # noqa: E712
+            )
+        )
+    templates = q.order_by(AssemblyTemplate.created_at.desc()).all()
     return [_template_to_response(t, db) for t in templates]
 
 
@@ -108,7 +123,7 @@ def get_template(
     template = db.query(AssemblyTemplate).get(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
-    if template.owner_id != current_user.id:
+    if not current_user.is_admin and template.owner_id != current_user.id and not template.is_public:
         raise HTTPException(status_code=403, detail="Доступ запрещён")
     return _template_to_response(template, db)
 
@@ -125,6 +140,7 @@ def create_template(
         description=body.description,
         slide_ids_json=json.dumps(body.slide_ids),
         overlays_json=json.dumps(body.overlays),
+        is_public=False,
     )
     db.add(template)
     db.commit()
@@ -142,7 +158,7 @@ def update_template(
     template = db.query(AssemblyTemplate).get(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
-    if template.owner_id != current_user.id:
+    if template.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Доступ запрещён")
 
     if body.name is not None:
@@ -168,8 +184,29 @@ def delete_template(
     template = db.query(AssemblyTemplate).get(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
-    if template.owner_id != current_user.id:
+    if template.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Доступ запрещён")
-
     db.delete(template)
     db.commit()
+
+
+# ── Admin: toggle visibility ───────────────────────────────────────────────────
+
+class VisibilityPatch(BaseModel):
+    is_public: bool
+
+
+@router.patch("/{template_id}/visibility", response_model=TemplateResponse)
+def set_template_visibility(
+    template_id: int,
+    body: VisibilityPatch,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_admin_user),
+):
+    template = db.query(AssemblyTemplate).get(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+    template.is_public = body.is_public
+    db.commit()
+    db.refresh(template)
+    return _template_to_response(template, db)

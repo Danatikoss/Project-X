@@ -246,5 +246,7 @@ export interface AssemblyTemplate {
 	slide_ids: number[];
 	overlays: Record<string, SlideOverlay[]>;
 	slides_preview: { id: number; thumbnail_url: string; title: string | null }[];
+	is_public: boolean;
+	owner_name: string | null;
 	created_at: string;
 }

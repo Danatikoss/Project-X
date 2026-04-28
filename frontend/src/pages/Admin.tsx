@@ -3,6 +3,8 @@ import {
 	ArrowDownToLine,
 	Bug,
 	Clock,
+	Eye,
+	EyeOff,
 	KeyRound,
 	LayoutTemplate,
 	Lightbulb,
@@ -20,8 +22,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { adminApi, feedbackApi, type AdminStats } from "../api/client";
-import type { AdminUser } from "../types";
+import { adminApi, feedbackApi, templatesApi, type AdminStats } from "../api/client";
+import type { AdminUser, AssemblyTemplate } from "../types";
 import { cn } from "../utils/cn";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -338,10 +340,84 @@ function FeedbackTab() {
 	);
 }
 
+// ─── Templates Tab ────────────────────────────────────────────────────────────
+
+function TemplatesTab() {
+	const queryClient = useQueryClient();
+	const { data: templates = [], isLoading } = useQuery<AssemblyTemplate[]>({
+		queryKey: ["admin-templates"],
+		queryFn: templatesApi.list,
+	});
+
+	const toggleMutation = useMutation({
+		mutationFn: ({ id, is_public }: { id: number; is_public: boolean }) =>
+			templatesApi.setVisibility(id, is_public),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-templates"] }),
+		onError: () => toast.error("Не удалось изменить видимость"),
+	});
+
+	if (isLoading) return <div className="py-16 text-center text-sm text-gray-400">Загрузка...</div>;
+	if (!templates.length) return <div className="py-16 text-center text-sm text-gray-400">Шаблонов пока нет</div>;
+
+	return (
+		<div className="space-y-2">
+			{templates.map((t) => (
+				<div key={t.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex items-center gap-3">
+					{/* Preview thumbnails */}
+					<div className="flex -space-x-2 shrink-0">
+						{t.slides_preview.slice(0, 3).map((s) => (
+							<img
+								key={s.id}
+								src={s.thumbnail_url}
+								className="w-8 h-6 rounded object-cover border border-white shadow-sm"
+								alt=""
+							/>
+						))}
+						{t.slides_preview.length === 0 && (
+							<div className="w-8 h-6 rounded bg-gray-100 border border-white" />
+						)}
+					</div>
+
+					{/* Info */}
+					<div className="flex-1 min-w-0">
+						<p className="text-sm font-medium text-gray-800 truncate">{t.name}</p>
+						<p className="text-[11px] text-gray-400 truncate">
+							{t.owner_name ?? "—"} · {t.slide_ids.length} слайдов
+						</p>
+					</div>
+
+					{/* Public badge */}
+					{t.is_public && (
+						<span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 shrink-0">
+							Публичный
+						</span>
+					)}
+
+					{/* Toggle button */}
+					<button
+						onClick={() => toggleMutation.mutate({ id: t.id, is_public: !t.is_public })}
+						disabled={toggleMutation.isPending}
+						title={t.is_public ? "Скрыть от пользователей" : "Показать всем пользователям"}
+						className={cn(
+							"flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all shrink-0",
+							t.is_public
+								? "border-gray-200 text-gray-500 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
+								: "border-gray-200 text-gray-500 hover:border-emerald-200 hover:text-emerald-600 hover:bg-emerald-50"
+						)}
+					>
+						{t.is_public ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+						{t.is_public ? "Скрыть" : "Открыть"}
+					</button>
+				</div>
+			))}
+		</div>
+	);
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Admin() {
-	const [tab, setTab] = useState<"stats" | "users" | "feedback">("stats");
+	const [tab, setTab] = useState<"stats" | "users" | "feedback" | "templates">("stats");
 
 	const { data: stats, isLoading, isError, refetch, isFetching } = useQuery<AdminStats>({
 		queryKey: ["admin-stats"],
@@ -381,6 +457,15 @@ export default function Admin() {
 					>
 						<MessageCircle className="w-4 h-4" /> Отзывы
 					</button>
+					<button
+						onClick={() => setTab("templates")}
+						className={cn(
+							"flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+							tab === "templates" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+						)}
+					>
+						<LayoutTemplate className="w-4 h-4" /> Шаблоны
+					</button>
 				</div>
 				{tab === "stats" && (
 					<button
@@ -399,6 +484,9 @@ export default function Admin() {
 
 			{/* Feedback tab */}
 			{tab === "feedback" && <FeedbackTab />}
+
+			{/* Templates tab */}
+			{tab === "templates" && <TemplatesTab />}
 
 			{/* Stats tab */}
 			{tab === "stats" && isLoading && (

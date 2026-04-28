@@ -732,6 +732,10 @@ export const templatesApi = {
 	delete: async (id: number): Promise<void> => {
 		await api.delete(`/templates/${id}`);
 	},
+	setVisibility: async (id: number, is_public: boolean): Promise<AssemblyTemplate> => {
+		const res = await api.patch<AssemblyTemplate>(`/templates/${id}/visibility`, { is_public });
+		return res.data;
+	},
 };
 
 export const feedbackApi = {
