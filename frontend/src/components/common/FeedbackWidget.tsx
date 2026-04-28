@@ -234,7 +234,7 @@ export function FeedbackWidget() {
 										)}
 									>
 										<Image className="w-3.5 h-3.5" />
-										{attachment ? "Заменить" : "Скрин"}
+										{attachment ? "Заменить" : "Прикрепить"}
 									</button>
 
 									<button
