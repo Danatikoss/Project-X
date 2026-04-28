@@ -1,12 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import {
 	ArrowRight,
 	BookImage,
 	Check,
 	CheckSquare,
 	ChevronDown,
+	ChevronLeft,
+	ChevronRight,
 	Clock,
 	Copy,
+	Eye,
+	Layers,
 	Pencil,
 	PenLine,
 	Plus,
@@ -23,7 +28,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { assemblyApi, templatesApi } from "../api/client";
 import { Spinner } from "../components/common/Spinner";
-import type { AssemblyListItem, AssemblyTemplate } from "../types";
+import type { AssemblyListItem, AssemblyTemplate, Slide } from "../types";
 import { cn } from "../utils/cn";
 
 // ─── Template card type ───────────────────────────────────────────────────────
@@ -74,6 +79,178 @@ function UserTemplateThumbnail({ slides }: { slides: AssemblyTemplate["slides_pr
 				/>
 			))}
 		</div>
+	);
+}
+
+// ─── TemplatePreviewModal ─────────────────────────────────────────────────────
+
+function TemplatePreviewModal({
+	template,
+	onClose,
+	onUse,
+	onEdit,
+	onDelete,
+	isUsing,
+	canEdit,
+}: {
+	template: UserTemplateCard;
+	onClose: () => void;
+	onUse: () => void;
+	onEdit: () => void;
+	onDelete: () => void;
+	isUsing: boolean;
+	canEdit: boolean;
+}) {
+	const [idx, setIdx] = useState(0);
+	const { data: slides = [], isLoading } = useQuery<Slide[]>({
+		queryKey: ["template-slides-preview", template.dbId],
+		queryFn: () => templatesApi.getSlides(template.dbId),
+	});
+
+	const total = slides.length;
+	const prev = () => setIdx((i) => Math.max(0, i - 1));
+	const next = () => setIdx((i) => Math.min(total - 1, i + 1));
+
+	const currentSlide = slides[idx];
+
+	return (
+		<motion.div
+			className="fixed inset-0 z-50 flex items-center justify-center p-4"
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			onClick={onClose}
+		>
+			<div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+			<motion.div
+				className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col"
+				initial={{ scale: 0.95, y: 20 }}
+				animate={{ scale: 1, y: 0 }}
+				exit={{ scale: 0.95, y: 20 }}
+				transition={{ type: "spring", stiffness: 320, damping: 28 }}
+				onClick={(e) => e.stopPropagation()}
+			>
+				{/* Header */}
+				<div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+					<div className="flex items-center gap-3 min-w-0">
+						<div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+							<Layers className="w-4 h-4 text-brand-600" />
+						</div>
+						<div className="min-w-0">
+							<p className="text-sm font-semibold text-gray-900 truncate">{template.title}</p>
+							<p className="text-[11px] text-gray-400">{template.slideCount} слайдов</p>
+						</div>
+					</div>
+					<div className="flex items-center gap-1.5 shrink-0">
+						{canEdit && (
+							<>
+								<button
+									onClick={onEdit}
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+								>
+									<Pencil className="w-3.5 h-3.5" /> Редактировать
+								</button>
+								<button
+									onClick={onDelete}
+									className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+									title="Удалить"
+								>
+									<Trash2 className="w-3.5 h-3.5" />
+								</button>
+							</>
+						)}
+						<button
+							onClick={onClose}
+							className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+						>
+							<X className="w-4 h-4" />
+						</button>
+					</div>
+				</div>
+
+				{/* Slide viewer */}
+				<div className="relative bg-gray-50 flex items-center justify-center" style={{ minHeight: 320 }}>
+					{isLoading ? (
+						<Spinner size="lg" />
+					) : total === 0 ? (
+						<div className="flex flex-col items-center gap-2 text-gray-300 py-12">
+							<BookImage className="w-10 h-10" />
+							<p className="text-sm">Нет слайдов</p>
+						</div>
+					) : (
+						<>
+							<img
+								src={currentSlide?.thumbnail_url}
+								alt={currentSlide?.title ?? ""}
+								className="max-h-80 max-w-full object-contain rounded shadow-sm"
+							/>
+
+							{/* Nav arrows */}
+							{idx > 0 && (
+								<button
+									onClick={prev}
+									className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 rounded-full shadow flex items-center justify-center hover:bg-white transition-colors"
+								>
+									<ChevronLeft className="w-4 h-4 text-gray-600" />
+								</button>
+							)}
+							{idx < total - 1 && (
+								<button
+									onClick={next}
+									className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 rounded-full shadow flex items-center justify-center hover:bg-white transition-colors"
+								>
+									<ChevronRight className="w-4 h-4 text-gray-600" />
+								</button>
+							)}
+
+							{/* Counter */}
+							<div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[11px] px-2.5 py-1 rounded-full">
+								{idx + 1} / {total}
+							</div>
+						</>
+					)}
+				</div>
+
+				{/* Filmstrip */}
+				{!isLoading && total > 1 && (
+					<div className="flex gap-1.5 px-4 py-2 overflow-x-auto border-t border-gray-100 bg-gray-50/50">
+						{slides.map((s, i) => (
+							<button
+								key={s.id}
+								onClick={() => setIdx(i)}
+								className={cn(
+									"shrink-0 w-16 h-10 rounded overflow-hidden border-2 transition-all",
+									i === idx ? "border-brand-500 shadow-sm" : "border-transparent hover:border-gray-300"
+								)}
+							>
+								<img src={s.thumbnail_url} alt="" className="w-full h-full object-cover" />
+							</button>
+						))}
+					</div>
+				)}
+
+				{/* Footer */}
+				<div className="flex items-center justify-between px-5 py-4 border-t border-gray-100">
+					{template.desc ? (
+						<p className="text-xs text-gray-400 max-w-xs truncate">{template.desc}</p>
+					) : (
+						<span />
+					)}
+					<button
+						onClick={onUse}
+						disabled={isUsing}
+						className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 text-white text-sm font-semibold hover:opacity-90 shadow-sm disabled:opacity-60 transition-all"
+					>
+						{isUsing ? (
+							<Spinner size="sm" className="border-white/40 border-t-white" />
+						) : (
+							<ArrowRight className="w-4 h-4" />
+						)}
+						Использовать
+					</button>
+				</div>
+			</motion.div>
+		</motion.div>
 	);
 }
 
@@ -160,6 +337,7 @@ function WelcomeCard() {
 
 export default function Dashboard() {
 	const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+	const [previewTemplate, setPreviewTemplate] = useState<UserTemplateCard | null>(null);
 	const [customOpen, setCustomOpen] = useState(false);
 	const [customPrompt, setCustomPrompt] = useState("");
 	const [manualTitle, setManualTitle] = useState("");
@@ -299,8 +477,14 @@ export default function Dashboard() {
 	}, [customOpen]);
 
 	const handleTemplateClick = (t: UserTemplateCard) => {
+		setPreviewTemplate(t);
+	};
+
+	const handleUseTemplate = (t: UserTemplateCard) => {
 		setActiveTemplateId(t.id);
-		createFromTemplateMutation.mutate(t.dbId);
+		createFromTemplateMutation.mutate(t.dbId, {
+			onSuccess: () => setPreviewTemplate(null),
+		});
 	};
 
 	const handleCustomSubmit = (e: React.FormEvent) => {
@@ -348,32 +532,12 @@ export default function Dashboard() {
 							>
 								<UserTemplateThumbnail slides={t.slidesPreview} />
 
-								{/* Actions */}
-								{!isBuilding && (
-									<div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-										<button
-											onClick={(e) => {
-												e.stopPropagation();
-												navigate(`/templates/${t.dbId}/edit`);
-											}}
-											className="p-1.5 rounded-lg bg-white/90 shadow-sm hover:bg-white text-gray-500 hover:text-gray-800 transition-colors"
-											title="Редактировать"
-										>
-											<Pencil className="w-3 h-3" />
-										</button>
-										<button
-											onClick={(e) => {
-												e.stopPropagation();
-												if (!confirm(`Удалить шаблон «${t.title}»?`)) return;
-												deleteTemplateMutation.mutate(t.dbId);
-											}}
-											className="p-1.5 rounded-lg bg-white/90 shadow-sm hover:bg-red-50 text-gray-500 hover:text-red-500 transition-colors"
-											title="Удалить"
-										>
-											<Trash2 className="w-3 h-3" />
-										</button>
+								{/* Preview hint on hover */}
+								<div className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+									<div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center gap-1.5 shadow-sm text-xs font-medium text-gray-700">
+										<Eye className="w-3.5 h-3.5" /> Предпросмотр
 									</div>
-								)}
+								</div>
 
 								<div className="px-4 pt-3 pb-4">
 									<div className="flex items-center justify-between mb-1">
@@ -383,7 +547,7 @@ export default function Dashboard() {
 										</span>
 									</div>
 									{t.desc && (
-										<p className="text-[12px] text-gray-500 mb-3 leading-snug">{t.desc}</p>
+										<p className="text-[12px] text-gray-500 mb-1 leading-snug">{t.desc}</p>
 									)}
 									<div className="flex items-center mt-2">
 										{isThisBuilding ? (
@@ -392,9 +556,8 @@ export default function Dashboard() {
 												Создаём...
 											</span>
 										) : (
-											<span className="flex items-center gap-1 text-sm font-semibold text-brand-600 group-hover:text-brand-700">
-												Использовать{" "}
-												<ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+											<span className="flex items-center gap-1 text-sm font-semibold text-gray-400 group-hover:text-brand-600 transition-colors">
+												Нажмите для просмотра
 											</span>
 										)}
 									</div>
@@ -744,6 +907,28 @@ export default function Dashboard() {
 					</div>
 				)}
 			</div>
+
+			{/* Template preview modal */}
+			<AnimatePresence>
+				{previewTemplate && (
+					<TemplatePreviewModal
+						template={previewTemplate}
+						onClose={() => setPreviewTemplate(null)}
+						onUse={() => handleUseTemplate(previewTemplate)}
+						onEdit={() => {
+							setPreviewTemplate(null);
+							navigate(`/templates/${previewTemplate.dbId}/edit`);
+						}}
+						onDelete={() => {
+							if (!confirm(`Удалить шаблон «${previewTemplate.title}»?`)) return;
+							deleteTemplateMutation.mutate(previewTemplate.dbId);
+							setPreviewTemplate(null);
+						}}
+						isUsing={createFromTemplateMutation.isPending && activeTemplateId === previewTemplate.id}
+						canEdit={!!userTemplates.find((t) => t.id === previewTemplate.dbId)}
+					/>
+				)}
+			</AnimatePresence>
 		</div>
 	);
 }

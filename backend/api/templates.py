@@ -190,6 +190,38 @@ def delete_template(
     db.commit()
 
 
+# ── Slides for a template (bypasses owner filter so editors load correctly) ────
+
+@router.get("/{template_id}/slides")
+def get_template_slides(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return full slide data for all slides in a template.
+    Access: owner, admin, or any user if template is public.
+    Bypasses per-user library filter so the editor loads correctly.
+    """
+    template = db.query(AssemblyTemplate).get(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+    if not current_user.is_admin and template.owner_id != current_user.id and not template.is_public:
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+
+    slide_ids = json.loads(template.slide_ids_json or "[]")
+    if not slide_ids:
+        return []
+
+    slides_map = {
+        s.id: s for s in db.query(SlideLibraryEntry)
+        .options(joinedload(SlideLibraryEntry.source))
+        .filter(SlideLibraryEntry.id.in_(slide_ids))
+        .all()
+    }
+    # Preserve order from template
+    return [slide_to_response(slides_map[sid]) for sid in slide_ids if sid in slides_map]
+
+
 # ── Admin: toggle visibility ───────────────────────────────────────────────────
 
 class VisibilityPatch(BaseModel):

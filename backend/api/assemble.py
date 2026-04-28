@@ -101,7 +101,7 @@ def create_from_template(
     template = db.query(AssemblyTemplate).get(template_id)
     if not template:
         raise HTTPException(404, detail="Шаблон не найден")
-    if template.owner_id != user.id:
+    if not user.is_admin and template.owner_id != user.id and not template.is_public:
         raise HTTPException(403, detail="Нет доступа")
 
     assembly = AssembledPresentation(

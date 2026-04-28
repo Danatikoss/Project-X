@@ -736,6 +736,10 @@ export const templatesApi = {
 		const res = await api.patch<AssemblyTemplate>(`/templates/${id}/visibility`, { is_public });
 		return res.data;
 	},
+	getSlides: async (id: number): Promise<Slide[]> => {
+		const res = await api.get<Slide[]>(`/templates/${id}/slides`);
+		return res.data;
+	},
 };
 
 export const feedbackApi = {

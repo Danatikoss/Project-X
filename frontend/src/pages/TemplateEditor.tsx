@@ -418,31 +418,23 @@ export default function TemplateEditor() {
 		enabled: !isNew && !!templateId,
 	});
 
-	// Load all slides for the template (up to 500)
-	const { data: allLibrarySlides } = useQuery({
-		queryKey: ["library-all-for-template"],
-		queryFn: () => libraryApi.listSlides({ page: 1, page_size: 500 }),
-		enabled: !isNew && !!template,
+	// Load template slides directly by ID — bypasses per-user library filter
+	const { data: templateSlides } = useQuery({
+		queryKey: ["template-slides", templateId],
+		queryFn: () => templatesApi.getSlides(templateId!),
+		enabled: !isNew && !!templateId,
 	});
 
 	useEffect(() => {
-		if (template && !initialized) {
+		if (template && templateSlides && !initialized) {
 			setName(template.name);
 			setDescription(template.description);
 			setOverlays(template.overlays || {});
-		}
-	}, [template, initialized]);
-
-	useEffect(() => {
-		if (template && allLibrarySlides && !initialized) {
-			const slideMap = new Map(allLibrarySlides.items.map((s) => [s.id, s]));
-			const ordered = template.slide_ids
-				.map((sid) => slideMap.get(sid))
-				.filter((s): s is Slide => !!s);
-			setLocalSlides(ordered);
+			// templateSlides are already ordered by template.slide_ids on the backend
+			setLocalSlides(templateSlides);
 			setInitialized(true);
 		}
-	}, [template, allLibrarySlides, initialized]);
+	}, [template, templateSlides, initialized]);
 
 	useEffect(() => {
 		overlaysRef.current = overlays;
