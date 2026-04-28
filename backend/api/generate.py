@@ -371,10 +371,27 @@ def _build_pptx_from_plan(body: "PresentationPlan", db: Session | None = None) -
     from services.export import _clone_slide
 
     catalog = load_catalog()
-    source = PptxPrs(str(TPL_PATH))
+
+    # Determine slide dimensions from the first template in the plan
+    # (template files may differ in size from Libraryslides.pptx)
+    slide_w, slide_h = None, None
+    for s in (body.slides or []):
+        if s.slide_type == "template":
+            try:
+                tmpl = get_template_by_id(s.template_id, catalog)
+                dim_prs = PptxPrs(str(tmpl.pptx_path))
+                slide_w, slide_h = dim_prs.slide_width, dim_prs.slide_height
+                break
+            except Exception:
+                pass
+    if slide_w is None:
+        # Fallback to Libraryslides
+        fallback = PptxPrs(str(TPL_PATH))
+        slide_w, slide_h = fallback.slide_width, fallback.slide_height
+
     out_prs = PptxPrs()
-    out_prs.slide_width = source.slide_width
-    out_prs.slide_height = source.slide_height
+    out_prs.slide_width = slide_w
+    out_prs.slide_height = slide_h
     sldIdLst = out_prs.slides._sldIdLst
     for sldId in list(sldIdLst):
         sldIdLst.remove(sldId)

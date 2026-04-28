@@ -372,18 +372,29 @@ def export_to_pptx(db: Session, assembly_id: int) -> str:
 
     logger.info(f"export_to_pptx: thumbnail export for assembly {assembly_id} ({len(slides)} slides)")
     dest_prs = Presentation()
-    dest_prs.slide_width  = Inches(13.33)
-    dest_prs.slide_height = Inches(7.5)
+    # Detect slide dimensions from the first PPTX source so shapes are not scaled
+    for s in slides:
+        if s.source_id and s.source and s.source.file_type == "pptx" and s.source.file_path:
+            try:
+                src_dim = Presentation(s.source.file_path)
+                dest_prs.slide_width  = src_dim.slide_width
+                dest_prs.slide_height = src_dim.slide_height
+                break
+            except Exception:
+                pass
+    else:
+        dest_prs.slide_width  = Inches(13.33)
+        dest_prs.slide_height = Inches(7.5)
 
     for slide_entry in slides:
         cloned = False
-        if slide_entry.video_path and slide_entry.source_id:
+        if slide_entry.source_id:
             try:
                 source = slide_entry.source
                 if source and source.file_type == "pptx" and source.file_path:
                     cloned = _clone_slide(dest_prs, source.file_path, slide_entry.slide_index)
             except Exception as e:
-                logger.debug(f"Video slide clone failed (slide {slide_entry.id}): {e}")
+                logger.debug(f"Slide clone failed (slide {slide_entry.id}): {e}")
 
         if not cloned:
             _add_thumbnail_slide(dest_prs, slide_entry)

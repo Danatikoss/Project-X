@@ -161,9 +161,14 @@ def _find_gif_rect_in_slide_xml(
                         cx = int(cx * sx)
                         cy = int(cy * sy)
 
+                x_frac = x / slide_cx
+                y_frac = y / slide_cy
+                # Skip GIFs fully outside the slide (off-screen start positions for animations)
+                if x_frac >= 1.0 or y_frac >= 1.0:
+                    return None
                 return {
-                    "x": max(0.0, min(1.0, x / slide_cx)),
-                    "y": max(0.0, min(1.0, y / slide_cy)),
+                    "x": max(0.0, x_frac),
+                    "y": max(0.0, y_frac),
                     "w": min(1.0, cx / slide_cx),
                     "h": min(1.0, cy / slide_cy),
                 }
@@ -351,6 +356,198 @@ def _extract_text_from_pptx_slide(slide) -> str:
     return " ".join(texts)
 
 
+def _render_pptx_slide_with_pillow(prs, slide_index: int, slide_cx: int, slide_cy: int) -> bytes:
+    """
+    Pure-Python renderer using python-pptx + Pillow.
+    Renders shapes at correct positions with text and basic fill colors.
+    No external system dependencies. Not pixel-perfect (no gradients/themes/fonts)
+    but produces a functional layout preview suitable as a fallback thumbnail.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    TARGET_W, TARGET_H = 3840, 2160
+    scale_x = TARGET_W / slide_cx
+    scale_y = TARGET_H / slide_cy
+
+    slide = prs.slides[slide_index]
+
+    # Background color
+    bg_color = (255, 255, 255)
+    try:
+        fill = slide.background.fill
+        if fill.type is not None:
+            rgb = fill.fore_color.rgb
+            bg_color = (rgb[0], rgb[1], rgb[2])
+    except Exception:
+        pass
+
+    img = Image.new("RGB", (TARGET_W, TARGET_H), bg_color)
+    draw = ImageDraw.Draw(img)
+
+    def _font(size_pt: float, bold: bool = False) -> ImageFont.FreeTypeFont:
+        size_px = max(8, int(size_pt * 96 / 72 * scale_y))
+        candidates = (
+            [
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ] if bold else []
+        ) + [
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/Library/Fonts/Arial.ttf",
+            "arial.ttf",
+        ]
+        for path in candidates:
+            try:
+                return ImageFont.truetype(path, size_px)
+            except Exception:
+                continue
+        try:
+            return ImageFont.load_default(size=size_px)
+        except Exception:
+            return ImageFont.load_default()
+
+    for shape in slide.shapes:
+        try:
+            if shape.left is None or shape.top is None:
+                continue
+            left = int(shape.left * scale_x)
+            top = int(shape.top * scale_y)
+            width = int((shape.width or 0) * scale_x)
+            height = int((shape.height or 0) * scale_y)
+            right, bottom = left + width, top + height
+
+            # Solid shape fill
+            try:
+                f = shape.fill
+                if str(f.type) == "SOLID (1)":
+                    rgb = f.fore_color.rgb
+                    draw.rectangle([left, top, right, bottom], fill=(rgb[0], rgb[1], rgb[2]))
+            except Exception:
+                pass
+
+            # Picture placeholder
+            if shape.shape_type == 13:
+                draw.rectangle([left, top, right, bottom], fill=(215, 215, 220), outline=(170, 170, 180), width=2)
+                cx, cy = (left + right) // 2, (top + bottom) // 2
+                r = min(width, height) // 6
+                draw.line([cx - r, cy - r, cx + r, cy + r], fill=(160, 160, 170), width=max(2, r // 4))
+                draw.line([cx + r, cy - r, cx - r, cy + r], fill=(160, 160, 170), width=max(2, r // 4))
+                continue
+
+            # Text frame
+            if not (hasattr(shape, "has_text_frame") and shape.has_text_frame):
+                continue
+
+            y = top + max(2, int(4 * scale_y))
+            for para in shape.text_frame.paragraphs:
+                line_text = para.text
+                if not line_text:
+                    y += max(4, int(6 * scale_y))
+                    continue
+
+                font_pt, text_color, bold = 18.0, (30, 30, 30), False
+                try:
+                    if para.runs:
+                        run = para.runs[0]
+                        if run.font.size:
+                            font_pt = run.font.size.pt
+                        bold = bool(run.font.bold)
+                        if run.font.color and run.font.color.type is not None:
+                            rgb = run.font.color.rgb
+                            text_color = (rgb[0], rgb[1], rgb[2])
+                except Exception:
+                    pass
+
+                font = _font(font_pt, bold)
+
+                # Word-wrap within shape width
+                words, line_buf = line_text.split(), ""
+                for word in words:
+                    candidate = (line_buf + " " + word).strip()
+                    lw = draw.textbbox((0, 0), candidate, font=font)[2]
+                    if lw > width - 8 and line_buf:
+                        if y < bottom:
+                            draw.text((left + 4, y), line_buf, fill=text_color, font=font)
+                        lh = draw.textbbox((0, 0), line_buf, font=font)[3]
+                        y += int(lh * 1.15) + 1
+                        line_buf = word
+                    else:
+                        line_buf = candidate
+                if line_buf and y < bottom:
+                    draw.text((left + 4, y), line_buf, fill=text_color, font=font)
+                    lh = draw.textbbox((0, 0), line_buf, font=font)[3]
+                    y += int(lh * 1.15) + 4
+
+                if y > bottom:
+                    break
+        except Exception:
+            continue
+
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def render_single_slide_thumbnail(pptx_bytes: bytes, slide_index: int = 0) -> bytes:
+    """
+    Render one slide to a 1920×1080 PNG.
+    Strategy: LibreOffice (high quality) → Pillow renderer (no system deps).
+    Use this everywhere a single-slide thumbnail needs to be regenerated.
+    """
+    import tempfile, zipfile as _zf
+    from pptx import Presentation as _Prs
+    import io as _io
+
+    with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
+        f.write(pptx_bytes)
+        tmp_path = f.name
+
+    try:
+        # Strategy 1: LibreOffice → PDF → PyMuPDF
+        pdf_path = _pptx_to_pdf_via_libreoffice(tmp_path)
+        if pdf_path:
+            try:
+                import fitz
+                doc = fitz.open(pdf_path)
+                idx = min(slide_index, doc.page_count - 1)
+                pix = doc[idx].get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
+                from PIL import Image
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                img = img.resize((3840, 2160), Image.LANCZOS)
+                doc.close()
+                buf = _io.BytesIO()
+                img.save(buf, "PNG")
+                return buf.getvalue()
+            finally:
+                try:
+                    import os as _os
+                    _os.unlink(pdf_path)
+                    import shutil as _sh
+                    _sh.rmtree(os.path.dirname(pdf_path), ignore_errors=True)
+                except Exception:
+                    pass
+
+        # Strategy 2: Pillow renderer
+        prs = _Prs(_io.BytesIO(pptx_bytes))
+        slide_cx, slide_cy = 9144000, 5143500
+        try:
+            with _zf.ZipFile(tmp_path, "r") as zf:
+                slide_cx, slide_cy = _get_slide_dimensions(zf)
+        except Exception:
+            pass
+        idx = min(slide_index, len(prs.slides) - 1)
+        return _render_pptx_slide_with_pillow(prs, idx, slide_cx, slide_cy)
+    finally:
+        try:
+            import os as _os
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
 def _pptx_to_pdf_via_libreoffice(pptx_path: str) -> str | None:
     """
     Convert PPTX to PDF using LibreOffice headless.
@@ -390,7 +587,7 @@ def _pptx_to_pdf_via_libreoffice(pptx_path: str) -> str | None:
 def extract_pptx_slides(file_path: str) -> list[SlideData]:
     """
     Extract slides from a PPTX file.
-    Thumbnails: PPTX → PDF via LibreOffice → PNG via PyMuPDF (high fidelity).
+    Thumbnails: LibreOffice → PDF → PyMuPDF (high quality) with Pillow fallback (no system deps).
     XML blobs via python-pptx for lossless re-export.
     Detects video/GIF and adds visual overlay.
     """
@@ -401,7 +598,15 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
 
     slides: list[SlideData] = []
 
-    # --- Thumbnail rendering: LibreOffice → PDF → PyMuPDF ---
+    # --- Read slide dimensions first (needed for both render paths) ---
+    slide_cx, slide_cy = 9144000, 5143500
+    try:
+        with zipfile.ZipFile(file_path, 'r') as zf:
+            slide_cx, slide_cy = _get_slide_dimensions(zf)
+    except Exception:
+        pass
+
+    # --- Thumbnail rendering: LibreOffice → PDF → PyMuPDF, else Pillow ---
     thumbnail_map: dict[int, bytes] = {}
     pdf_tmp_dir = None
     try:
@@ -410,30 +615,16 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
             pdf_tmp_dir = os.path.dirname(pdf_path)
             doc = fitz.open(pdf_path)
             for i, page in enumerate(doc):
-                mat = fitz.Matrix(3.0, 3.0)
-                pix = page.get_pixmap(matrix=mat)
+                pix = page.get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
                 from PIL import Image
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                img = img.resize((1920, 1080), Image.LANCZOS)
-                buf = io.BytesIO()
-                img.save(buf, "PNG")
-                thumbnail_map[i] = buf.getvalue()
-            doc.close()
-        else:
-            # Fallback: direct PyMuPDF render (low quality but better than nothing)
-            doc = fitz.open(file_path)
-            for i, page in enumerate(doc):
-                mat = fitz.Matrix(3.0, 3.0)
-                pix = page.get_pixmap(matrix=mat)
-                from PIL import Image
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                img = img.resize((1920, 1080), Image.LANCZOS)
+                img = img.resize((3840, 2160), Image.LANCZOS)
                 buf = io.BytesIO()
                 img.save(buf, "PNG")
                 thumbnail_map[i] = buf.getvalue()
             doc.close()
     except Exception as e:
-        logger.warning(f"Thumbnail render failed: {e} — will use Pillow fallback per slide")
+        logger.warning(f"LibreOffice thumbnail render failed: {e}")
     finally:
         if pdf_tmp_dir and os.path.isdir(pdf_tmp_dir):
             try:
@@ -441,13 +632,18 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
             except Exception:
                 pass
 
-    # --- Read slide dimensions once ---
-    slide_cx, slide_cy = 9144000, 5143500
-    try:
-        with zipfile.ZipFile(file_path, 'r') as zf:
-            slide_cx, slide_cy = _get_slide_dimensions(zf)
-    except Exception:
-        pass
+    # Pillow fallback: render all slides that LibreOffice didn't produce
+    if not thumbnail_map:
+        logger.info("LibreOffice not available — using Pillow renderer for thumbnails")
+        try:
+            _prs_tmp = Presentation(file_path)
+            for i in range(len(_prs_tmp.slides)):
+                try:
+                    thumbnail_map[i] = _render_pptx_slide_with_pillow(_prs_tmp, i, slide_cx, slide_cy)
+                except Exception as e:
+                    logger.warning(f"Pillow render failed for slide {i}: {e}")
+        except Exception as e:
+            logger.warning(f"Pillow thumbnail fallback failed: {e}")
 
     # --- XML blob + text extraction via python-pptx ---
     # python-pptx iterates slides in PRESENTATION ORDER (not file number order).
@@ -500,12 +696,18 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
                         sampled = arr[idx]
                         white_count = int(np.sum(np.all(sampled > 240, axis=1)))
                         if white_count / len(sampled) > 0.95:
-                            logger.info(f"Slide {i} appears blank, using Pillow fallback")
-                            thumb = _make_placeholder_thumbnail(text[:60] if text else "", i)
+                            logger.info(f"Slide {i} appears blank, re-rendering with Pillow")
+                            try:
+                                thumb = _render_pptx_slide_with_pillow(prs, i, slide_cx, slide_cy)
+                            except Exception:
+                                thumb = _make_placeholder_thumbnail(text[:60] if text else "", i)
                     except Exception:
                         pass  # keep original thumb
                 else:
-                    thumb = _make_placeholder_thumbnail(text[:60] if text else "", i)
+                    try:
+                        thumb = _render_pptx_slide_with_pillow(prs, i, slide_cx, slide_cy)
+                    except Exception:
+                        thumb = _make_placeholder_thumbnail(text[:60] if text else "", i)
 
                 # Add video/GIF overlay to thumbnail
                 if has_video or has_gif:

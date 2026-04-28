@@ -344,8 +344,7 @@ export default function Dashboard() {
 	const [customOpen, setCustomOpen] = useState(false);
 	const [customPrompt, setCustomPrompt] = useState("");
 	const [manualTitle, setManualTitle] = useState("");
-	const [manualOpen, setManualOpen] = useState(false);
-	const [editingId, setEditingId] = useState<number | null>(null);
+const [editingId, setEditingId] = useState<number | null>(null);
 	const [editTitle, setEditTitle] = useState("");
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 	const editInputRef = useRef<HTMLInputElement>(null);
@@ -670,59 +669,52 @@ export default function Dashboard() {
 					)}
 				</div>
 
-				{/* ── Tertiary: manual creation ────────────────────────────────────────── */}
-				<div className="mt-2">
-					<button
-						onClick={() => setManualOpen((v) => !v)}
-						className="w-full flex items-center justify-between px-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
-					>
-						<span className="flex items-center gap-2">
-							<Plus className="w-4 h-4" />
-							Создать пустую презентацию
-						</span>
-						<ChevronDown
-							className={cn(
-								"w-4 h-4 text-slate-400 transition-transform duration-200",
-								manualOpen && "rotate-180"
-							)}
-						/>
-					</button>
+				{/* ── Собрать вручную ──────────────────────────────────────────────────── */}
+				<form
+					onSubmit={(e) => {
+						e.preventDefault();
+						blankMutation.mutate();
+					}}
+					className="mt-2 rounded-2xl border-2 border-brand-100 bg-gradient-to-br from-brand-50 to-violet-50 overflow-hidden"
+				>
+					<div className="px-5 py-4 flex items-center gap-4">
+						{/* Icon */}
+						<div className="shrink-0 w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 flex items-center justify-center shadow-sm">
+							<PenLine className="w-5 h-5 text-white" />
+						</div>
 
-					{manualOpen && (
-						<form
-							onSubmit={(e) => {
-								e.preventDefault();
-								blankMutation.mutate();
-							}}
-							className="mt-1 px-4 py-3 rounded-2xl border border-slate-200 bg-white animate-fade-in"
-						>
-							<div className="flex gap-2">
-								<input
-									type="text"
-									value={manualTitle}
-									onChange={(e) => setManualTitle(e.target.value)}
-									placeholder="Название (необязательно)"
-									className="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:bg-white transition-all"
-								/>
-								<button
-									type="submit"
-									disabled={blankMutation.isPending}
-									className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-semibold hover:bg-slate-900 disabled:opacity-50 transition-all"
-								>
-									{blankMutation.isPending ? (
-										<Spinner size="sm" className="border-white border-t-transparent" />
-									) : (
-										<PenLine className="w-3.5 h-3.5" />
-									)}
-									Создать
-								</button>
-							</div>
-							<p className="text-[11px] text-slate-400 mt-1.5">
-								Откроется редактор — добавляйте слайды из библиотеки вручную
+						{/* Text */}
+						<div className="flex-1 min-w-0">
+							<p className="text-sm font-bold text-brand-900">Собрать презентацию вручную</p>
+							<p className="text-[12px] text-brand-600/70 mt-0.5">
+								Выберите слайды из библиотеки и соберите презентацию в редакторе
 							</p>
-						</form>
-					)}
-				</div>
+						</div>
+					</div>
+
+					{/* Input + button */}
+					<div className="px-5 pb-4 flex gap-2">
+						<input
+							type="text"
+							value={manualTitle}
+							onChange={(e) => setManualTitle(e.target.value)}
+							placeholder="Название презентации (необязательно)"
+							className="flex-1 px-3 py-2 rounded-xl border border-brand-200 bg-white text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-transparent transition-all"
+						/>
+						<button
+							type="submit"
+							disabled={blankMutation.isPending}
+							className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 shadow-sm transition-all whitespace-nowrap"
+						>
+							{blankMutation.isPending ? (
+								<Spinner size="sm" className="border-white/40 border-t-white" />
+							) : (
+								<ArrowRight className="w-4 h-4" />
+							)}
+							Начать
+						</button>
+					</div>
+				</form>
 			</div>
 
 			{/* ── Recent assemblies ────────────────────────────────────────────────── */}

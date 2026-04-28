@@ -104,7 +104,7 @@ function FolderAssignButton({ slide }: { slide: Slide }) {
 /** Renders slide thumbnail with animated GIF overlaid at its correct position */
 export function SlideThumbnail({ slide, className }: { slide: Slide; className?: string }) {
 	return (
-		<div className={cn("relative w-full", className)} style={{ paddingTop: "56.25%" }}>
+		<div className={cn("relative w-full overflow-hidden", className)} style={{ paddingTop: "56.25%" }}>
 			{/* Base: full slide thumbnail */}
 			{slide.thumbnail_url ? (
 				<img

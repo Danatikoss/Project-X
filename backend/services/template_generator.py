@@ -123,6 +123,13 @@ FILL_SYSTEM = """Ты — копирайтер для презентаций. Т
 5. Используй \\n для переноса строки внутри значения, если формат требует"""
 
 
+_MEDIA_SLOT_PREFIXES = ("slot_image_", "slot_media_", "slot_video_", "slot_photo_")
+
+
+def _is_media_slot(slot_name: str) -> bool:
+    return any(slot_name.lower().startswith(p) for p in _MEDIA_SLOT_PREFIXES)
+
+
 def _describe_slot_format(slot_name: str, hint: str) -> str:
     """
     Build a human-readable format description for one slot,
@@ -141,13 +148,19 @@ def _describe_slot_format(slot_name: str, hint: str) -> str:
     if any(x in name_lower for x in ("metric", "stat", "kpi", "number", "count", "rate")):
         return 'формат: ЗНАЧЕНИЕ\\nПОДПИСЬ. Пример: "750,000+\\nПользователей"'
     if any(x in name_lower for x in ("title", "header", "heading", "заголовок")):
-        return "plain text, короткий заголовок (3–8 слов)"
-    if any(x in name_lower for x in ("description", "body", "text", "desc", "subtitle")):
-        return "plain text, 1–2 предложения"
+        return "plain text, короткий заголовок (3–8 слов), максимум 60 символов"
+    if any(x in name_lower for x in ("subtitle",)):
+        return "plain text, 1 предложение, максимум 80 символов"
+    if any(x in name_lower for x in ("description", "body", "text", "desc")):
+        return "plain text, 2–3 строки максимум, не более 180 символов"
     if any(x in name_lower for x in ("step", "шаг", "item", "point")):
-        return 'формат: НАЗВАНИЕ\\n\\nОПИСАНИЕ. Пример: "Анализ данных\\n\\nСобираем и обрабатываем показатели"'
+        return 'формат: НАЗВАНИЕ\\n\\nОПИСАНИЕ. Пример: "Анализ данных\\n\\nСобираем и обрабатываем показатели". Макс. 120 символов'
+    if any(x in name_lower for x in ("result", "итог", "достижение", "achievement")):
+        return 'результат/метрика: числа, факты. Пример: "650К\\nстудентов прошли обучение"'
+    if any(x in name_lower for x in ("program", "программ", "product", "продукт", "name", "имя")):
+        return "название продукта или программы, кратко (1–5 слов)"
 
-    return "plain text"
+    return "plain text, кратко"
 
 
 async def _fill_slots(
@@ -156,10 +169,24 @@ async def _fill_slots(
     template: TemplateInfo,
 ) -> dict[str, str]:
     """Step 3: ask LLM to fill template slots for a specific slide intent."""
+    # Separate text slots from media slots — media slots are not filled by LLM
+    text_slots = {k: v for k, v in template.slots.items() if not _is_media_slot(k)}
+    media_slots = {k: v for k, v in template.slots.items() if _is_media_slot(k)}
+
+    _GENERIC_HINT = ("слот ", "slot_")
+
     slots_lines = []
-    for slot_name, hint in template.slots.items():
+    for slot_name, hint in text_slots.items():
         fmt = _describe_slot_format(slot_name, hint)
-        slots_lines.append(f"  - {slot_name}: {fmt}")
+        # Always show the original template value as a structural example
+        # so LLM understands the expected format and density of content
+        hint_is_real = hint and not any(hint.lower().startswith(p) for p in _GENERIC_HINT)
+        if hint_is_real:
+            example = hint[:100].replace("\n", "\\n")
+            line = f'  - {slot_name}: {fmt}. Формат как в примере: "{example}"'
+        else:
+            line = f"  - {slot_name}: {fmt}"
+        slots_lines.append(line)
     slots_block = "\n".join(slots_lines)
 
     user_msg = (
@@ -182,14 +209,17 @@ async def _fill_slots(
     )
     raw = json.loads(response.choices[0].message.content or "{}")
 
-    # Validate: ensure all expected slots present; fall back to hint if missing
+    # Validate: ensure all expected text slots present; fall back to hint if missing
     result: dict[str, str] = {}
-    for slot_key, hint in template.slots.items():
+    for slot_key, hint in text_slots.items():
         if slot_key in raw and str(raw[slot_key]).strip():
             result[slot_key] = str(raw[slot_key])
         else:
             logger.warning("LLM missing slot %r for template %r — using hint as fallback", slot_key, template.id)
-            result[slot_key] = hint  # hint from catalog is better than "[slot_key]"
+            result[slot_key] = hint
+
+    # Media slots are excluded from result — injector will leave them untouched
+    logger.debug("Skipped %d media slots for template %r: %s", len(media_slots), template.id, list(media_slots))
     return result
 
 
