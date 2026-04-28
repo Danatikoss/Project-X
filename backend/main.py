@@ -108,6 +108,10 @@ brand_bg_dir = Path(settings.upload_dir) / "brand_backgrounds"
 brand_bg_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/brand-backgrounds", StaticFiles(directory=str(brand_bg_dir)), name="brand-backgrounds")
 
+feedback_attach_dir = Path(settings.upload_dir) / "feedback_attachments"
+feedback_attach_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/feedback-attachments", StaticFiles(directory=str(feedback_attach_dir)), name="feedback-attachments")
+
 
 @app.get("/health")
 def health():

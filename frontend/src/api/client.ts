@@ -735,8 +735,18 @@ export const templatesApi = {
 };
 
 export const feedbackApi = {
-	submit: async (category: string, message: string): Promise<void> => {
-		await api.post("/feedback", { category, message });
+	submit: async (
+		category: string,
+		message: string,
+		pageUrl: string,
+		attachment?: File | null,
+	): Promise<void> => {
+		const form = new FormData();
+		form.append("category", category);
+		form.append("message", message);
+		form.append("page_url", pageUrl);
+		if (attachment) form.append("attachment", attachment);
+		await api.post("/feedback", form, { headers: { "Content-Type": "multipart/form-data" } });
 	},
 	list: async () => {
 		const res = await api.get("/feedback");

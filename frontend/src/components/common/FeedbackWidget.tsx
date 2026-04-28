@@ -1,6 +1,16 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { MessageCircle, Send, X, Lightbulb, Bug, MessageSquare, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import {
+	Bug,
+	CheckCircle2,
+	Image,
+	Lightbulb,
+	MessageCircle,
+	MessageSquare,
+	Send,
+	X,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { feedbackApi } from "../../api/client";
 import { cn } from "../../utils/cn";
@@ -13,30 +23,92 @@ const CATEGORIES: { value: Category; label: string; icon: React.ElementType; col
 	{ value: "general", label: "Обратная связь", icon: MessageSquare, color: "text-blue-500" },
 ];
 
+const PAGE_LABELS: Record<string, string> = {
+	"/dashboard": "Главная",
+	"/generate": "Генерация",
+	"/library": "Библиотека",
+	"/media": "Медиа",
+	"/profile": "Профиль",
+	"/admin": "Админ",
+};
+
+function pageLabel(pathname: string): string {
+	if (pathname.startsWith("/assemble/")) return "Редактор сборки";
+	if (pathname.startsWith("/templates/")) return "Редактор шаблона";
+	if (pathname.startsWith("/library/upload")) return "Загрузка";
+	return PAGE_LABELS[pathname] ?? pathname;
+}
+
 export function FeedbackWidget() {
+	const location = useLocation();
 	const [open, setOpen] = useState(false);
 	const [category, setCategory] = useState<Category>("general");
 	const [message, setMessage] = useState("");
+	const [attachment, setAttachment] = useState<File | null>(null);
+	const [preview, setPreview] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
 	const [sent, setSent] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	const applyFile = useCallback((file: File) => {
+		if (!file.type.startsWith("image/")) {
+			toast.error("Только изображения (PNG, JPEG, GIF, WebP)");
+			return;
+		}
+		setAttachment(file);
+		const url = URL.createObjectURL(file);
+		setPreview(url);
+	}, []);
+
+	const removeAttachment = () => {
+		if (preview) URL.revokeObjectURL(preview);
+		setAttachment(null);
+		setPreview(null);
+	};
+
+	// Paste from clipboard
+	useEffect(() => {
+		if (!open) return;
+		const handler = (e: ClipboardEvent) => {
+			const items = Array.from(e.clipboardData?.items ?? []);
+			const imgItem = items.find((i) => i.type.startsWith("image/"));
+			if (imgItem) {
+				const file = imgItem.getAsFile();
+				if (file) applyFile(file);
+			}
+		};
+		window.addEventListener("paste", handler);
+		return () => window.removeEventListener("paste", handler);
+	}, [open, applyFile]);
+
+	// Cleanup preview URL on unmount
+	useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+
+	const reset = () => {
+		setMessage("");
+		removeAttachment();
+		setCategory("general");
+	};
 
 	const handleSubmit = async () => {
 		if (!message.trim()) return;
 		setSending(true);
 		try {
-			await feedbackApi.submit(category, message.trim());
+			await feedbackApi.submit(category, message.trim(), location.pathname, attachment);
 			setSent(true);
-			setMessage("");
+			reset();
 			setTimeout(() => {
 				setSent(false);
 				setOpen(false);
-			}, 2000);
+			}, 2200);
 		} catch {
 			toast.error("Не удалось отправить — попробуйте позже");
 		} finally {
 			setSending(false);
 		}
 	};
+
+	const currentPage = pageLabel(location.pathname);
 
 	return (
 		<div className="fixed bottom-20 right-4 md:bottom-6 z-40 flex flex-col items-end gap-2">
@@ -77,6 +149,12 @@ export function FeedbackWidget() {
 							</div>
 						) : (
 							<div className="p-4 space-y-3">
+								{/* Page badge */}
+								<div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+									<span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
+									Страница: <span className="font-medium text-gray-600">{currentPage}</span>
+								</div>
+
 								{/* Category tabs */}
 								<div className="flex gap-1.5 flex-wrap">
 									{CATEGORIES.map(({ value, label, icon: Icon, color }) => (
@@ -114,27 +192,73 @@ export function FeedbackWidget() {
 											? "Опишите что произошло и где"
 											: "Ваши мысли, предложения или вопросы..."
 									}
-									rows={4}
+									rows={3}
 									className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-transparent text-gray-800 placeholder:text-gray-300"
 								/>
 
-								<button
-									onClick={handleSubmit}
-									disabled={!message.trim() || sending}
-									className={cn(
-										"w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold transition-all",
-										message.trim() && !sending
-											? "bg-gradient-to-r from-brand-600 to-violet-600 text-white hover:opacity-90 shadow-sm"
-											: "bg-gray-100 text-gray-400 cursor-not-allowed"
-									)}
-								>
-									{sending ? (
-										<div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-									) : (
-										<Send className="w-3.5 h-3.5" />
-									)}
-									Отправить
-								</button>
+								{/* Attachment preview */}
+								{preview && (
+									<div className="relative rounded-xl overflow-hidden border border-gray-200">
+										<img src={preview} alt="скриншот" className="w-full max-h-36 object-cover" />
+										<button
+											onClick={removeAttachment}
+											className="absolute top-1.5 right-1.5 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition-colors"
+										>
+											<X className="w-3 h-3 text-white" />
+										</button>
+									</div>
+								)}
+
+								{/* Attachment row + send */}
+								<div className="flex items-center gap-2">
+									{/* Hidden file input */}
+									<input
+										ref={fileInputRef}
+										type="file"
+										accept="image/*"
+										className="hidden"
+										onChange={(e) => {
+											const f = e.target.files?.[0];
+											if (f) applyFile(f);
+											e.target.value = "";
+										}}
+									/>
+									<button
+										onClick={() => fileInputRef.current?.click()}
+										title="Прикрепить скриншот (или вставить Ctrl+V)"
+										className={cn(
+											"flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium border transition-all shrink-0",
+											attachment
+												? "border-brand-300 text-brand-600 bg-brand-50"
+												: "border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600"
+										)}
+									>
+										<Image className="w-3.5 h-3.5" />
+										{attachment ? "Заменить" : "Скрин"}
+									</button>
+
+									<button
+										onClick={handleSubmit}
+										disabled={!message.trim() || sending}
+										className={cn(
+											"flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold transition-all",
+											message.trim() && !sending
+												? "bg-gradient-to-r from-brand-600 to-violet-600 text-white hover:opacity-90 shadow-sm"
+												: "bg-gray-100 text-gray-400 cursor-not-allowed"
+										)}
+									>
+										{sending ? (
+											<div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+										) : (
+											<Send className="w-3.5 h-3.5" />
+										)}
+										Отправить
+									</button>
+								</div>
+
+								<p className="text-[10px] text-gray-300 text-center">
+									Ctrl+V — вставить скриншот из буфера
+								</p>
 							</div>
 						)}
 					</motion.div>
@@ -156,11 +280,23 @@ export function FeedbackWidget() {
 			>
 				<AnimatePresence mode="wait">
 					{open ? (
-						<motion.div key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.15 }}>
+						<motion.div
+							key="x"
+							initial={{ rotate: -90, opacity: 0 }}
+							animate={{ rotate: 0, opacity: 1 }}
+							exit={{ rotate: 90, opacity: 0 }}
+							transition={{ duration: 0.15 }}
+						>
 							<X className="w-5 h-5" />
 						</motion.div>
 					) : (
-						<motion.div key="msg" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }} transition={{ duration: 0.15 }}>
+						<motion.div
+							key="msg"
+							initial={{ rotate: 90, opacity: 0 }}
+							animate={{ rotate: 0, opacity: 1 }}
+							exit={{ rotate: -90, opacity: 0 }}
+							transition={{ duration: 0.15 }}
+						>
 							<MessageCircle className="w-5 h-5" />
 						</motion.div>
 					)}

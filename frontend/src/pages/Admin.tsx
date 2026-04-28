@@ -275,6 +275,8 @@ interface FeedbackItem {
 	user_email: string;
 	category: string;
 	message: string;
+	page_url: string | null;
+	attachment_url: string | null;
 	created_at: string;
 }
 
@@ -303,7 +305,7 @@ function FeedbackTab() {
 				const Icon = meta.icon;
 				return (
 					<div key={fb.id} className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
-						<div className="flex items-center justify-between gap-2">
+						<div className="flex items-center justify-between gap-2 flex-wrap">
 							<span className={cn("flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full", meta.color)}>
 								<Icon className="w-3 h-3" /> {meta.label}
 							</span>
@@ -312,7 +314,23 @@ function FeedbackTab() {
 							</span>
 						</div>
 						<p className="text-sm text-gray-800 leading-relaxed">{fb.message}</p>
-						<p className="text-[11px] text-gray-400">{fb.user_email}</p>
+						<div className="flex items-center gap-3 flex-wrap">
+							<p className="text-[11px] text-gray-400">{fb.user_email}</p>
+							{fb.page_url && (
+								<span className="text-[11px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
+									📍 {fb.page_url}
+								</span>
+							)}
+						</div>
+						{fb.attachment_url && (
+							<a href={fb.attachment_url} target="_blank" rel="noopener noreferrer">
+								<img
+									src={fb.attachment_url}
+									alt="скриншот"
+									className="mt-1 max-h-48 rounded-lg border border-gray-100 object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+								/>
+							</a>
+						)}
 					</div>
 				);
 			})}
