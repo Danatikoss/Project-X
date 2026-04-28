@@ -3,23 +3,20 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
 	ArrowRight,
 	BookImage,
-	Check,
 	CheckSquare,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
-	Clock,
 	Copy,
 	Eye,
 	Layers,
+	MoreVertical,
 	Pencil,
 	PenLine,
 	Plus,
 	Sparkles,
 	Square,
 	Trash2,
-	Upload,
-	Wand2,
 	X,
 } from "lucide-react";
 import { OnboardingChecklist } from "../components/onboarding/OnboardingChecklist";
@@ -28,11 +25,10 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { assemblyApi, templatesApi } from "../api/client";
 import { Spinner } from "../components/common/Spinner";
-import { TemplateCardSkeleton } from "../components/common/Skeleton";
 import type { AssemblyListItem, AssemblyTemplate, Slide } from "../types";
 import { cn } from "../utils/cn";
 
-// ─── Template card type ───────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface UserTemplateCard {
 	id: string;
@@ -44,15 +40,12 @@ interface UserTemplateCard {
 	dbId: number;
 }
 
-// ─── UserTemplateThumbnail ────────────────────────────────────────────────────
+// ─── UserTemplateThumbnail (used in preview modal) ────────────────────────────
 
 function UserTemplateThumbnail({ slides }: { slides: AssemblyTemplate["slides_preview"] }) {
 	if (slides.length === 0) {
 		return (
-			<div
-				className="w-full rounded-t-2xl overflow-hidden bg-gray-50 flex items-center justify-center"
-				style={{ height: "140px" }}
-			>
+			<div className="w-full h-full flex items-center justify-center bg-gray-50">
 				<div className="text-center text-gray-300">
 					<BookImage className="w-8 h-8 mx-auto mb-1 opacity-50" />
 					<p className="text-[10px]">Нет слайдов</p>
@@ -60,25 +53,18 @@ function UserTemplateThumbnail({ slides }: { slides: AssemblyTemplate["slides_pr
 			</div>
 		);
 	}
-
 	const count = slides.length;
 	return (
 		<div
-			className="w-full rounded-t-2xl overflow-hidden bg-gray-100 grid gap-0.5 p-0.5"
+			className="w-full h-full bg-gray-100 grid gap-0.5 p-0.5"
 			style={{
-				height: "140px",
 				gridTemplateColumns:
 					count === 1 ? "1fr" : count === 2 ? "1fr 1fr" : count === 3 ? "1fr 1fr 1fr" : "1fr 1fr",
 				gridTemplateRows: count <= 2 ? "1fr" : "1fr 1fr",
 			}}
 		>
 			{slides.map((s) => (
-				<img
-					key={s.id}
-					src={s.thumbnail_url}
-					alt={s.title ?? ""}
-					className="w-full h-full object-cover rounded"
-				/>
+				<img key={s.id} src={s.thumbnail_url} alt={s.title ?? ""} className="w-full h-full object-cover rounded" />
 			))}
 		</div>
 	);
@@ -108,11 +94,9 @@ function TemplatePreviewModal({
 		queryKey: ["template-slides-preview", template.dbId],
 		queryFn: () => templatesApi.getSlides(template.dbId),
 	});
-
 	const total = slides.length;
 	const prev = () => setIdx((i) => Math.max(0, i - 1));
 	const next = () => setIdx((i) => Math.min(total - 1, i + 1));
-
 	const currentSlide = slides[idx];
 
 	return (
@@ -132,7 +116,6 @@ function TemplatePreviewModal({
 				transition={{ type: "spring", stiffness: 320, damping: 28 }}
 				onClick={(e) => e.stopPropagation()}
 			>
-				{/* Header */}
 				<div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
 					<div className="flex items-center gap-3 min-w-0">
 						<div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
@@ -170,7 +153,6 @@ function TemplatePreviewModal({
 					</div>
 				</div>
 
-				{/* Slide viewer */}
 				<div className="relative bg-gray-50 flex items-center justify-center" style={{ minHeight: 320 }}>
 					{isLoading ? (
 						<Spinner size="lg" />
@@ -186,8 +168,6 @@ function TemplatePreviewModal({
 								alt={currentSlide?.title ?? ""}
 								className="max-h-80 max-w-full object-contain rounded shadow-sm"
 							/>
-
-							{/* Nav arrows */}
 							{idx > 0 && (
 								<button
 									onClick={prev}
@@ -204,8 +184,6 @@ function TemplatePreviewModal({
 									<ChevronRight className="w-4 h-4 text-gray-600" />
 								</button>
 							)}
-
-							{/* Counter */}
 							<div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[11px] px-2.5 py-1 rounded-full">
 								{idx + 1} / {total}
 							</div>
@@ -213,7 +191,6 @@ function TemplatePreviewModal({
 					)}
 				</div>
 
-				{/* Filmstrip */}
 				{!isLoading && total > 1 && (
 					<div className="flex gap-1.5 px-4 py-2 overflow-x-auto border-t border-gray-100 bg-gray-50/50">
 						{slides.map((s, i) => (
@@ -231,7 +208,6 @@ function TemplatePreviewModal({
 					</div>
 				)}
 
-				{/* Footer */}
 				<div className="flex items-center justify-between px-5 py-4 border-t border-gray-100">
 					{template.desc ? (
 						<p className="text-xs text-gray-400 max-w-xs truncate">{template.desc}</p>
@@ -256,80 +232,196 @@ function TemplatePreviewModal({
 	);
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// ─── AssemblyGridCard ─────────────────────────────────────────────────────────
 
-function formatDate(iso: string) {
-	return new Date(iso).toLocaleDateString("ru-RU", {
+function AssemblyGridCard({
+	assembly,
+	isSelected,
+	isAnySelected,
+	isEditing,
+	editTitle,
+	editInputRef,
+	isManual,
+	onOpen,
+	onToggleSelect,
+	onStartRename,
+	onEditTitleChange,
+	onCommitRename,
+	onCancelRename,
+	onDuplicate,
+	onDelete,
+}: {
+	assembly: AssemblyListItem;
+	isSelected: boolean;
+	isAnySelected: boolean;
+	isEditing: boolean;
+	editTitle: string;
+	editInputRef: React.RefObject<HTMLInputElement>;
+	isManual: boolean;
+	onOpen: () => void;
+	onToggleSelect: () => void;
+	onStartRename: () => void;
+	onEditTitleChange: (v: string) => void;
+	onCommitRename: () => void;
+	onCancelRename: () => void;
+	onDuplicate: () => void;
+	onDelete: () => void;
+}) {
+	const [menuOpen, setMenuOpen] = useState(false);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!menuOpen) return;
+		const handler = (e: MouseEvent) => {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+		};
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, [menuOpen]);
+
+	const dateStr = new Date(assembly.created_at).toLocaleDateString("ru-RU", {
 		day: "2-digit",
 		month: "short",
-		year: "numeric",
 	});
-}
-
-// ─── WelcomeCard ──────────────────────────────────────────────────────────────
-
-function WelcomeCard() {
-	const navigate = useNavigate();
-
-	const steps = [
-		{
-			num: "1",
-			title: "Загрузите слайды",
-			desc: "Загрузите PPTX или PDF — AI проиндексирует каждый слайд",
-			icon: Upload,
-			action: () => navigate("/library/upload"),
-			cta: "Загрузить",
-		},
-		{
-			num: "2",
-			title: "Создайте шаблон",
-			desc: "Отберите лучшие слайды из библиотеки в шаблон",
-			icon: BookImage,
-			action: () => navigate("/templates/new"),
-			cta: "Создать шаблон",
-		},
-		{
-			num: "3",
-			title: "Генерируйте с AI",
-			desc: "AI подберёт слайды и заполнит их вашим контентом",
-			icon: Wand2,
-			action: () => navigate("/generate"),
-			cta: "Попробовать",
-		},
-	];
 
 	return (
-		<div className="mb-6 rounded-2xl bg-gradient-to-br from-brand-50 to-indigo-50 border border-brand-100 p-5">
-			<div className="flex items-center gap-2.5 mb-4">
-				<div className="w-8 h-8 rounded-xl bg-gradient-brand flex items-center justify-center shadow-sm shrink-0">
-					<Wand2 className="w-4 h-4 text-white" />
-				</div>
-				<div>
-					<p className="text-sm font-bold text-slate-900">Добро пожаловать в SLIDEX!</p>
-					<p className="text-xs text-slate-500">Три шага, чтобы начать</p>
-				</div>
-			</div>
-			<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-				{steps.map(({ num, title, desc, icon: Icon, action, cta }) => (
-					<button
-						key={num}
-						onClick={action}
-						className="text-left p-4 rounded-xl bg-white border border-white/80 hover:border-brand-200 hover:shadow-sm transition-all group"
-					>
-						<div className="flex items-center gap-2 mb-2.5">
-							<div className="w-6 h-6 rounded-lg bg-gradient-brand text-white text-xs font-bold flex items-center justify-center shadow-sm shrink-0">
-								{num}
-							</div>
-							<Icon className="w-3.5 h-3.5 text-brand-500" />
+		<div
+			className={cn(
+				"group rounded-xl border overflow-hidden cursor-pointer transition-all bg-white",
+				isSelected
+					? "border-brand-400 shadow-md ring-1 ring-brand-300"
+					: "border-gray-200 hover:shadow-lg hover:border-gray-300"
+			)}
+			onClick={() => (isAnySelected ? onToggleSelect() : onOpen())}
+		>
+			{/* Thumbnail */}
+			<div className="relative overflow-hidden bg-gray-100" style={{ paddingTop: "56.25%" }}>
+				<div className="absolute inset-0">
+					{assembly.thumbnail_urls.length > 0 ? (
+						<img
+							src={assembly.thumbnail_urls[0]}
+							className="w-full h-full object-cover"
+							alt={assembly.title}
+						/>
+					) : (
+						<div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+							{isManual ? (
+								<PenLine className="w-10 h-10 text-gray-200" />
+							) : (
+								<Sparkles className="w-10 h-10 text-gray-200" />
+							)}
 						</div>
-						<p className="text-sm font-semibold text-slate-800">{title}</p>
-						<p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
-						<p className="text-xs font-semibold text-brand-600 mt-2.5 flex items-center gap-1 group-hover:text-brand-700">
-							{cta}
-							<ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-						</p>
-					</button>
-				))}
+					)}
+				</div>
+
+				{/* Checkbox */}
+				<button
+					onClick={(e) => {
+						e.stopPropagation();
+						onToggleSelect();
+					}}
+					className={cn(
+						"absolute top-2 left-2 w-5 h-5 rounded bg-white/90 shadow-sm flex items-center justify-center transition-opacity",
+						isSelected || isAnySelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+					)}
+				>
+					{isSelected ? (
+						<CheckSquare className="w-4 h-4 text-brand-500" />
+					) : (
+						<Square className="w-4 h-4 text-gray-400" />
+					)}
+				</button>
+			</div>
+
+			{/* Info bar */}
+			<div className="px-3 py-2.5 bg-white">
+				{isEditing ? (
+					<input
+						ref={editInputRef}
+						value={editTitle}
+						onChange={(e) => onEditTitleChange(e.target.value)}
+						onBlur={onCommitRename}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") onCommitRename();
+							if (e.key === "Escape") onCancelRename();
+						}}
+						className="w-full text-sm font-medium border-b border-brand-400 focus:outline-none bg-transparent py-0.5 text-gray-900"
+						onClick={(e) => e.stopPropagation()}
+					/>
+				) : (
+					<p className="text-sm font-medium text-gray-900 truncate leading-snug">{assembly.title}</p>
+				)}
+
+				<div className="flex items-center justify-between mt-1.5">
+					<div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+						<div className="w-3.5 h-3.5 rounded-sm bg-amber-100 flex items-center justify-center shrink-0">
+							<Layers className="w-2.5 h-2.5 text-amber-600" />
+						</div>
+						<span>{dateStr}</span>
+						<span className="text-gray-300">·</span>
+						<span>{assembly.slide_count} сл.</span>
+					</div>
+
+					{/* Three-dot menu */}
+					<div className="relative" ref={menuRef}>
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								setMenuOpen((v) => !v);
+							}}
+							className={cn(
+								"p-1 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all",
+								menuOpen ? "opacity-100 bg-gray-100 text-gray-700" : "opacity-0 group-hover:opacity-100"
+							)}
+						>
+							<MoreVertical className="w-3.5 h-3.5" />
+						</button>
+
+						<AnimatePresence>
+							{menuOpen && (
+								<motion.div
+									initial={{ opacity: 0, scale: 0.95, y: 4 }}
+									animate={{ opacity: 1, scale: 1, y: 0 }}
+									exit={{ opacity: 0, scale: 0.95, y: 4 }}
+									transition={{ duration: 0.1 }}
+									className="absolute right-0 bottom-full mb-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20 w-44"
+								>
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											onStartRename();
+											setMenuOpen(false);
+										}}
+										className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+									>
+										<PenLine className="w-3.5 h-3.5 text-gray-400" /> Переименовать
+									</button>
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											onDuplicate();
+											setMenuOpen(false);
+										}}
+										className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+									>
+										<Copy className="w-3.5 h-3.5 text-gray-400" /> Дублировать
+									</button>
+									<hr className="my-1 border-gray-100" />
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											onDelete();
+											setMenuOpen(false);
+										}}
+										className="w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+									>
+										<Trash2 className="w-3.5 h-3.5" /> Удалить
+									</button>
+								</motion.div>
+							)}
+						</AnimatePresence>
+					</div>
+				</div>
 			</div>
 		</div>
 	);
@@ -341,12 +433,13 @@ export default function Dashboard() {
 	const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
 	const [previewTemplate, setPreviewTemplate] = useState<UserTemplateCard | null>(null);
 	const [templateSearch, setTemplateSearch] = useState("");
-	const [customOpen, setCustomOpen] = useState(false);
+	const [showAIPrompt, setShowAIPrompt] = useState(false);
 	const [customPrompt, setCustomPrompt] = useState("");
-	const [manualTitle, setManualTitle] = useState("");
-const [editingId, setEditingId] = useState<number | null>(null);
+	const [showGallery, setShowGallery] = useState(true);
+	const [editingId, setEditingId] = useState<number | null>(null);
 	const [editTitle, setEditTitle] = useState("");
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
 	const editInputRef = useRef<HTMLInputElement>(null);
 	const cancelRenameRef = useRef(false);
 	const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -373,7 +466,12 @@ const [editingId, setEditingId] = useState<number | null>(null);
 		dbId: t.id,
 	}));
 
-	// Create assembly from template
+	const filteredTemplates = allTemplates.filter(
+		(t) => !templateSearch || t.title.toLowerCase().includes(templateSearch.toLowerCase())
+	);
+
+	// ── Mutations ──────────────────────────────────────────────────────────────
+
 	const createFromTemplateMutation = useMutation({
 		mutationFn: (templateId: number) => assemblyApi.createFromTemplate(templateId),
 		onSuccess: (assembly) => {
@@ -383,7 +481,6 @@ const [editingId, setEditingId] = useState<number | null>(null);
 		onError: () => toast.error("Не удалось создать презентацию из шаблона"),
 	});
 
-	// Custom prompt assembly
 	const customMutation = useMutation({
 		mutationFn: () => assemblyApi.create({ prompt: customPrompt, max_slides: 15 }),
 		onSuccess: (assembly) => {
@@ -394,7 +491,7 @@ const [editingId, setEditingId] = useState<number | null>(null);
 	});
 
 	const blankMutation = useMutation({
-		mutationFn: () => assemblyApi.createBlank(manualTitle.trim() || "Новая презентация"),
+		mutationFn: () => assemblyApi.createBlank("Новая презентация"),
 		onSuccess: (assembly) => {
 			queryClient.invalidateQueries({ queryKey: ["assemblies"] });
 			navigate(`/assemble/${assembly.id}?tab=library`);
@@ -424,19 +521,10 @@ const [editingId, setEditingId] = useState<number | null>(null);
 		onSuccess: (_, ids) => {
 			queryClient.invalidateQueries({ queryKey: ["assemblies"] });
 			setSelectedIds(new Set());
-			toast.success(`Удалено сборок: ${ids.length}`);
+			toast.success(`Удалено: ${ids.length}`);
 		},
 		onError: () => toast.error("Не удалось удалить некоторые сборки"),
 	});
-
-	const toggleSelect = (e: React.MouseEvent, id: number) => {
-		e.stopPropagation();
-		setSelectedIds((prev) => {
-			const next = new Set(prev);
-			next.has(id) ? next.delete(id) : next.add(id);
-			return next;
-		});
-	};
 
 	const renameMutation = useMutation({
 		mutationFn: ({ id, title }: { id: number; title: string }) => assemblyApi.update(id, { title }),
@@ -453,11 +541,12 @@ const [editingId, setEditingId] = useState<number | null>(null);
 		onError: () => toast.error("Не удалось удалить шаблон"),
 	});
 
-	const startRename = (e: React.MouseEvent, a: AssemblyListItem) => {
-		e.stopPropagation();
+	// ── Handlers ───────────────────────────────────────────────────────────────
+
+	const startRename = (id: number, title: string) => {
 		cancelRenameRef.current = false;
-		setEditingId(a.id);
-		setEditTitle(a.title);
+		setEditingId(id);
+		setEditTitle(title);
 	};
 
 	const commitRename = () => {
@@ -476,12 +565,10 @@ const [editingId, setEditingId] = useState<number | null>(null);
 	}, [editingId]);
 
 	useEffect(() => {
-		if (customOpen) promptRef.current?.focus();
-	}, [customOpen]);
+		if (showAIPrompt) promptRef.current?.focus();
+	}, [showAIPrompt]);
 
-	const handleTemplateClick = (t: UserTemplateCard) => {
-		setPreviewTemplate(t);
-	};
+	const handleTemplateClick = (t: UserTemplateCard) => setPreviewTemplate(t);
 
 	const handleUseTemplate = (t: UserTemplateCard) => {
 		setActiveTemplateId(t.id);
@@ -499,434 +586,312 @@ const [editingId, setEditingId] = useState<number | null>(null);
 	const isBuilding = createFromTemplateMutation.isPending;
 
 	return (
-		<div className="min-h-full bg-surface">
-			{/* ── Hero header ─────────────────────────────────────────────────────── */}
-			<div className="bg-gradient-hero border-b border-slate-100 px-6 pt-10 pb-8">
-				<div className="max-w-3xl mx-auto">
-					<p className="text-xs font-semibold text-brand-600 uppercase tracking-widest mb-2">
-						Быстрый старт
-					</p>
-					<h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Мои шаблоны</h1>
-					<p className="text-sm text-slate-500">
-						Создайте шаблон из слайдов библиотеки — один клик для сборки презентации.
-					</p>
-				</div>
-			</div>
+		<div className="min-h-full bg-[#f0f4f9]">
+			{/* ── Start new presentation ───────────────────────────────────────── */}
+			<div className="bg-white border-b border-gray-200 px-8 pt-6 pb-5">
+				<div className="max-w-5xl mx-auto">
+					<OnboardingChecklist />
 
-			{/* ── Template grid ────────────────────────────────────────────────────── */}
-			<div className="max-w-3xl mx-auto px-6 pt-6 pb-4">
-				<OnboardingChecklist />
-
-				{/* Search */}
-				{(allTemplates.length > 3 || templateSearch) && (
-					<div className="relative mb-4">
-						<input
-							type="text"
-							value={templateSearch}
-							onChange={(e) => setTemplateSearch(e.target.value)}
-							placeholder="Поиск шаблонов..."
-							className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-transparent"
-						/>
-						<svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-						</svg>
-						{templateSearch && (
-							<button onClick={() => setTemplateSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-								<X className="w-3.5 h-3.5" />
-							</button>
-						)}
-					</div>
-				)}
-
-				<div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-					{/* Skeleton while loading */}
-					{templatesLoading && Array.from({ length: 3 }).map((_, i) => (
-						<TemplateCardSkeleton key={i} />
-					))}
-					{!templatesLoading && allTemplates
-						.filter((t) => !templateSearch || t.title.toLowerCase().includes(templateSearch.toLowerCase()))
-						.map((t) => {
-						const isThisBuilding = isBuilding && activeTemplateId === t.id;
-						return (
-							<div
-								key={t.id}
-								className={cn(
-									"group relative text-left rounded-2xl border bg-white shadow-sm overflow-hidden transition-all duration-200",
-									"focus:outline-none",
-									isThisBuilding
-										? "border-brand-400 shadow-glow scale-[0.99]"
-										: "border-gray-100 hover:shadow-md hover:-translate-y-0.5",
-									isBuilding && !isThisBuilding ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-								)}
-								onClick={() => !isBuilding && handleTemplateClick(t)}
-							>
-								<UserTemplateThumbnail slides={t.slidesPreview} />
-
-								{/* Preview hint on hover */}
-								<div className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-									<div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center gap-1.5 shadow-sm text-xs font-medium text-gray-700">
-										<Eye className="w-3.5 h-3.5" /> Предпросмотр
-									</div>
-								</div>
-
-								<div className="px-4 pt-3 pb-4">
-									<div className="flex items-center justify-between mb-1">
-										<span className="text-sm font-semibold text-gray-900 truncate">{t.title}</span>
-										<span className="text-[11px] text-gray-400 shrink-0 ml-1">
-											{t.slideCount} сл.
-										</span>
-									</div>
-									{t.desc && (
-										<p className="text-[12px] text-gray-500 mb-1 leading-snug">{t.desc}</p>
-									)}
-									<div className="flex items-center mt-2">
-										{isThisBuilding ? (
-											<span className="flex items-center gap-1.5 text-sm font-semibold text-brand-600">
-												<Spinner size="sm" className="border-brand-500 border-t-transparent" />
-												Создаём...
-											</span>
-										) : (
-											<span className="flex items-center gap-1 text-sm font-semibold text-gray-400 group-hover:text-brand-600 transition-colors">
-												Нажмите для просмотра
-											</span>
-										)}
-									</div>
-								</div>
-							</div>
-						);
-					})}
-
-					{/* Add template card */}
-					<button
-						onClick={() => navigate("/templates/new")}
-						className="rounded-2xl border-2 border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50/30 transition-all flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-brand-600"
-						style={{ minHeight: "220px" }}
-					>
-						<Plus className="w-8 h-8" />
-						<span className="text-sm font-medium">Добавить шаблон</span>
-					</button>
-				</div>
-
-				{/* ── Secondary: custom prompt ─────────────────────────────────────────── */}
-				<div className="mt-4 rounded-2xl border border-slate-200 bg-white overflow-hidden">
-					<button
-						onClick={() => setCustomOpen((v) => !v)}
-						className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-					>
-						<span className="flex items-center gap-2">
-							<Sparkles className="w-4 h-4 text-brand-500" />
-							Свой запрос
-						</span>
-						<ChevronDown
-							className={cn(
-								"w-4 h-4 text-slate-400 transition-transform duration-200",
-								customOpen && "rotate-180"
-							)}
-						/>
-					</button>
-
-					{customOpen && (
-						<form
-							onSubmit={handleCustomSubmit}
-							className="px-4 pb-4 border-t border-slate-100 pt-3 animate-fade-in"
-						>
-							<textarea
-								ref={promptRef}
-								value={customPrompt}
-								onChange={(e) => setCustomPrompt(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleCustomSubmit(e);
-								}}
-								placeholder="Опишите презентацию, которую нужно собрать..."
-								rows={3}
-								className={cn(
-									"w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3",
-									"text-sm text-slate-800 placeholder-slate-400 resize-none",
-									"focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 focus:bg-white",
-									"transition-all"
-								)}
-							/>
-							<div className="flex items-center justify-between mt-2">
-								<p className="text-[11px] text-slate-400">⌘ + Enter для отправки</p>
-								<button
-									type="submit"
-									disabled={!customPrompt.trim() || customMutation.isPending}
-									className={cn(
-										"flex items-center gap-1.5 px-4 py-2 rounded-xl",
-										"bg-gradient-brand text-white text-xs font-semibold transition-all",
-										"hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
-									)}
-								>
-									{customMutation.isPending ? (
-										<Spinner size="sm" className="border-white border-t-transparent" />
-									) : (
-										<Sparkles className="w-3.5 h-3.5" />
-									)}
-									Собрать
-								</button>
-							</div>
-						</form>
-					)}
-				</div>
-
-				{/* ── Собрать вручную ──────────────────────────────────────────────────── */}
-				<form
-					onSubmit={(e) => {
-						e.preventDefault();
-						blankMutation.mutate();
-					}}
-					className="mt-2 rounded-2xl border-2 border-brand-100 bg-gradient-to-br from-brand-50 to-violet-50 overflow-hidden"
-				>
-					<div className="px-5 py-4 flex items-center gap-4">
-						{/* Icon */}
-						<div className="shrink-0 w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 flex items-center justify-center shadow-sm">
-							<PenLine className="w-5 h-5 text-white" />
-						</div>
-
-						{/* Text */}
-						<div className="flex-1 min-w-0">
-							<p className="text-sm font-bold text-brand-900">Собрать презентацию вручную</p>
-							<p className="text-[12px] text-brand-600/70 mt-0.5">
-								Выберите слайды из библиотеки и соберите презентацию в редакторе
-							</p>
-						</div>
-					</div>
-
-					{/* Input + button */}
-					<div className="px-5 pb-4 flex gap-2">
-						<input
-							type="text"
-							value={manualTitle}
-							onChange={(e) => setManualTitle(e.target.value)}
-							placeholder="Название презентации (необязательно)"
-							className="flex-1 px-3 py-2 rounded-xl border border-brand-200 bg-white text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-transparent transition-all"
-						/>
+					{/* Section header */}
+					<div className="flex items-center justify-between mb-4">
+						<h2 className="text-sm font-semibold text-gray-700">Начать новую презентацию</h2>
 						<button
-							type="submit"
-							disabled={blankMutation.isPending}
-							className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 shadow-sm transition-all whitespace-nowrap"
+							onClick={() => setShowGallery((v) => !v)}
+							className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors"
 						>
-							{blankMutation.isPending ? (
-								<Spinner size="sm" className="border-white/40 border-t-white" />
-							) : (
-								<ArrowRight className="w-4 h-4" />
-							)}
-							Начать
+							Галерея шаблонов
+							<ChevronDown
+								className={cn("w-4 h-4 transition-transform duration-200", !showGallery && "-rotate-90")}
+							/>
 						</button>
 					</div>
-				</form>
-			</div>
 
-			{/* ── Recent assemblies ────────────────────────────────────────────────── */}
-			<div className="max-w-3xl mx-auto px-6 py-6">
-				<div className="flex items-center gap-2 mb-3">
-					<Clock className="w-4 h-4 text-slate-400" />
-					<h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-						Недавние сборки
-					</h2>
-					{selectedIds.size > 0 && (
-						<div className="ml-auto flex items-center gap-2">
-							<span className="text-xs text-slate-500">Выбрано: {selectedIds.size}</span>
-							<button
-								onClick={() => {
-									if (!confirm(`Удалить ${selectedIds.size} сборок?`)) return;
-									deleteSelectedMutation.mutate(Array.from(selectedIds));
-								}}
-								disabled={deleteSelectedMutation.isPending}
-								className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
-							>
-								<Trash2 className="w-3.5 h-3.5" />
-								Удалить выбранные
-							</button>
-							<button
-								onClick={() => setSelectedIds(new Set())}
-								className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-								title="Снять выделение"
-							>
-								<X className="w-3.5 h-3.5" />
-							</button>
-						</div>
-					)}
-				</div>
-
-				{isLoading ? (
-					<div className="flex justify-center py-10">
-						<Spinner />
-					</div>
-				) : !assemblies?.length ? (
-					<div className="rounded-2xl border-2 border-dashed border-slate-200 py-10 flex flex-col items-center gap-3">
-						<p className="text-sm text-slate-500 font-medium">Сборок пока нет</p>
-						<p className="text-xs text-slate-400 text-center max-w-xs">
-							Выберите шаблон выше — AI подберёт слайды из вашей библиотеки
-						</p>
-						<div className="flex gap-2 mt-1">
-							<button
-								onClick={() => navigate("/library/upload")}
-								className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:border-brand-300 hover:bg-brand-50 transition-all"
-							>
-								<Upload className="w-3.5 h-3.5" />
-								Загрузить слайды
-							</button>
-							<button
-								onClick={() => navigate("/library")}
-								className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:border-brand-300 hover:bg-brand-50 transition-all"
-							>
-								<BookImage className="w-3.5 h-3.5" />
-								Библиотека
-							</button>
-						</div>
-					</div>
-				) : (
-					<div className="flex flex-col gap-2">
-						{assemblies.map((a: AssemblyListItem) => {
-							const isManual = a.prompt === "(создано вручную)";
-							const isSelected = selectedIds.has(a.id);
-							const isAnySelected = selectedIds.size > 0;
-							return (
-								<div
-									key={a.id}
-									className={cn(
-										"flex items-center gap-4 p-3.5 rounded-2xl border transition-all group cursor-pointer",
-										isSelected
-											? "border-brand-400 bg-brand-50 shadow-sm"
-											: "border-slate-200 bg-white hover:border-brand-300 hover:shadow-card-hover"
-									)}
-									onClick={() =>
-										isAnySelected
-											? setSelectedIds((prev) => {
-													const next = new Set(prev);
-													next.has(a.id) ? next.delete(a.id) : next.add(a.id);
-													return next;
-												})
-											: navigate(`/assemble/${a.id}`)
-									}
+					{showGallery && (
+						<>
+							{/* Template row */}
+							<div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+								{/* Blank card */}
+								<button
+									onClick={() => blankMutation.mutate()}
+									disabled={blankMutation.isPending}
+									className="shrink-0 w-44 group text-left disabled:opacity-60"
 								>
-									{/* Checkbox */}
-									<button
-										onClick={(e) => toggleSelect(e, a.id)}
-										className={cn(
-											"shrink-0 transition-all",
-											isSelected || isAnySelected
-												? "opacity-100"
-												: "opacity-0 group-hover:opacity-100"
-										)}
-									>
-										{isSelected ? (
-											<CheckSquare className="w-4 h-4 text-brand-500" />
+									<div className="w-full h-28 rounded-lg border-2 border-gray-300 group-hover:border-brand-400 bg-white flex items-center justify-center transition-all group-hover:shadow-md">
+										{blankMutation.isPending ? (
+											<Spinner />
 										) : (
-											<Square className="w-4 h-4 text-slate-300" />
+											<PenLine className="w-9 h-9 text-gray-300 group-hover:text-brand-400 transition-colors" />
 										)}
-									</button>
+									</div>
+									<p className="mt-2 text-xs font-medium text-gray-700">Пустая</p>
+								</button>
 
-									{/* Thumbnail */}
+								{/* AI card */}
+								<button
+									onClick={() => setShowAIPrompt((v) => !v)}
+									className="shrink-0 w-44 group text-left"
+								>
 									<div
-										className="shrink-0 rounded-xl overflow-hidden border border-slate-100 bg-slate-50 flex"
-										style={{ width: 80, height: 45 }}
+										className={cn(
+											"w-full h-28 rounded-lg border-2 flex items-center justify-center transition-all group-hover:shadow-md",
+											showAIPrompt
+												? "border-brand-400 bg-gradient-to-br from-brand-50 to-violet-50"
+												: "border-gray-300 group-hover:border-brand-300 bg-gradient-to-br from-gray-50 to-white"
+										)}
 									>
-										{a.thumbnail_urls.length > 0 ? (
-											a.thumbnail_urls
-												.slice(0, 3)
-												.map((url, i) => (
-													<img
-														key={i}
-														src={url}
-														className="flex-1 h-full object-cover"
-														style={{ minWidth: 0 }}
-													/>
-												))
-										) : (
-											<div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-												{isManual ? (
-													<PenLine className="w-4 h-4 text-slate-300" />
-												) : (
-													<Sparkles className="w-4 h-4 text-slate-300" />
-												)}
-											</div>
-										)}
+										<Sparkles
+											className={cn(
+												"w-9 h-9 transition-colors",
+												showAIPrompt
+													? "text-brand-500"
+													: "text-gray-300 group-hover:text-brand-400"
+											)}
+										/>
 									</div>
+									<p className="mt-2 text-xs font-medium text-gray-700">Сгенерировать с AI</p>
+								</button>
 
-									{/* Title + prompt */}
-									<div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
-										{editingId === a.id ? (
-											<div className="flex items-center gap-1">
-												<input
-													ref={editInputRef}
-													value={editTitle}
-													onChange={(e) => setEditTitle(e.target.value)}
-													onBlur={commitRename}
-													onKeyDown={(e) => {
-														if (e.key === "Enter") commitRename();
-														if (e.key === "Escape") {
-															cancelRenameRef.current = true;
-															setEditingId(null);
-														}
-													}}
-													className="flex-1 text-sm font-semibold border-b-2 border-brand-400 focus:outline-none bg-transparent py-0.5 min-w-0 text-slate-900"
-													onClick={(e) => e.stopPropagation()}
-												/>
+								{/* Template cards */}
+								{templatesLoading
+									? Array.from({ length: 3 }).map((_, i) => (
+											<div key={i} className="shrink-0 w-44 animate-pulse">
+												<div className="w-full h-28 rounded-lg bg-gray-200" />
+												<div className="mt-2 h-3 bg-gray-200 rounded w-3/4" />
+											</div>
+										))
+									: filteredTemplates.map((t) => {
+											const isThisBuilding = isBuilding && activeTemplateId === t.id;
+											return (
 												<button
-													onMouseDown={(e) => {
-														e.preventDefault();
-														commitRename();
-													}}
-													className="p-0.5 text-brand-600 hover:text-brand-800 shrink-0"
+													key={t.id}
+													onClick={() => !isBuilding && handleTemplateClick(t)}
+													disabled={isBuilding}
+													className={cn(
+														"shrink-0 w-44 group text-left",
+														isBuilding && !isThisBuilding ? "opacity-50 cursor-not-allowed" : ""
+													)}
 												>
-													<Check className="w-3.5 h-3.5" />
+													<div
+														className={cn(
+															"relative w-full h-28 rounded-lg border-2 overflow-hidden transition-all",
+															isThisBuilding
+																? "border-brand-400 shadow-glow"
+																: "border-gray-200 group-hover:border-brand-400 group-hover:shadow-md"
+														)}
+													>
+														{t.slidesPreview.length > 0 ? (
+															<img
+																src={t.slidesPreview[0].thumbnail_url}
+																alt={t.title}
+																className="w-full h-full object-cover"
+															/>
+														) : (
+															<div className="w-full h-full flex items-center justify-center bg-gray-50">
+																<BookImage className="w-8 h-8 text-gray-300" />
+															</div>
+														)}
+
+														{!isThisBuilding && (
+															<div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+																<div className="bg-white/90 rounded-full px-2.5 py-1 flex items-center gap-1 text-[10px] font-medium text-gray-700 shadow-sm">
+																	<Eye className="w-3 h-3" /> Просмотр
+																</div>
+															</div>
+														)}
+
+														{isThisBuilding && (
+															<div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+																<Spinner size="sm" />
+															</div>
+														)}
+													</div>
+													<p className="mt-2 text-xs font-medium text-gray-700 truncate">{t.title}</p>
+													<p className="text-[10px] text-gray-400">{t.slideCount} слайдов</p>
 												</button>
-											</div>
-										) : (
-											<div className="flex items-center gap-1.5 group/title">
-												<p className="text-sm font-semibold text-slate-900 truncate">{a.title}</p>
-												<button
-													onClick={(e) => startRename(e, a)}
-													className="opacity-0 group-hover/title:opacity-100 p-0.5 text-slate-300 hover:text-slate-600 transition-all shrink-0"
-												>
-													<PenLine className="w-3 h-3" />
-												</button>
-											</div>
-										)}
-										<p className="text-xs text-slate-400 truncate mt-0.5">
-											{isManual ? "Создано вручную" : a.prompt}
-										</p>
-									</div>
+											);
+										})}
 
-									{/* Meta */}
-									<div className="text-right shrink-0">
-										<span className="text-xs font-medium text-slate-600">{a.slide_count} сл.</span>
-										<p className="text-[11px] text-slate-400">{formatDate(a.created_at)}</p>
+								{/* Add template */}
+								<button
+									onClick={() => navigate("/templates/new")}
+									className="shrink-0 w-44 group text-left"
+								>
+									<div className="w-full h-28 rounded-lg border-2 border-dashed border-gray-300 group-hover:border-brand-400 group-hover:bg-brand-50/30 flex items-center justify-center transition-all">
+										<Plus className="w-7 h-7 text-gray-300 group-hover:text-brand-400 transition-colors" />
 									</div>
+									<p className="mt-2 text-xs font-medium text-gray-400 group-hover:text-brand-500 transition-colors">
+										Добавить шаблон
+									</p>
+								</button>
+							</div>
 
-									{/* Actions */}
-									<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+							{/* Template search */}
+							{!templatesLoading && allTemplates.length > 3 && (
+								<div className="mt-3 relative max-w-xs">
+									<input
+										type="text"
+										value={templateSearch}
+										onChange={(e) => setTemplateSearch(e.target.value)}
+										placeholder="Поиск шаблонов..."
+										className="w-full pl-8 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-transparent bg-gray-50"
+									/>
+									<svg
+										className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke="currentColor"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
+										/>
+									</svg>
+									{templateSearch && (
 										<button
-											onClick={(e) => {
-												e.stopPropagation();
-												duplicateMutation.mutate(a.id);
-											}}
-											title="Дублировать"
-											className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+											onClick={() => setTemplateSearch("")}
+											className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
 										>
-											<Copy className="w-3.5 h-3.5 text-slate-400" />
+											<X className="w-3 h-3" />
 										</button>
-										<button
-											onClick={(e) => {
-												e.stopPropagation();
-												if (!confirm(`Удалить сборку "${a.title}"?`)) return;
-												deleteMutation.mutate(a.id);
-											}}
-											title="Удалить"
-											className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-										>
-											<Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-red-500 transition-colors" />
-										</button>
-									</div>
-
-									{!isAnySelected && (
-										<ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all shrink-0" />
 									)}
 								</div>
-							);
-						})}
+							)}
+
+							{/* AI prompt (inline, animated) */}
+							<AnimatePresence>
+								{showAIPrompt && (
+									<motion.form
+										initial={{ height: 0, opacity: 0 }}
+										animate={{ height: "auto", opacity: 1 }}
+										exit={{ height: 0, opacity: 0 }}
+										transition={{ duration: 0.18 }}
+										onSubmit={handleCustomSubmit}
+										className="overflow-hidden"
+									>
+										<div className="mt-4 flex gap-2 items-end">
+											<textarea
+												ref={promptRef}
+												value={customPrompt}
+												onChange={(e) => setCustomPrompt(e.target.value)}
+												onKeyDown={(e) => {
+													if (e.key === "Enter" && (e.ctrlKey || e.metaKey))
+														handleCustomSubmit(e);
+												}}
+												placeholder="Опишите презентацию... (⌘ + Enter для отправки)"
+												rows={2}
+												className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 focus:bg-white transition-all"
+											/>
+											<button
+												type="submit"
+												disabled={!customPrompt.trim() || customMutation.isPending}
+												className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm transition-all whitespace-nowrap"
+											>
+												{customMutation.isPending ? (
+													<Spinner size="sm" className="border-white border-t-transparent" />
+												) : (
+													<Sparkles className="w-4 h-4" />
+												)}
+												Собрать
+											</button>
+										</div>
+									</motion.form>
+								)}
+							</AnimatePresence>
+						</>
+					)}
+				</div>
+			</div>
+
+			{/* ── Recent presentations ─────────────────────────────────────────── */}
+			<div className="max-w-5xl mx-auto px-8 py-6">
+				{/* Header */}
+				<div className="flex items-center justify-between mb-4">
+					<h2 className="text-sm font-semibold text-gray-700">Недавние презентации</h2>
+					<div className="flex items-center gap-2">
+						{selectedIds.size > 0 && (
+							<>
+								<span className="text-xs text-gray-500">Выбрано: {selectedIds.size}</span>
+								<button
+									onClick={() => {
+										if (!confirm(`Удалить ${selectedIds.size} презентаций?`)) return;
+										deleteSelectedMutation.mutate(Array.from(selectedIds));
+									}}
+									disabled={deleteSelectedMutation.isPending}
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+								>
+									<Trash2 className="w-3.5 h-3.5" />
+									Удалить
+								</button>
+								<button
+									onClick={() => setSelectedIds(new Set())}
+									className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+								>
+									<X className="w-3.5 h-3.5" />
+								</button>
+							</>
+						)}
+					</div>
+				</div>
+
+				{/* Grid */}
+				{isLoading ? (
+					<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+						{Array.from({ length: 8 }).map((_, i) => (
+							<div key={i} className="rounded-xl border border-gray-200 bg-white overflow-hidden animate-pulse">
+								<div className="bg-gray-200" style={{ paddingTop: "56.25%" }} />
+								<div className="px-3 py-2.5 space-y-1.5">
+									<div className="h-3.5 bg-gray-200 rounded w-3/4" />
+									<div className="h-3 bg-gray-200 rounded w-1/2" />
+								</div>
+							</div>
+						))}
+					</div>
+				) : !assemblies?.length ? (
+					<div className="rounded-2xl border-2 border-dashed border-gray-300 py-16 flex flex-col items-center gap-3 text-center">
+						<div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+							<Layers className="w-6 h-6 text-gray-400" />
+						</div>
+						<p className="text-sm font-medium text-gray-600">Нет презентаций</p>
+						<p className="text-xs text-gray-400 max-w-xs">
+							Выберите шаблон выше или начните с пустой презентации
+						</p>
+					</div>
+				) : (
+					<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+						{assemblies.map((a: AssemblyListItem) => (
+							<AssemblyGridCard
+								key={a.id}
+								assembly={a}
+								isSelected={selectedIds.has(a.id)}
+								isAnySelected={selectedIds.size > 0}
+								isEditing={editingId === a.id}
+								editTitle={editTitle}
+								editInputRef={editInputRef}
+								isManual={a.prompt === "(создано вручную)"}
+								onOpen={() => navigate(`/assemble/${a.id}`)}
+								onToggleSelect={() =>
+									setSelectedIds((prev) => {
+										const next = new Set(prev);
+										next.has(a.id) ? next.delete(a.id) : next.add(a.id);
+										return next;
+									})
+								}
+								onStartRename={() => startRename(a.id, a.title)}
+								onEditTitleChange={setEditTitle}
+								onCommitRename={commitRename}
+								onCancelRename={() => {
+									cancelRenameRef.current = true;
+									setEditingId(null);
+								}}
+								onDuplicate={() => duplicateMutation.mutate(a.id)}
+								onDelete={() => {
+									if (!confirm(`Удалить "${a.title}"?`)) return;
+									deleteMutation.mutate(a.id);
+								}}
+							/>
+						))}
 					</div>
 				)}
 			</div>
