@@ -109,10 +109,9 @@ export function FeedbackWidget() {
 	};
 
 	const currentPage = pageLabel(location.pathname);
-	const isAssemble = location.pathname.startsWith("/assemble/");
 
 	return (
-		<div className={cn("group fixed right-0 z-40", isAssemble ? "bottom-32 md:bottom-6" : "bottom-20 md:bottom-6")}>
+		<div className="group fixed right-0 z-40 bottom-20 md:bottom-6">
 		<div className={cn("flex flex-col items-end gap-2 pr-4 transition-transform duration-300 ease-out", open ? "translate-x-0" : "translate-x-[calc(100%-10px)] group-hover:translate-x-0")}>
 			<AnimatePresence>
 				{open && (

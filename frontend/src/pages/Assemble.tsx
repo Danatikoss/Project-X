@@ -300,7 +300,7 @@ function LibraryPanel({
 			)}
 
 			{!isSearching && totalPages > 1 && (
-				<div className="px-3 py-2 border-t border-gray-200 flex items-center justify-between">
+				<div className="py-2 border-t border-gray-200 flex items-center justify-center gap-4">
 					<button
 						disabled={page <= 1}
 						onClick={() => setPage((p) => p - 1)}
