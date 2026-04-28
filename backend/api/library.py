@@ -46,8 +46,9 @@ def _owned_source_ids(db: Session, user_id: int):
     return db.query(SourcePresentation.id).filter(SourcePresentation.owner_id == user_id).subquery()
 
 
-def _check_slide_owner(slide: SlideLibraryEntry, user_id: int):
-    if slide.source.owner_id != user_id:
+def _check_slide_owner(slide: SlideLibraryEntry, user: User):
+    """Allow owner and admins; everyone can read, only owner/admin can mutate."""
+    if slide.source.owner_id != user.id and not user.is_admin:
         raise HTTPException(403, detail="Нет доступа к этому слайду")
 
 
@@ -124,9 +125,7 @@ def list_slides(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    owned = _owned_source_ids(db, user.id)
     query = db.query(SlideLibraryEntry).filter(
-        SlideLibraryEntry.source_id.in_(owned),
         SlideLibraryEntry.is_generated == False,  # noqa: E712
     )
 
@@ -164,9 +163,7 @@ def list_slides(
     slide_ids_on_page = {s.id for s in slides}
     usage_counts: dict[int, int] = {}
     if slide_ids_on_page:
-        rows = db.query(AssembledPresentation.slide_ids_json).filter(
-            AssembledPresentation.owner_id == user.id
-        ).all()
+        rows = db.query(AssembledPresentation.slide_ids_json).all()
         for (ids_json,) in rows:
             for sid in json.loads(ids_json or "[]"):
                 if sid in slide_ids_on_page:
@@ -185,7 +182,6 @@ def get_slide(slide_id: int, db: Session = Depends(get_db), user: User = Depends
     slide = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).get(slide_id)
     if not slide:
         raise HTTPException(404, detail="Слайд не найден")
-    _check_slide_owner(slide, user.id)
     return slide_to_response(slide, db)
 
 
@@ -194,7 +190,7 @@ def update_slide(slide_id: int, body: SlidePatchRequest, db: Session = Depends(g
     slide = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).get(slide_id)
     if not slide:
         raise HTTPException(404, detail="Слайд не найден")
-    _check_slide_owner(slide, user.id)
+    _check_slide_owner(slide, user)
 
     if body.title is not None:
         slide.title = body.title
@@ -235,7 +231,7 @@ def delete_slide(slide_id: int, db: Session = Depends(get_db), user: User = Depe
     slide = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).get(slide_id)
     if not slide:
         raise HTTPException(404, detail="Слайд не найден")
-    _check_slide_owner(slide, user.id)
+    _check_slide_owner(slide, user)
     db.delete(slide)
     db.commit()
 
@@ -304,7 +300,6 @@ def list_labels(db: Session = Depends(get_db), user: User = Depends(get_current_
 @router.get("/sources", response_model=list[SourcePresentationResponse])
 def list_sources(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     sources = db.query(SourcePresentation).filter(
-        SourcePresentation.owner_id == user.id,
         SourcePresentation.is_ai_source == False,  # noqa: E712
     ).order_by(SourcePresentation.id.desc()).all()
     return [SourcePresentationResponse.model_validate(s) for s in sources]

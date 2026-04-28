@@ -28,6 +28,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { assemblyApi, templatesApi } from "../api/client";
 import { Spinner } from "../components/common/Spinner";
+import { TemplateCardSkeleton } from "../components/common/Skeleton";
 import type { AssemblyListItem, AssemblyTemplate, Slide } from "../types";
 import { cn } from "../utils/cn";
 
@@ -39,6 +40,7 @@ interface UserTemplateCard {
 	desc: string;
 	slidesPreview: AssemblyTemplate["slides_preview"];
 	slideCount: number;
+	usesCount: number;
 	dbId: number;
 }
 
@@ -338,6 +340,7 @@ function WelcomeCard() {
 export default function Dashboard() {
 	const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
 	const [previewTemplate, setPreviewTemplate] = useState<UserTemplateCard | null>(null);
+	const [templateSearch, setTemplateSearch] = useState("");
 	const [customOpen, setCustomOpen] = useState(false);
 	const [customPrompt, setCustomPrompt] = useState("");
 	const [manualTitle, setManualTitle] = useState("");
@@ -367,6 +370,7 @@ export default function Dashboard() {
 		desc: t.description,
 		slidesPreview: t.slides_preview,
 		slideCount: t.slide_ids.length,
+		usesCount: t.uses_count ?? 0,
 		dbId: t.id,
 	}));
 
@@ -514,8 +518,35 @@ export default function Dashboard() {
 			<div className="max-w-3xl mx-auto px-6 pt-6 pb-4">
 				<OnboardingChecklist />
 
+				{/* Search */}
+				{(allTemplates.length > 3 || templateSearch) && (
+					<div className="relative mb-4">
+						<input
+							type="text"
+							value={templateSearch}
+							onChange={(e) => setTemplateSearch(e.target.value)}
+							placeholder="Поиск шаблонов..."
+							className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-transparent"
+						/>
+						<svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+						</svg>
+						{templateSearch && (
+							<button onClick={() => setTemplateSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+								<X className="w-3.5 h-3.5" />
+							</button>
+						)}
+					</div>
+				)}
+
 				<div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-					{allTemplates.map((t) => {
+					{/* Skeleton while loading */}
+					{templatesLoading && Array.from({ length: 3 }).map((_, i) => (
+						<TemplateCardSkeleton key={i} />
+					))}
+					{!templatesLoading && allTemplates
+						.filter((t) => !templateSearch || t.title.toLowerCase().includes(templateSearch.toLowerCase()))
+						.map((t) => {
 						const isThisBuilding = isBuilding && activeTemplateId === t.id;
 						return (
 							<div

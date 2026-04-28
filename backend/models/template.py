@@ -13,6 +13,7 @@ class AssemblyTemplate(Base):
     slide_ids_json = Column(Text, default="[]")   # JSON array of SlideLibraryEntry IDs (ordered)
     overlays_json = Column(Text, default="{}")    # {"slide_id": [{id,asset_id,url,file_type,x,y,w,h}]}
     is_public = Column(Boolean, default=False, nullable=False)
+    uses_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User")

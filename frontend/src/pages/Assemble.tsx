@@ -24,6 +24,8 @@ import {
 	Upload,
 	Users,
 	X,
+	ZoomIn,
+	ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -808,6 +810,7 @@ export default function Assemble() {
 	const [showShareModal, setShowShareModal] = useState(false);
 	const [showSlideshow, setShowSlideshow] = useState(false);
 	const [editingSlideId, setEditingSlideId] = useState<number | null>(null);
+	const [canvasZoom, setCanvasZoom] = useState(1.0);
 	const [rightTab, setRightTab] = useState<"library" | "media">(
 		searchParams.get("tab") === "library" ? "library" : "library"
 	);
@@ -1162,7 +1165,7 @@ export default function Assemble() {
 
 				{/* Actions */}
 				<div className="flex items-center gap-2 shrink-0">
-					{/* Slideshow */}
+					{/* Slideshow / Preview */}
 					{localSlides.length > 0 && (
 						<button
 							onClick={() => setShowSlideshow(true)}
@@ -1307,6 +1310,31 @@ export default function Assemble() {
 							</p>
 						)}
 
+						{/* Zoom controls */}
+						<div className="flex items-center gap-1 mr-2">
+							<button
+								onClick={() => setCanvasZoom((z) => Math.max(0.25, parseFloat((z - 0.25).toFixed(2))))}
+								className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+								title="Уменьшить"
+							>
+								<ZoomOut className="w-4 h-4" />
+							</button>
+							<button
+								onClick={() => setCanvasZoom(1.0)}
+								className="text-xs text-gray-500 hover:text-gray-700 min-w-[38px] text-center tabular-nums"
+								title="Сбросить масштаб"
+							>
+								{Math.round(canvasZoom * 100)}%
+							</button>
+							<button
+								onClick={() => setCanvasZoom((z) => Math.min(3, parseFloat((z + 0.25).toFixed(2))))}
+								className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+								title="Увеличить"
+							>
+								<ZoomIn className="w-4 h-4" />
+							</button>
+						</div>
+
 						{/* Edit button */}
 						{selectedSlide && !editingSlideId && (
 							<button
@@ -1346,9 +1374,26 @@ export default function Assemble() {
 						<div
 							className="flex-1 flex items-center justify-center p-8 overflow-auto"
 							onClick={() => setSelectedOverlayId(null)}
+							onWheel={(e) => {
+								if (e.ctrlKey || e.metaKey) {
+									e.preventDefault();
+									setCanvasZoom((z) => {
+										const delta = e.deltaY > 0 ? -0.1 : 0.1;
+										return Math.min(3, Math.max(0.25, parseFloat((z + delta).toFixed(2))));
+									});
+								}
+							}}
 						>
 							{selectedSlide ? (
-								<div className="w-full max-w-4xl flex flex-col items-center gap-4">
+								<div
+								className="flex flex-col items-center gap-4"
+								style={{
+									transform: `scale(${canvasZoom})`,
+									transformOrigin: "top center",
+									width: `${Math.round(100 / canvasZoom)}%`,
+									maxWidth: `${Math.round(896 / canvasZoom)}px`,
+								}}
+							>
 									{/* Slide frame — overflow-visible so overlays can extend beyond the slide */}
 									<div className="relative w-full" style={{ padding: "8% 12%" }}>
 										<div
@@ -1601,6 +1646,7 @@ export default function Assemble() {
 					startIndex={selectedIndex}
 					onClose={() => setShowSlideshow(false)}
 					overlays={overlays}
+					onExport={handleExport}
 				/>
 			)}
 

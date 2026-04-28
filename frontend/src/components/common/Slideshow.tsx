@@ -1,6 +1,7 @@
 import {
 	ChevronLeft,
 	ChevronRight,
+	Download,
 	Maximize,
 	Minimize,
 	Pause,
@@ -12,16 +13,16 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Slide, SlideOverlay } from "../../types";
 import { cn } from "../../utils/cn";
-import { SlideThumbnail } from "./SlideCard";
 
 interface SlideshowProps {
 	slides: Slide[];
 	startIndex?: number;
 	onClose: () => void;
 	overlays?: Record<string, SlideOverlay[]>;
+	onExport?: (fmt: "pptx" | "pdf") => void;
 }
 
-export function Slideshow({ slides, startIndex = 0, onClose, overlays }: SlideshowProps) {
+export function Slideshow({ slides, startIndex = 0, onClose, overlays, onExport }: SlideshowProps) {
 	const [index, setIndex] = useState(Math.max(0, Math.min(startIndex, slides.length - 1)));
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const [controlsVisible, setControlsVisible] = useState(true);
@@ -53,6 +54,15 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
 		el.requestFullscreen().catch(() => {});
 	}, []);
 
+	// Fullscreen API
+	const toggleFullscreen = useCallback(() => {
+		if (!document.fullscreenElement) {
+			containerRef.current?.requestFullscreen().catch(() => {});
+		} else {
+			document.exitFullscreen().catch(() => {});
+		}
+	}, []);
+
 	// Keyboard navigation
 	useEffect(() => {
 		const handler = (e: KeyboardEvent) => {
@@ -70,15 +80,6 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
 		window.addEventListener("keydown", handler);
 		return () => window.removeEventListener("keydown", handler);
 	}, [next, prev, toggleFullscreen, onClose]);
-
-	// Fullscreen API
-	const toggleFullscreen = useCallback(() => {
-		if (!document.fullscreenElement) {
-			containerRef.current?.requestFullscreen().catch(() => {});
-		} else {
-			document.exitFullscreen().catch(() => {});
-		}
-	}, []);
 
 	useEffect(() => {
 		const handler = () => {
@@ -137,9 +138,18 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
 						className="w-full h-full"
 						poster={slide.thumbnail_url || undefined}
 					/>
+				) : slide?.thumbnail_url ? (
+					<img
+						src={slide.thumbnail_url}
+						alt={slide.title || "Слайд"}
+						className="w-full h-full object-contain"
+						loading="eager"
+						fetchPriority="high"
+						decoding="async"
+					/>
 				) : slide ? (
-					<div className="w-full h-full overflow-hidden">
-						<SlideThumbnail slide={slide} />
+					<div className="w-full h-full flex items-center justify-center bg-gray-900">
+						<span className="text-white/40 text-sm">Нет изображения</span>
 					</div>
 				) : null}
 
@@ -217,6 +227,24 @@ export function Slideshow({ slides, startIndex = 0, onClose, overlays }: Slidesh
 			>
 				<p className="text-white text-sm font-medium truncate max-w-xl">{slide?.title || ""}</p>
 				<div className="flex items-center gap-2">
+					{onExport && (
+						<div className="flex items-center gap-1 mr-1">
+							<button
+								onClick={() => onExport("pptx")}
+								className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
+								title="Скачать PPTX"
+							>
+								<Download className="w-3.5 h-3.5" /> PPTX
+							</button>
+							<button
+								onClick={() => onExport("pdf")}
+								className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
+								title="Скачать PDF"
+							>
+								<Download className="w-3.5 h-3.5" /> PDF
+							</button>
+						</div>
+					)}
 					<button
 						onClick={toggleFullscreen}
 						className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"

@@ -399,6 +399,27 @@ export default function TemplateEditor() {
 	const [createdId, setCreatedId] = useState<number | null>(null);
 	const [initialized, setInitialized] = useState(false);
 
+	// Undo/redo history for slide list
+	const historyRef = useRef<Slide[][]>([]);
+	const historyIndexRef = useRef(-1);
+
+	const pushHistory = useCallback((slides: Slide[]) => {
+		// Truncate redo stack
+		historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+		historyRef.current.push(slides);
+		historyIndexRef.current = historyRef.current.length - 1;
+	}, []);
+
+	const applyHistorySlides = useCallback((slides: Slide[], currentTemplateId: number | null) => {
+		setLocalSlides(slides);
+		setSelectedIndex((i) => Math.min(i, Math.max(0, slides.length - 1)));
+		if (currentTemplateId) {
+			templatesApi.update(currentTemplateId, { slide_ids: slides.map((s) => s.id) })
+				.then(() => queryClient.invalidateQueries({ queryKey: ["templates"] }))
+				.catch(() => {});
+		}
+	}, [queryClient]);
+
 	const containerRef = useRef<HTMLDivElement>(null);
 	const overlaysRef = useRef<Record<string, SlideOverlay[]>>({});
 	const dragRef = useRef<{
@@ -430,11 +451,39 @@ export default function TemplateEditor() {
 			setName(template.name);
 			setDescription(template.description);
 			setOverlays(template.overlays || {});
-			// templateSlides are already ordered by template.slide_ids on the backend
 			setLocalSlides(templateSlides);
+			// Seed history with initial state
+			historyRef.current = [templateSlides];
+			historyIndexRef.current = 0;
 			setInitialized(true);
 		}
 	}, [template, templateSlides, initialized]);
+
+	// Ctrl+Z / Ctrl+Y undo-redo
+	useEffect(() => {
+		const handler = (e: KeyboardEvent) => {
+			const isZ = e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey;
+			const isY = (e.key === "y" && (e.ctrlKey || e.metaKey)) ||
+				(e.key === "z" && (e.ctrlKey || e.metaKey) && e.shiftKey);
+			if (!isZ && !isY) return;
+			if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
+			e.preventDefault();
+			if (isZ && historyIndexRef.current > 0) {
+				historyIndexRef.current -= 1;
+				const slides = historyRef.current[historyIndexRef.current];
+				setLocalSlides(slides);
+				setSelectedIndex((i) => Math.min(i, Math.max(0, slides.length - 1)));
+			}
+			if (isY && historyIndexRef.current < historyRef.current.length - 1) {
+				historyIndexRef.current += 1;
+				const slides = historyRef.current[historyIndexRef.current];
+				setLocalSlides(slides);
+				setSelectedIndex((i) => Math.min(i, Math.max(0, slides.length - 1)));
+			}
+		};
+		window.addEventListener("keydown", handler);
+		return () => window.removeEventListener("keydown", handler);
+	}, []);
 
 	useEffect(() => {
 		overlaysRef.current = overlays;
@@ -559,39 +608,36 @@ export default function TemplateEditor() {
 		[currentTemplateId, queryClient]
 	);
 
+	const saveSlides = useCallback((newSlides: Slide[]) => {
+		if (currentTemplateId) {
+			templatesApi
+				.update(currentTemplateId, { slide_ids: newSlides.map((s) => s.id) })
+				.then(() => queryClient.invalidateQueries({ queryKey: ["templates"] }))
+				.catch(() => {});
+		}
+	}, [currentTemplateId, queryClient]);
+
 	const handleAddSlide = (slide: Slide) => {
 		if (localSlides.some((s) => s.id === slide.id)) return;
 		const newSlides = [...localSlides, slide];
+		pushHistory(newSlides);
 		setLocalSlides(newSlides);
 		setSelectedIndex(newSlides.length - 1);
-		if (currentTemplateId) {
-			templatesApi
-				.update(currentTemplateId, { slide_ids: newSlides.map((s) => s.id) })
-				.then(() => queryClient.invalidateQueries({ queryKey: ["templates"] }))
-				.catch(() => {});
-		}
+		saveSlides(newSlides);
 	};
 
 	const handleReorder = (newSlides: Slide[]) => {
+		pushHistory(newSlides);
 		setLocalSlides(newSlides);
-		if (currentTemplateId) {
-			templatesApi
-				.update(currentTemplateId, { slide_ids: newSlides.map((s) => s.id) })
-				.then(() => queryClient.invalidateQueries({ queryKey: ["templates"] }))
-				.catch(() => {});
-		}
+		saveSlides(newSlides);
 	};
 
 	const handleRemove = (slideId: number) => {
 		const newSlides = localSlides.filter((s) => s.id !== slideId);
+		pushHistory(newSlides);
 		setLocalSlides(newSlides);
 		setSelectedIndex(Math.min(selectedIndex, Math.max(0, newSlides.length - 1)));
-		if (currentTemplateId) {
-			templatesApi
-				.update(currentTemplateId, { slide_ids: newSlides.map((s) => s.id) })
-				.then(() => queryClient.invalidateQueries({ queryKey: ["templates"] }))
-				.catch(() => {});
-		}
+		saveSlides(newSlides);
 	};
 
 	const handleSave = async () => {

@@ -104,6 +104,8 @@ def create_from_template(
     if not user.is_admin and template.owner_id != user.id and not template.is_public:
         raise HTTPException(403, detail="Нет доступа")
 
+    template.uses_count = (template.uses_count or 0) + 1
+
     assembly = AssembledPresentation(
         owner_id=user.id,
         title=template.name,

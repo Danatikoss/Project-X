@@ -46,6 +46,7 @@ class TemplateResponse(BaseModel):
     overlays: dict
     slides_preview: list[SlidePreview]
     is_public: bool
+    uses_count: int = 0
     owner_name: Optional[str] = None
     created_at: datetime
 
@@ -88,6 +89,7 @@ def _template_to_response(template: AssemblyTemplate, db: Session) -> TemplateRe
         overlays=overlays,
         slides_preview=slides_preview,
         is_public=bool(template.is_public),
+        uses_count=template.uses_count or 0,
         owner_name=owner_name,
         created_at=template.created_at,
     )
