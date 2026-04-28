@@ -241,7 +241,7 @@ export function SlidePreviewModal({
 
 					{hasPrev && (
 						<button
-							onClick={() => onNavigate?.(slides?.[currentIdx - 1])}
+							onClick={() => onNavigate?.(slides![currentIdx - 1])}
 							className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow-md flex items-center justify-center hover:bg-white transition-colors"
 						>
 							<ChevronLeft className="w-5 h-5 text-gray-700" />
@@ -249,7 +249,7 @@ export function SlidePreviewModal({
 					)}
 					{hasNext && (
 						<button
-							onClick={() => onNavigate?.(slides?.[currentIdx + 1])}
+							onClick={() => onNavigate?.(slides![currentIdx + 1])}
 							className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow-md flex items-center justify-center hover:bg-white transition-colors"
 						>
 							<ChevronRight className="w-5 h-5 text-gray-700" />
