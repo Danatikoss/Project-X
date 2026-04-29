@@ -36,10 +36,6 @@ const PRIMARY_NAV = [
 
 const SECONDARY_NAV: { to: string; icon: React.ElementType; label: string }[] = [];
 
-const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = [
-	{ to: "/library/upload", icon: Upload, label: "Загрузить" },
-	{ to: "/admin", icon: BarChart2, label: "Админ" },
-];
 
 // ─── Nav link ─────────────────────────────────────────────────────────────────
 
@@ -144,6 +140,32 @@ function UserMenu() {
 						<User className="w-3.5 h-3.5 text-gray-400" />
 						Мой профиль
 					</button>
+					{user?.is_admin && (
+						<>
+							<div className="my-1 border-t border-gray-100" />
+							<button
+								onClick={() => { setOpen(false); navigate("/org-profile"); }}
+								className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+							>
+								<Building2 className="w-3.5 h-3.5 text-gray-400" />
+								Организация
+							</button>
+							<button
+								onClick={() => { setOpen(false); navigate("/admin"); }}
+								className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+							>
+								<BarChart2 className="w-3.5 h-3.5 text-gray-400" />
+								Админ
+							</button>
+							<button
+								onClick={() => { setOpen(false); navigate("/library/upload"); }}
+								className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+							>
+								<Upload className="w-3.5 h-3.5 text-gray-400" />
+								Загрузить
+							</button>
+						</>
+					)}
 					<div className="my-1 border-t border-gray-100" />
 					<button
 						onClick={async () => {
@@ -407,7 +429,7 @@ export function AppShell() {
 				.toUpperCase()
 		: (user?.email?.[0]?.toUpperCase() ?? "?");
 
-	const allNavItems = [...PRIMARY_NAV, ...SECONDARY_NAV, ...(user?.is_admin ? ADMIN_NAV : [])];
+	const allNavItems = [...PRIMARY_NAV, ...SECONDARY_NAV];
 
 	return (
 		<div className="flex flex-col h-screen bg-surface overflow-hidden">
@@ -429,35 +451,10 @@ export function AppShell() {
 						))}
 					</nav>
 
-					<div className="w-px h-5 bg-gray-200 mx-2 shrink-0" />
-
-					<nav className="flex items-center gap-0.5">
-						{SECONDARY_NAV.map((item) => (
-							<TopNavLink key={item.to} {...item} />
-						))}
-						{user?.is_admin && ADMIN_NAV.map((item) => <TopNavLink key={item.to} {...item} />)}
-					</nav>
-				</div>
+					</div>
 
 				{/* Right side — fixed to the right */}
 				<div className="flex items-center gap-1 ml-auto shrink-0">
-					{user?.is_admin && (
-						<NavLink
-							to="/org-profile"
-							title="Организация"
-							className={({ isActive }) =>
-								cn(
-									"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
-									isActive
-										? "text-brand-700 bg-brand-50"
-										: "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
-								)
-							}
-						>
-							<Building2 className="w-3.5 h-3.5" />
-							<span className="hidden lg:inline">Организация</span>
-						</NavLink>
-					)}
 					<button
 						onClick={() => setHelpOpen(true)}
 						title="Как пользоваться"
