@@ -39,7 +39,6 @@ const SECONDARY_NAV: { to: string; icon: React.ElementType; label: string }[] = 
 const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = [
 	{ to: "/library/upload", icon: Upload, label: "Загрузить" },
 	{ to: "/admin", icon: BarChart2, label: "Админ" },
-	{ to: "/org-profile", icon: Building2, label: "Организация" },
 ];
 
 // ─── Nav link ─────────────────────────────────────────────────────────────────
@@ -442,6 +441,23 @@ export function AppShell() {
 
 				{/* Right side — fixed to the right */}
 				<div className="flex items-center gap-1 ml-auto shrink-0">
+					{user?.is_admin && (
+						<NavLink
+							to="/org-profile"
+							title="Организация"
+							className={({ isActive }) =>
+								cn(
+									"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
+									isActive
+										? "text-brand-700 bg-brand-50"
+										: "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+								)
+							}
+						>
+							<Building2 className="w-3.5 h-3.5" />
+							<span className="hidden lg:inline">Организация</span>
+						</NavLink>
+					)}
 					<button
 						onClick={() => setHelpOpen(true)}
 						title="Как пользоваться"
