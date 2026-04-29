@@ -2,6 +2,7 @@ import {
 	ArrowRight,
 	BarChart2,
 	BookImage,
+	Building2,
 	ChevronDown,
 	Film,
 	HelpCircle,
@@ -38,6 +39,7 @@ const SECONDARY_NAV: { to: string; icon: React.ElementType; label: string }[] = 
 const ADMIN_NAV: { to: string; icon: React.ElementType; label: string }[] = [
 	{ to: "/library/upload", icon: Upload, label: "Загрузить" },
 	{ to: "/admin", icon: BarChart2, label: "Админ" },
+	{ to: "/org-profile", icon: Building2, label: "Организация" },
 ];
 
 // ─── Nav link ─────────────────────────────────────────────────────────────────

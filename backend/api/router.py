@@ -11,6 +11,7 @@ from api.admin import router as admin_router
 from api.wopi import api_router as wopi_api_router
 from api.generate import router as generate_router
 from api.feedback import router as feedback_router
+from api.company_profile import router as org_profile_router
 
 router = APIRouter()
 
@@ -27,3 +28,4 @@ router.include_router(admin_router, prefix="/admin", tags=["Admin"])
 router.include_router(wopi_api_router, prefix="/wopi", tags=["WOPI"])
 router.include_router(generate_router, prefix="/generate", tags=["Generate"])
 router.include_router(feedback_router, prefix="/feedback", tags=["Feedback"])
+router.include_router(org_profile_router, prefix="/org-profile", tags=["OrgProfile"])

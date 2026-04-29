@@ -742,6 +742,32 @@ export const templatesApi = {
 	},
 };
 
+// ─── Org Profile ─────────────────────────────────────────────────────────────
+
+export interface OrgProfile {
+	org_name: string | null;
+	org_name_short: string | null;
+	leader_name: string | null;
+	mission: string | null;
+	key_products: string | null;
+	key_stats: string | null;
+	strategic_priorities: string | null;
+	writing_rules: string | null;
+	forbidden_words: string | null;
+	language: string;
+}
+
+export const orgProfileApi = {
+	get: async (): Promise<OrgProfile | null> => {
+		const res = await api.get<OrgProfile | null>("/org-profile");
+		return res.data;
+	},
+	update: async (data: OrgProfile): Promise<OrgProfile> => {
+		const res = await api.put<OrgProfile>("/org-profile", data);
+		return res.data;
+	},
+};
+
 export const feedbackApi = {
 	submit: async (
 		category: string,

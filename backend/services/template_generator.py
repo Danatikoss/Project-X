@@ -56,14 +56,17 @@ DECOMPOSE_SYSTEM = """Ты — архитектор презентаций. Тв
 }"""
 
 
-async def _decompose_prompt(prompt: str) -> dict:
+async def _decompose_prompt(prompt: str, company_context: str = "") -> dict:
     """Step 1: ask LLM to break prompt into slide intents. Returns {title, slides:[{intent,content}]}"""
     client = _get_client()
+    system = DECOMPOSE_SYSTEM
+    if company_context:
+        system = f"{company_context}\n\n{DECOMPOSE_SYSTEM}"
     response = await client.chat.completions.create(
         model=settings.assembly_model,
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": DECOMPOSE_SYSTEM},
+            {"role": "system", "content": system},
             {"role": "user", "content": f"Тема презентации:\n{prompt}"},
         ],
         temperature=0.3,
@@ -225,7 +228,7 @@ async def _fill_slots(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def generate_presentation_plan(prompt: str, theme: str = "default", has_media: bool = False) -> dict:
+async def generate_presentation_plan(prompt: str, theme: str = "default", has_media: bool = False, company_context: str = "") -> dict:
     """
     3-step pipeline: decompose → match → fill.
     Returns {title, slides: [{template_id, slots}]}
@@ -248,7 +251,7 @@ async def generate_presentation_plan(prompt: str, theme: str = "default", has_me
         raise ValueError("Каталог шаблонов пуст. Загрузите шаблоны и нажмите Reindex.")
 
     # Step 1 — decompose
-    decomposed = await _decompose_prompt(prompt)
+    decomposed = await _decompose_prompt(prompt, company_context=company_context)
     title = decomposed.get("title", "Презентация")
     slide_intents = decomposed.get("slides", [])
 

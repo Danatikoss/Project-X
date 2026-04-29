@@ -25,6 +25,7 @@ from api.deps import get_current_user
 from database import get_db
 from models.user import User
 from models.slide import SourcePresentation, SlideLibraryEntry
+from models.company_profile import get_company_context
 from models.assembly import AssembledPresentation
 from services.template_generator import generate_presentation_plan, fill_single_slide
 from services.template_library import load_catalog, get_template_by_id, get_title_slides, list_themes, CATALOG_PATH, TEMPLATES_DIR
@@ -257,7 +258,8 @@ async def create_plan(
     _t0 = _time.perf_counter()
 
     try:
-        plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme, has_media=body.has_media)
+        company_context = get_company_context(db)
+        plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme, has_media=body.has_media, company_context=company_context)
     except Exception as e:
         logger.error("Plan generation failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Ошибка генерации плана: {e}")

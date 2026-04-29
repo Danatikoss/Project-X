@@ -16,6 +16,7 @@ import SharedAssembly from "./pages/SharedAssembly";
 import TemplateEditor from "./pages/TemplateEditor";
 import Upload from "./pages/Upload";
 import Admin from "./pages/Admin";
+import OrgProfile from "./pages/OrgProfile";
 import { useAuthStore } from "./store/auth";
 
 const queryClient = new QueryClient({
@@ -159,6 +160,16 @@ export default function App() {
 								<AdminRoute>
 									<ErrorBoundary>
 										<Admin />
+									</ErrorBoundary>
+								</AdminRoute>
+							}
+						/>
+						<Route
+							path="/org-profile"
+							element={
+								<AdminRoute>
+									<ErrorBoundary>
+										<OrgProfile />
 									</ErrorBoundary>
 								</AdminRoute>
 							}
