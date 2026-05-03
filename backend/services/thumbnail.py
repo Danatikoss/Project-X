@@ -357,12 +357,22 @@ def _extract_text_from_pptx_slide(slide) -> str:
 
 
 def _get_bg_image_bytes(obj) -> bytes | None:
-    """Extract background picture fill image bytes from a slide, layout, or master element."""
+    """Extract background picture fill image bytes from a slide, layout, or master."""
     try:
         from pptx.oxml.ns import qn as _qn
         _R_EMBED = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        bg_elem = obj.background._bg
-        bgPr = bg_elem.find(_qn("p:bgPr"))
+        # Access the raw XML element directly (background._bg doesn't exist in all pptx versions)
+        root_elem = obj._element
+        # <p:sld>/<p:cSld>/<p:bg>/<p:bgPr>/<a:blipFill>/<a:blip r:embed="...">
+        cSld = root_elem.find(_qn("p:cSld"))
+        if cSld is None:
+            # For layouts/masters the root IS cSld-like; try direct
+            bg = root_elem.find(_qn("p:bg"))
+        else:
+            bg = cSld.find(_qn("p:bg"))
+        if bg is None:
+            return None
+        bgPr = bg.find(_qn("p:bgPr"))
         if bgPr is None:
             return None
         blipFill = bgPr.find(_qn("a:blipFill"))
