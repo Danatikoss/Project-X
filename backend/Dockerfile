@@ -2,15 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps for Pillow, PyMuPDF, python-pptx, LibreOffice (thumbnail rendering)
+# System deps for Pillow, PyMuPDF, python-pptx
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
     curl \
-    libreoffice-impress \
-    fonts-liberation \
+    wget \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Montserrat font
+RUN mkdir -p /usr/share/fonts/montserrat && \
+    wget -q "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf" \
+         -O /usr/share/fonts/montserrat/Montserrat.ttf && \
+    fc-cache -fv
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
