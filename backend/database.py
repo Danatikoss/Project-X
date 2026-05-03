@@ -130,7 +130,8 @@ def migrate_db():
 
 
 def create_tables():
-    from models import slide, assembly, user, project, media, template, stats  # noqa: F401
+    from models import slide, assembly, user, project, media, template  # noqa: F401
+    import models.stats  # noqa: F401
     from models.user import RefreshToken  # noqa: F401
     from models import feedback  # noqa: F401
     from models import company_profile  # noqa: F401
