@@ -448,82 +448,106 @@ def _render_pptx_slide_with_pillow(prs, slide_index: int, slide_cx: int, slide_c
         except Exception:
             return ImageFont.load_default()
 
-    for shape in slide.shapes:
-        try:
-            if shape.left is None or shape.top is None:
-                continue
-            left = int(shape.left * scale_x)
-            top = int(shape.top * scale_y)
-            width = int((shape.width or 0) * scale_x)
-            height = int((shape.height or 0) * scale_y)
-            right, bottom = left + width, top + height
-
-            # Solid shape fill
+    def _draw_shapes(shapes):
+        for shape in shapes:
             try:
-                f = shape.fill
-                if str(f.type) == "SOLID (1)":
-                    rgb = f.fore_color.rgb
-                    draw.rectangle([left, top, right, bottom], fill=(rgb[0], rgb[1], rgb[2]))
-            except Exception:
-                pass
-
-            # Picture placeholder
-            if shape.shape_type == 13:
-                draw.rectangle([left, top, right, bottom], fill=(215, 215, 220), outline=(170, 170, 180), width=2)
-                cx, cy = (left + right) // 2, (top + bottom) // 2
-                r = min(width, height) // 6
-                draw.line([cx - r, cy - r, cx + r, cy + r], fill=(160, 160, 170), width=max(2, r // 4))
-                draw.line([cx + r, cy - r, cx - r, cy + r], fill=(160, 160, 170), width=max(2, r // 4))
-                continue
-
-            # Text frame
-            if not (hasattr(shape, "has_text_frame") and shape.has_text_frame):
-                continue
-
-            y = top + max(2, int(4 * scale_y))
-            for para in shape.text_frame.paragraphs:
-                line_text = para.text
-                if not line_text:
-                    y += max(4, int(6 * scale_y))
+                if shape.left is None or shape.top is None:
                     continue
+                left = int(shape.left * scale_x)
+                top = int(shape.top * scale_y)
+                width = int((shape.width or 0) * scale_x)
+                height = int((shape.height or 0) * scale_y)
+                right, bottom = left + width, top + height
 
-                font_pt, text_color, bold = 18.0, (30, 30, 30), False
+                # Solid shape fill
                 try:
-                    if para.runs:
-                        run = para.runs[0]
-                        if run.font.size:
-                            font_pt = run.font.size.pt
-                        bold = bool(run.font.bold)
-                        if run.font.color and run.font.color.type is not None:
-                            rgb = run.font.color.rgb
-                            text_color = (rgb[0], rgb[1], rgb[2])
+                    f = shape.fill
+                    if str(f.type) == "SOLID (1)":
+                        try:
+                            rgb = f.fore_color.rgb
+                            draw.rectangle([left, top, right, bottom], fill=(rgb[0], rgb[1], rgb[2]))
+                        except Exception:
+                            # Theme color — try to get srgbClr or sysClr from XML
+                            from pptx.oxml.ns import qn as _qn
+                            spPr = shape._element.find(_qn("p:spPr"))
+                            if spPr is None:
+                                spPr = shape._element
+                            solidFill = spPr.find(".//{http://schemas.openxmlformats.org/drawingml/2006/main}solidFill")
+                            if solidFill is not None:
+                                srgb = solidFill.find("{http://schemas.openxmlformats.org/drawingml/2006/main}srgbClr")
+                                if srgb is not None:
+                                    val = srgb.get("val", "")
+                                    if len(val) == 6:
+                                        r2 = int(val[0:2], 16)
+                                        g2 = int(val[2:4], 16)
+                                        b2 = int(val[4:6], 16)
+                                        draw.rectangle([left, top, right, bottom], fill=(r2, g2, b2))
                 except Exception:
                     pass
 
-                font = _font(font_pt, bold)
+                # Picture placeholder
+                if shape.shape_type == 13:
+                    draw.rectangle([left, top, right, bottom], fill=(215, 215, 220), outline=(170, 170, 180), width=2)
+                    cx2, cy2 = (left + right) // 2, (top + bottom) // 2
+                    r = min(width, height) // 6
+                    draw.line([cx2 - r, cy2 - r, cx2 + r, cy2 + r], fill=(160, 160, 170), width=max(2, r // 4))
+                    draw.line([cx2 + r, cy2 - r, cx2 - r, cy2 + r], fill=(160, 160, 170), width=max(2, r // 4))
+                    continue
 
-                # Word-wrap within shape width
-                words, line_buf = line_text.split(), ""
-                for word in words:
-                    candidate = (line_buf + " " + word).strip()
-                    lw = draw.textbbox((0, 0), candidate, font=font)[2]
-                    if lw > width - 8 and line_buf:
-                        if y < bottom:
-                            draw.text((left + 4, y), line_buf, fill=text_color, font=font)
+                # Text frame
+                if not (hasattr(shape, "has_text_frame") and shape.has_text_frame):
+                    continue
+
+                y = top + max(2, int(4 * scale_y))
+                for para in shape.text_frame.paragraphs:
+                    line_text = para.text
+                    if not line_text:
+                        y += max(4, int(6 * scale_y))
+                        continue
+
+                    font_pt, text_color, bold = 18.0, (30, 30, 30), False
+                    try:
+                        if para.runs:
+                            run = para.runs[0]
+                            if run.font.size:
+                                font_pt = run.font.size.pt
+                            bold = bool(run.font.bold)
+                            if run.font.color and run.font.color.type is not None:
+                                rgb = run.font.color.rgb
+                                text_color = (rgb[0], rgb[1], rgb[2])
+                    except Exception:
+                        pass
+
+                    font = _font(font_pt, bold)
+
+                    words, line_buf = line_text.split(), ""
+                    for word in words:
+                        candidate = (line_buf + " " + word).strip()
+                        lw = draw.textbbox((0, 0), candidate, font=font)[2]
+                        if lw > width - 8 and line_buf:
+                            if y < bottom:
+                                draw.text((left + 4, y), line_buf, fill=text_color, font=font)
+                            lh = draw.textbbox((0, 0), line_buf, font=font)[3]
+                            y += int(lh * 1.15) + 1
+                            line_buf = word
+                        else:
+                            line_buf = candidate
+                    if line_buf and y < bottom:
+                        draw.text((left + 4, y), line_buf, fill=text_color, font=font)
                         lh = draw.textbbox((0, 0), line_buf, font=font)[3]
-                        y += int(lh * 1.15) + 1
-                        line_buf = word
-                    else:
-                        line_buf = candidate
-                if line_buf and y < bottom:
-                    draw.text((left + 4, y), line_buf, fill=text_color, font=font)
-                    lh = draw.textbbox((0, 0), line_buf, font=font)[3]
-                    y += int(lh * 1.15) + 4
+                        y += int(lh * 1.15) + 4
 
-                if y > bottom:
-                    break
-        except Exception:
-            continue
+                    if y > bottom:
+                        break
+            except Exception:
+                continue
+
+    # Render layout shapes first (background), then slide shapes on top
+    try:
+        _draw_shapes(slide.slide_layout.shapes)
+    except Exception:
+        pass
+    _draw_shapes(slide.shapes)
 
     buf = io.BytesIO()
     img.save(buf, "PNG")
