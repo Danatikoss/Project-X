@@ -8,6 +8,7 @@ import {
 	Film,
 	FolderOpen,
 	Image,
+	Play,
 	Plus,
 	Search,
 	X,
@@ -352,12 +353,9 @@ function MediaPanel({ onAdd }: { onAdd: (asset: MediaAsset) => void }) {
 								className="relative group rounded-lg overflow-hidden border border-gray-200 hover:border-brand-400 transition-all hover:shadow-sm cursor-pointer"
 							>
 								{asset.file_type === "video" ? (
-									<video
-										src={asset.url}
-										muted
-										className="w-full object-cover"
-										style={{ aspectRatio: "16/9" }}
-									/>
+									<div className="w-full bg-slate-900 flex items-center justify-center" style={{ aspectRatio: "16/9" }}>
+										<Play className="w-5 h-5 text-white/60" />
+									</div>
 								) : (
 									<img
 										src={asset.url}

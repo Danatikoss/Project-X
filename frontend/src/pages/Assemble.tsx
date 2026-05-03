@@ -467,12 +467,9 @@ function MediaPanel({
 								title={asset.name}
 							>
 								{asset.file_type === "video" ? (
-									<video
-										src={asset.url}
-										className="w-full h-full object-cover"
-										muted
-										preload="metadata"
-									/>
+									<div className="w-full h-full bg-slate-900 flex items-center justify-center">
+										<Play className="w-6 h-6 text-white/60" />
+									</div>
 								) : (
 									<img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
 								)}
