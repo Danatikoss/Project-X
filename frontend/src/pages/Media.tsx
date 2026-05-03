@@ -22,12 +22,13 @@ import {
 	Image,
 	ImagePlay,
 	MoreHorizontal,
+	Play,
 	Plus,
 	Trash2,
 	Upload,
 	X,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { mediaApi } from "../api/client";
 import { Spinner } from "../components/common/Spinner";
@@ -52,6 +53,50 @@ function TypeBadge({ type }: { type: MediaAsset["file_type"] }) {
 		<span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-md", cfg.cls)}>
 			{cfg.label}
 		</span>
+	);
+}
+
+// ─── Preview modal (lightbox) ─────────────────────────────────────────────────
+
+function PreviewModal({ asset, onClose }: { asset: MediaAsset; onClose: () => void }) {
+	useEffect(() => {
+		const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+		window.addEventListener("keydown", handler);
+		return () => window.removeEventListener("keydown", handler);
+	}, [onClose]);
+
+	return (
+		<div
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+			onClick={onClose}
+		>
+			<button
+				onClick={onClose}
+				className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+			>
+				<X className="w-5 h-5" />
+			</button>
+			<div
+				className="max-w-5xl max-h-[90vh] w-full mx-4 flex flex-col items-center gap-3"
+				onClick={(e) => e.stopPropagation()}
+			>
+				{asset.file_type === "video" ? (
+					<video
+						src={asset.url}
+						controls
+						autoPlay
+						className="max-h-[80vh] max-w-full rounded-xl shadow-2xl"
+					/>
+				) : (
+					<img
+						src={asset.url}
+						alt={asset.name}
+						className="max-h-[80vh] max-w-full rounded-xl shadow-2xl object-contain"
+					/>
+				)}
+				<p className="text-white/70 text-sm font-medium">{asset.name}</p>
+			</div>
+		</div>
 	);
 }
 
@@ -165,14 +210,18 @@ function MediaCard({
 	asset,
 	onDelete,
 	onRename,
+	onPreview,
 }: {
 	asset: MediaAsset;
 	onDelete: () => void;
 	onRename: (name: string) => void;
+	onPreview: () => void;
 }) {
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [renaming, setRenaming] = useState(false);
 	const [editName, setEditName] = useState(asset.name);
+	const [videoLoaded, setVideoLoaded] = useState(false);
+	const videoRef = useRef<HTMLVideoElement>(null);
 
 	const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: asset.id });
 
@@ -180,6 +229,24 @@ function MediaCard({
 		const t = editName.trim();
 		if (t && t !== asset.name) onRename(t);
 		setRenaming(false);
+	};
+
+	const handleVideoHoverEnter = () => {
+		const v = videoRef.current;
+		if (!v) return;
+		if (!videoLoaded) {
+			v.src = asset.url;
+			v.load();
+			setVideoLoaded(true);
+		}
+		v.play().catch(() => {});
+	};
+
+	const handleVideoHoverLeave = () => {
+		const v = videoRef.current;
+		if (!v) return;
+		v.pause();
+		v.currentTime = 0;
 	};
 
 	return (
@@ -194,22 +261,30 @@ function MediaCard({
 					? "opacity-40 scale-95 shadow-lg"
 					: "hover:border-brand-300 hover:shadow-card-hover hover:-translate-y-0.5"
 			)}
+			onClick={() => { if (!isDragging && !menuOpen && !renaming) onPreview(); }}
 		>
 			{/* Preview area */}
-			<div className="w-full aspect-video bg-slate-50 flex items-center justify-center overflow-hidden">
+			<div
+				className="w-full aspect-video bg-slate-100 flex items-center justify-center overflow-hidden relative"
+				onMouseEnter={asset.file_type === "video" ? handleVideoHoverEnter : undefined}
+				onMouseLeave={asset.file_type === "video" ? handleVideoHoverLeave : undefined}
+			>
 				{asset.file_type === "video" ? (
-					<video
-						src={asset.url}
-						className="w-full h-full object-cover"
-						muted
-						preload="metadata"
-						onMouseEnter={(e) => (e.currentTarget as HTMLVideoElement).play().catch(() => {})}
-						onMouseLeave={(e) => {
-							const v = e.currentTarget as HTMLVideoElement;
-							v.pause();
-							v.currentTime = 0;
-						}}
-					/>
+					<>
+						{/* Static placeholder — shows until hover loads video */}
+						<div className={cn(
+							"absolute inset-0 flex items-center justify-center bg-slate-900/80 transition-opacity",
+							videoLoaded ? "opacity-0 group-hover:opacity-0" : "opacity-100"
+						)}>
+							<Play className="w-8 h-8 text-white/70" />
+						</div>
+						<video
+							ref={videoRef}
+							className="w-full h-full object-cover"
+							muted
+							preload="none"
+						/>
+					</>
 				) : (
 					<img
 						src={asset.url}
@@ -427,6 +502,7 @@ export default function Media() {
 	const [newFolderMode, setNewFolderMode] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
 	const [dragOverFolder, setDragOverFolder] = useState<number | null>(null);
+	const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
 
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -843,6 +919,7 @@ export default function Media() {
 										onRename={(name) =>
 											updateAssetMutation.mutate({ id: asset.id, data: { name } })
 										}
+										onPreview={() => setPreviewAsset(asset)}
 									/>
 								))}
 							</div>
@@ -870,6 +947,11 @@ export default function Media() {
 					</div>
 				)}
 			</DragOverlay>
+
+			{/* Preview modal */}
+			{previewAsset && (
+				<PreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
+			)}
 
 			{/* Upload modal */}
 			{pendingFile && (
