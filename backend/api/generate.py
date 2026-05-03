@@ -649,9 +649,10 @@ async def extract_file(
     try:
         summary = await extract_file_content(content, filename)
     except ValueError as e:
+        logger.error("File extraction ValueError: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error("File extraction failed: %s", e)
+        logger.error("File extraction failed: %s", e, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Ошибка обработки файла: {e}")
 
     return {"summary": summary, "filename": filename}
