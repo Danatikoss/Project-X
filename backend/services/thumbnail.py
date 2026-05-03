@@ -356,12 +356,34 @@ def _extract_text_from_pptx_slide(slide) -> str:
     return " ".join(texts)
 
 
+def _get_bg_image_bytes(obj) -> bytes | None:
+    """Extract background picture fill image bytes from a slide, layout, or master element."""
+    try:
+        from pptx.oxml.ns import qn as _qn
+        _R_EMBED = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+        bg_elem = obj.background._bg
+        bgPr = bg_elem.find(_qn("p:bgPr"))
+        if bgPr is None:
+            return None
+        blipFill = bgPr.find(_qn("a:blipFill"))
+        if blipFill is None:
+            return None
+        blip = blipFill.find(_qn("a:blip"))
+        if blip is None:
+            return None
+        rId = blip.get(_R_EMBED)
+        if not rId:
+            return None
+        return obj.part.related_parts[rId].blob
+    except Exception:
+        return None
+
+
 def _render_pptx_slide_with_pillow(prs, slide_index: int, slide_cx: int, slide_cy: int) -> bytes:
     """
     Pure-Python renderer using python-pptx + Pillow.
-    Renders shapes at correct positions with text and basic fill colors.
-    No external system dependencies. Not pixel-perfect (no gradients/themes/fonts)
-    but produces a functional layout preview suitable as a fallback thumbnail.
+    Extracts background image/color from slide, layout, or master.
+    Renders text shapes at correct positions with Montserrat font when available.
     """
     from PIL import Image, ImageDraw, ImageFont
 
@@ -371,27 +393,44 @@ def _render_pptx_slide_with_pillow(prs, slide_index: int, slide_cx: int, slide_c
 
     slide = prs.slides[slide_index]
 
-    # Background color
+    # Background: try slide → layout → master for picture fill, then solid fill
+    bg_img_bytes: bytes | None = None
     bg_color = (255, 255, 255)
-    try:
-        fill = slide.background.fill
-        if fill.type is not None:
-            rgb = fill.fore_color.rgb
-            bg_color = (rgb[0], rgb[1], rgb[2])
-    except Exception:
-        pass
+    for obj in [slide, slide.slide_layout, slide.slide_layout.slide_master]:
+        img_bytes = _get_bg_image_bytes(obj)
+        if img_bytes:
+            bg_img_bytes = img_bytes
+            break
+        try:
+            fill = obj.background.fill
+            if fill.type is not None:
+                rgb = fill.fore_color.rgb
+                bg_color = (rgb[0], rgb[1], rgb[2])
+                break
+        except Exception:
+            pass
 
-    img = Image.new("RGB", (TARGET_W, TARGET_H), bg_color)
+    if bg_img_bytes:
+        try:
+            bg_img = Image.open(io.BytesIO(bg_img_bytes)).convert("RGB")
+            img = bg_img.resize((TARGET_W, TARGET_H), Image.LANCZOS)
+        except Exception:
+            img = Image.new("RGB", (TARGET_W, TARGET_H), bg_color)
+    else:
+        img = Image.new("RGB", (TARGET_W, TARGET_H), bg_color)
+
     draw = ImageDraw.Draw(img)
 
     def _font(size_pt: float, bold: bool = False) -> ImageFont.FreeTypeFont:
         size_px = max(8, int(size_pt * 96 / 72 * scale_y))
         candidates = (
             [
+                "/usr/share/fonts/montserrat/Montserrat.ttf",
                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             ] if bold else []
         ) + [
+            "/usr/share/fonts/montserrat/Montserrat.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
