@@ -61,7 +61,8 @@ def migrate_db():
             _add_column_if_missing(conn, "assembled_presentations", "owner_id", "INTEGER REFERENCES users(id)")
             _add_column_if_missing(conn, "assembled_presentations", "share_token", "TEXT")
             _add_column_if_missing(conn, "assembled_presentations", "overlays_json", "TEXT DEFAULT '{}'")
-            _add_column_if_missing(conn, "assembled_presentations", "brand_template_id", "INTEGER REFERENCES brand_templates(id)")
+            if "brand_templates" in tables:
+                _add_column_if_missing(conn, "assembled_presentations", "brand_template_id", "INTEGER REFERENCES brand_templates(id)")
             _add_column_if_missing(conn, "assembled_presentations", "edit_token", "TEXT")
             if _is_sqlite:
                 conn.execute(text(
