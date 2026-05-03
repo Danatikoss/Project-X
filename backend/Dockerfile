@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps for Pillow, PyMuPDF, python-pptx
+# System deps for Pillow, PyMuPDF, python-pptx, LibreOffice
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
@@ -10,9 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     fontconfig \
+    libreoffice-impress \
+    libreoffice-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Montserrat font
+# Install Montserrat font and refresh font cache (LibreOffice reads fontconfig at runtime)
 RUN mkdir -p /usr/share/fonts/montserrat && \
     wget -q "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf" \
          -O /usr/share/fonts/montserrat/Montserrat.ttf && \
