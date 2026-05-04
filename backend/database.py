@@ -97,7 +97,7 @@ def migrate_db():
             _add_column_if_missing(conn, "slide_library_entries", "topic", "TEXT")
             _add_column_if_missing(conn, "slide_library_entries", "blueprint_json", "TEXT")
             _add_column_if_missing(conn, "slide_library_entries", "visibility", "TEXT DEFAULT 'library'")
-            _add_column_if_missing(conn, "slide_library_entries", "is_favorite", "BOOLEAN DEFAULT 0")
+            _add_column_if_missing(conn, "slide_library_entries", "is_favorite", "BOOLEAN DEFAULT FALSE")
         if "user_profiles" in tables:
             _add_column_if_missing(conn, "user_profiles", "user_id", "INTEGER REFERENCES users(id)")
             conn.execute(text(
