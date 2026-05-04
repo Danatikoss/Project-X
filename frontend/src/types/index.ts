@@ -100,6 +100,9 @@ export interface SlideOverlay {
 	y: number;
 	w: number;
 	h: number;
+	// frontend-only fields, not persisted
+	localObjectUrl?: string;
+	uploading?: boolean;
 }
 
 export interface Assembly {

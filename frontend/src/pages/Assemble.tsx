@@ -537,6 +537,7 @@ function OverlayItem({
 					loop
 					muted
 					playsInline
+					preload="auto"
 					className="w-full h-full object-contain pointer-events-none"
 				/>
 			) : (
@@ -546,6 +547,14 @@ function OverlayItem({
 					className="w-full h-full object-contain pointer-events-none"
 					draggable={false}
 				/>
+			)}
+			{overlay.uploading && (
+				<div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded">
+					<svg className="animate-spin w-6 h-6 text-white" viewBox="0 0 24 24" fill="none">
+						<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+						<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+					</svg>
+				</div>
 			)}
 			{isSelected && (
 				<>
@@ -813,6 +822,7 @@ export default function Assemble() {
 	);
 	const [rightCollapsed, setRightCollapsed] = useState(false);
 	const [isPageDragging, setIsPageDragging] = useState(false);
+	const [uploadingCount, setUploadingCount] = useState(0);
 	const dragCounterRef = useRef(0);
 
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -850,7 +860,20 @@ export default function Assemble() {
 			slide_ids?: number[];
 			title?: string;
 			overlays?: Record<string, SlideOverlay[]>;
-		}) => assemblyApi.update(assemblyId, data),
+		}) => {
+			// Strip frontend-only fields before sending to server
+			if (data.overlays) {
+				const clean: Record<string, SlideOverlay[]> = {};
+				for (const [k, list] of Object.entries(data.overlays)) {
+					// eslint-disable-next-line @typescript-eslint/no-unused-vars
+					clean[k] = list
+						.filter((o) => !o.uploading) // skip overlays still uploading (no server asset yet)
+						.map(({ localObjectUrl: _loc, uploading: _up, ...rest }) => rest);
+				}
+				data = { ...data, overlays: clean };
+			}
+			return assemblyApi.update(assemblyId, data);
+		},
 		onSuccess: (updated: Assembly) => {
 			queryClient.setQueryData(["assembly", assemblyId], updated);
 		},
@@ -956,23 +979,104 @@ export default function Assemble() {
 		[localSlides, selectedIndex, updateMutation]
 	);
 
-	const uploadMediaMutation = useMutation({
-		mutationFn: (file: File) => mediaApi.upload(file, file.name),
-		onSuccess: (asset) => {
-			queryClient.invalidateQueries({ queryKey: ["media-assets"] });
-			toast.success(`«${asset.name}» загружен`);
-			handleAddOverlay(asset);
-			if (rightTab !== "media") setRightTab("media");
-		},
-		onError: () => toast.error("Не удалось загрузить файл"),
-	});
+	const handlePageFiles = useCallback(
+		(files: FileList) => {
+			const slideId = String(localSlides[selectedIndex]?.id);
+			if (!slideId || slideId === "undefined") {
+				toast.error("Выберите слайд");
+				return;
+			}
 
-	function handlePageFiles(files: FileList) {
-		Array.from(files).forEach((f) => uploadMediaMutation.mutate(f));
-	}
+			Array.from(files).forEach((file) => {
+				const isVideo = file.type.startsWith("video/");
+				const isGif = file.type === "image/gif";
+				const fileType: "video" | "gif" | "image" = isVideo ? "video" : isGif ? "gif" : "image";
+
+				// Create local preview URL immediately so the media appears without waiting for upload
+				const localObjectUrl = URL.createObjectURL(file);
+				const tempOverlayId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+				const tempOverlay: SlideOverlay = {
+					id: tempOverlayId,
+					asset_id: -1,
+					url: localObjectUrl,
+					localObjectUrl,
+					file_type: fileType,
+					x: 5,
+					y: 10,
+					w: 35,
+					h: 22,
+					uploading: true,
+				};
+
+				// Add temp overlay immediately
+				const newOverlaysWithTemp = {
+					...overlaysRef.current,
+					[slideId]: [...(overlaysRef.current[slideId] || []), tempOverlay],
+				};
+				setOverlays(newOverlaysWithTemp);
+				setSelectedOverlayId(tempOverlayId);
+				if (rightTab !== "media") setRightTab("media");
+
+				// Resolve natural AR in background and update overlay dimensions
+				getNaturalAR({ url: localObjectUrl, file_type: fileType } as MediaAsset).then((ar) => {
+					if (ar) {
+						const w0 = 35;
+						const h0 = Math.round((w0 * (16 / 9)) / ar);
+						const scale = Math.min(1, 90 / Math.max(w0, h0));
+						const w = Math.max(10, Math.round(w0 * scale));
+						const h = Math.max(5, Math.round(h0 * scale));
+						setOverlays((prev) => {
+							const slideOverlays = (prev[slideId] || []).map((o) =>
+								o.id === tempOverlayId ? { ...o, w, h } : o
+							);
+							return { ...prev, [slideId]: slideOverlays };
+						});
+					}
+				});
+
+				// Upload in background and swap URL when done
+				setUploadingCount((c) => c + 1);
+				mediaApi.upload(file, file.name).then(
+					(asset) => {
+						setUploadingCount((c) => Math.max(0, c - 1));
+						queryClient.invalidateQueries({ queryKey: ["media-assets"] });
+						toast.success(`«${asset.name}» загружен`, { duration: 1500 });
+						// Replace temp overlay with real asset data
+						setOverlays((prev) => {
+							const slideOverlays = (prev[slideId] || []).map((o) =>
+								o.id === tempOverlayId
+									? { ...o, asset_id: asset.id, url: asset.url, uploading: false }
+									: o
+							);
+							const newOverlays = { ...prev, [slideId]: slideOverlays };
+							// Persist after URL swap
+							updateMutation.mutate({ overlays: newOverlays });
+							return newOverlays;
+						});
+						// Revoke local blob URL to free memory
+						URL.revokeObjectURL(localObjectUrl);
+					},
+					() => {
+						setUploadingCount((c) => Math.max(0, c - 1));
+						toast.error("Не удалось загрузить файл");
+						// Remove the failed temp overlay
+						setOverlays((prev) => {
+							const slideOverlays = (prev[slideId] || []).filter((o) => o.id !== tempOverlayId);
+							return { ...prev, [slideId]: slideOverlays };
+						});
+						URL.revokeObjectURL(localObjectUrl);
+					}
+				);
+			});
+		},
+		[localSlides, selectedIndex, overlaysRef, rightTab, queryClient, updateMutation]
+	);
 
 	const deleteOverlay = useCallback(
 		(slideId: string, overlayId: string) => {
+			const removed = (overlaysRef.current[slideId] || []).find((o) => o.id === overlayId);
+			if (removed?.localObjectUrl) URL.revokeObjectURL(removed.localObjectUrl);
 			const newOverlays = {
 				...overlaysRef.current,
 				[slideId]: (overlaysRef.current[slideId] || []).filter((o) => o.id !== overlayId),
@@ -1624,7 +1728,7 @@ export default function Assemble() {
 												<MediaPanel
 													onAdd={handleAddOverlay}
 													onUploadFiles={handlePageFiles}
-													isUploading={uploadMediaMutation.isPending}
+													isUploading={uploadingCount > 0}
 												/>
 											</div>
 										</>
