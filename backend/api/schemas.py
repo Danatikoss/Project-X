@@ -36,7 +36,10 @@ class SlideResponse(BaseModel):
     gif_rect: Optional[dict] = None
     video_url: Optional[str] = None
     is_outdated: bool = False
+    is_generated: bool = False
     access_level: str = "internal"
+    visibility: str = "library"
+    is_favorite: bool = False
     created_at: datetime
     source_filename: Optional[str] = None
     project_id: Optional[int] = None
@@ -55,6 +58,7 @@ class SlidePatchRequest(BaseModel):
     layout_type: Optional[str] = None
     is_outdated: Optional[bool] = None
     access_level: Optional[str] = None
+    visibility: Optional[str] = None
     project_id: Optional[int] = None
 
 

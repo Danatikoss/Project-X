@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
+	BookOpen,
 	CheckSquare,
+	Globe,
 	Play,
 	Search,
 	SlidersHorizontal,
+	Sparkles,
 	Square,
+	Star,
 	Trash2,
 	Upload,
 	X,
@@ -14,14 +18,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { libraryApi, searchApi } from "../api/client";
+import type { ListSlidesParams } from "../api/client";
 import { SlideCard } from "../components/common/SlideCard";
 import { SlidePreviewModal } from "../components/common/SlidePreviewModal";
 import { Slideshow } from "../components/common/Slideshow";
 import { Spinner } from "../components/common/Spinner";
 import { FilterPanel, type Filters } from "../components/library/FilterPanel";
 import { useAppStore } from "../store";
+import { useAuthStore } from "../store/auth";
 import type { Slide } from "../types";
 import { cn } from "../utils/cn";
+
+type LibraryTab = "library" | "my_generated" | "favorites" | "all";
 
 function useDebounce<T>(value: T, delay: number): T {
 	const [debounced, setDebounced] = useState(value);
@@ -40,6 +48,9 @@ export default function Library() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { searchQuery: query, setSearchQuery: setQuery } = useAppStore();
+	const { user } = useAuthStore();
+	const isAdmin = user?.is_admin ?? false;
+	const [activeTab, setActiveTab] = useState<LibraryTab>("library");
 	const [filters, setFilters] = useState<Filters>({});
 	const [page, setPage] = useState(1);
 	const [showFilters, setShowFilters] = useState(false);
@@ -196,9 +207,9 @@ export default function Library() {
 	});
 
 	const { data: libraryData, isFetching: libraryFetching } = useQuery({
-		queryKey: ["slides", filters, page],
-		queryFn: () =>
-			libraryApi.listSlides({
+		queryKey: ["slides", filters, page, activeTab],
+		queryFn: () => {
+			const params: ListSlidesParams = {
 				layout_type: filters.layout_type,
 				language: filters.language,
 				is_outdated: filters.is_outdated,
@@ -206,7 +217,10 @@ export default function Library() {
 				label: filters.label,
 				page,
 				page_size: PAGE_SIZE,
-			}),
+			};
+			if (activeTab !== "library") params.slide_type = activeTab;
+			return libraryApi.listSlides(params);
+		},
 		enabled: debouncedQuery.length === 0,
 	});
 
@@ -327,17 +341,45 @@ export default function Library() {
 									<span className="hidden sm:inline">Слайд-шоу</span>
 								</button>
 							)}
+							{isAdmin && (
+								<button
+									onClick={() => navigate("/library/upload")}
+									className={cn(
+										"flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-sm font-semibold",
+										"bg-gradient-brand hover:opacity-90 transition-all shadow-sm hover:shadow-md"
+									)}
+								>
+									<Upload className="w-4 h-4" />
+									<span className="hidden sm:inline">Загрузить</span>
+								</button>
+							)}
+						</div>
+					</div>
+
+					{/* Library Tabs */}
+					<div className="border-b border-slate-200 bg-white px-5 flex items-center gap-1">
+						{(
+							[
+								{ id: "library" as LibraryTab, label: "Библиотека", icon: BookOpen },
+								{ id: "my_generated" as LibraryTab, label: "Мои генерации", icon: Sparkles },
+								{ id: "favorites" as LibraryTab, label: "Избранное", icon: Star },
+								...(isAdmin ? [{ id: "all" as LibraryTab, label: "Все слайды", icon: Globe }] : []),
+							]
+						).map(({ id, label, icon: Icon }) => (
 							<button
-								onClick={() => navigate("/library/upload")}
+								key={id}
+								onClick={() => { setActiveTab(id); setPage(1); }}
 								className={cn(
-									"flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-sm font-semibold",
-									"bg-gradient-brand hover:opacity-90 transition-all shadow-sm hover:shadow-md"
+									"flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px",
+									activeTab === id
+										? "border-brand-600 text-brand-700"
+										: "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
 								)}
 							>
-								<Upload className="w-4 h-4" />
-								<span className="hidden sm:inline">Загрузить</span>
+								<Icon className="w-3.5 h-3.5" />
+								{label}
 							</button>
-						</div>
+						))}
 					</div>
 
 					{/* Selection hint */}
@@ -367,14 +409,24 @@ export default function Library() {
 									<Search className="w-8 h-8 opacity-30" />
 								</div>
 								<p className="text-sm font-medium text-slate-500">
-									{query ? "Ничего не найдено" : "Библиотека пуста"}
+									{query
+										? "Ничего не найдено"
+										: activeTab === "my_generated"
+										? "Нет сохранённых генераций"
+										: activeTab === "favorites"
+										? "Нет избранных слайдов"
+										: "Библиотека пуста"}
 								</p>
 								<p className="text-xs text-slate-400 mt-1">
 									{query
 										? `По запросу «${query}» слайды не найдены`
+										: activeTab === "my_generated"
+										? "Сохраняйте слайды после генерации презентации"
+										: activeTab === "favorites"
+										? "Нажмите на звёздочку на слайде, чтобы добавить в избранное"
 										: "Загрузите первую презентацию"}
 								</p>
-								{!query && (
+								{!query && activeTab === "library" && isAdmin && (
 									<button
 										onClick={() => navigate("/library/upload")}
 										className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-brand text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all"
@@ -391,6 +443,7 @@ export default function Library() {
 										<SlideCard
 											slide={slide}
 											isSelected={selectedIds.has(slide.id)}
+											showFavorite={!hasSelection}
 											showFolderAssign={!hasSelection}
 											showRemove={!hasSelection}
 											onRemove={() => setSlideToDelete(slide)}

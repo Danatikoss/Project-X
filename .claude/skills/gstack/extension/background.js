@@ -87,8 +87,8 @@ function setConnected(healthData) {
   chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
   chrome.action.setBadgeText({ text: ' ' });
 
-  // Broadcast health to popup and side panel (include token for sidepanel auth)
-  chrome.runtime.sendMessage({ type: 'health', data: { ...healthData, token: authToken } }).catch((err) => {
+  // Broadcast health to popup and side panel (token excluded — use getToken message instead)
+  chrome.runtime.sendMessage({ type: 'health', data: healthData }).catch((err) => {
     console.debug('[gstack bg] No listener for health broadcast:', err.message);
   });
 
@@ -285,8 +285,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   const ALLOWED_TYPES = new Set([
-    'getPort', 'setPort', 'getServerUrl', 'fetchRefs',
+    'getPort', 'setPort', 'getServerUrl', 'getToken', 'fetchRefs',
     'openSidePanel', 'sidebarOpened', 'command', 'sidebar-command',
+    'getTabState',
     // Inspector message types
     'startInspector', 'stopInspector', 'elementPicked', 'pickerCancelled',
     'applyStyle', 'toggleClass', 'injectCSS', 'resetAll',
@@ -302,6 +303,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'getTabState') {
+    snapshotTabs().then(snap => sendResponse(snap || { active: null, tabs: [] }));
+    return true; // async sendResponse
+  }
+
   if (msg.type === 'setPort') {
     savePort(msg.port).then(() => {
       checkHealth();
@@ -315,7 +321,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // getToken handler removed — token distributed via health broadcast
+  // Token delivered via targeted sendResponse, not broadcast — limits exposure.
+  // Only respond to extension pages (sidepanel/popup) — content scripts have
+  // sender.tab set, so reject those to prevent token access from injected contexts.
+  if (msg.type === 'getToken') {
+    if (sender.tab) {
+      console.warn('[gstack] Rejected getToken from content script context');
+      sendResponse({ token: null });
+    } else {
+      sendResponse({ token: authToken });
+    }
+    return true;
+  }
 
   if (msg.type === 'fetchRefs') {
     fetchAndRelayRefs().then(() => sendResponse({ ok: true }));
@@ -495,11 +512,48 @@ chrome.runtime.onInstalled.addListener(() => {
 // Fire on every service worker startup (covers persistent context reuse)
 autoOpenSidePanel();
 
-// ─── Tab Switch Detection ────────────────────────────────────────
-// Notify sidepanel instantly when the user switches tabs in the browser.
-// This is faster than polling — the sidebar swaps chat context immediately.
+// ─── Tab Awareness ───────────────────────────────────────────────
+// Push live tab state to the sidepanel so claude in the Terminal pane
+// always has up-to-date tabs.json + active-tab.json on disk. The
+// sidepanel relays these to terminal-agent.ts over the live WebSocket;
+// terminal-agent writes the files for claude to read.
+
+async function snapshotTabs() {
+  try {
+    const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const all = await chrome.tabs.query({});
+    const slim = all.map(t => ({
+      tabId: t.id,
+      url: t.url || '',
+      title: t.title || '',
+      active: !!t.active,
+      windowId: t.windowId,
+      pinned: !!t.pinned,
+      audible: !!t.audible,
+    }));
+    return {
+      active: active ? { tabId: active.id, url: active.url || '', title: active.title || '' } : null,
+      tabs: slim,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function pushTabState(reason) {
+  const snapshot = await snapshotTabs();
+  if (!snapshot) return;
+  chrome.runtime.sendMessage({
+    type: 'browserTabState',
+    reason,
+    ...snapshot,
+  }).catch(() => {}); // expected: sidepanel may not be open
+}
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
+  // Keep the legacy event for any consumer still listening to it (the chat
+  // path is gone but the message type is harmless), and also fire the new
+  // unified state push so claude's tabs.json reflects the new active tab.
   chrome.tabs.get(activeInfo.tabId, (tab) => {
     if (chrome.runtime.lastError || !tab) return;
     chrome.runtime.sendMessage({
@@ -507,8 +561,20 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
       tabId: activeInfo.tabId,
       url: tab.url || '',
       title: tab.title || '',
-    }).catch(() => {}); // expected: sidepanel may not be open
+    }).catch(() => {});
   });
+  pushTabState('activated');
+});
+
+chrome.tabs.onCreated.addListener(() => pushTabState('created'));
+chrome.tabs.onRemoved.addListener(() => pushTabState('removed'));
+chrome.tabs.onUpdated.addListener((_id, changeInfo) => {
+  // Throttle: only re-push on URL or title changes, not on every loading
+  // tick. We don't want to spam claude with a state push every 50ms while
+  // a page loads.
+  if (changeInfo.url || changeInfo.title || changeInfo.status === 'complete') {
+    pushTabState('updated');
+  }
 });
 
 // ─── Startup ────────────────────────────────────────────────────

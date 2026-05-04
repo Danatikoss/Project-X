@@ -61,6 +61,8 @@ class SlideLibraryEntry(Base):
     is_outdated = Column(Boolean, default=False)
     is_generated = Column(Boolean, default=False)      # True = AI-generated, hidden from library until saved
     access_level = Column(String, default="internal")  # public|internal|confidential
+    visibility = Column(String, default="library")     # library = visible to all | private = owner only
+    is_favorite = Column(Boolean, default=False)       # starred by owner
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),

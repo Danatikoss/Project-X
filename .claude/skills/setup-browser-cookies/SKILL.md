@@ -1,1 +1,1 @@
-/Users/danatikoss/desktop/project2/.claude/skills/gstack/setup-browser-cookies/SKILL.md
+/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/setup-browser-cookies/SKILL.md

@@ -12,7 +12,10 @@ export interface Slide {
 	layout_type: string | null;
 	language: string;
 	is_outdated: boolean;
+	is_generated: boolean;
 	access_level: string;
+	visibility: "library" | "private";
+	is_favorite: boolean;
 	created_at: string;
 	source_filename: string | null;
 	project_id: number | null;
@@ -57,6 +60,7 @@ export interface SlidePatchRequest {
 	layout_type?: string;
 	is_outdated?: boolean;
 	access_level?: string;
+	visibility?: "library" | "private";
 	project_id?: number | null;
 }
 

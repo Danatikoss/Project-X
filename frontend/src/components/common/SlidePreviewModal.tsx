@@ -4,14 +4,18 @@ import {
 	ChevronRight,
 	FolderOpen,
 	FolderSymlink,
+	Globe,
+	Lock,
 	Play,
 	Plus,
+	Star,
 	Tag,
 	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { libraryApi, projectsApi } from "../../api/client";
+import { useAuthStore } from "../../store/auth";
 import type { Project, Slide } from "../../types";
 import { cn } from "../../utils/cn";
 import { SlideThumbnail } from "./SlideCard";
@@ -52,6 +56,8 @@ export function SlidePreviewModal({
 	onStartSlideshow,
 }: SlidePreviewModalProps) {
 	const queryClient = useQueryClient();
+	const { user } = useAuthStore();
+	const isAdmin = user?.is_admin ?? false;
 	const currentIdx = slides?.findIndex((s) => s.id === slide.id) ?? -1;
 	const hasPrev = currentIdx > 0;
 	const hasNext = slides && currentIdx < slides.length - 1;
@@ -77,6 +83,25 @@ export function SlidePreviewModal({
 			onSlideUpdate?.(updated);
 		},
 		onError: () => toast.error("Не удалось сохранить"),
+	});
+
+	const favoriteMutation = useMutation({
+		mutationFn: () => libraryApi.toggleFavorite(slide.id),
+		onSuccess: (updated) => {
+			queryClient.invalidateQueries({ queryKey: ["slides"] });
+			onSlideUpdate?.(updated);
+		},
+		onError: () => toast.error("Не удалось обновить"),
+	});
+
+	const publishMutation = useMutation({
+		mutationFn: () => libraryApi.publishSlide(slide.id),
+		onSuccess: (updated) => {
+			queryClient.invalidateQueries({ queryKey: ["slides"] });
+			onSlideUpdate?.(updated);
+			toast.success("Слайд опубликован в библиотеку");
+		},
+		onError: () => toast.error("Не удалось опубликовать"),
 	});
 
 	useEffect(() => {
@@ -204,12 +229,47 @@ export function SlidePreviewModal({
 							</div>
 						</div>
 					</div>
-					<button
-						onClick={onClose}
-						className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500 shrink-0"
-					>
-						<X className="w-5 h-5" />
-					</button>
+					<div className="flex items-center gap-1.5 shrink-0">
+						{/* Visibility badge */}
+						{slide.visibility === "private" && (
+							<span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-500">
+								<Lock className="w-3 h-3" />
+								Личный
+							</span>
+						)}
+						{/* Admin: publish to library */}
+						{isAdmin && slide.visibility === "private" && (
+							<button
+								onClick={() => publishMutation.mutate()}
+								disabled={publishMutation.isPending}
+								title="Опубликовать в общую библиотеку"
+								className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 transition-colors"
+							>
+								<Globe className="w-3 h-3" />
+								В библиотеку
+							</button>
+						)}
+						{/* Favorite toggle */}
+						<button
+							onClick={() => favoriteMutation.mutate()}
+							disabled={favoriteMutation.isPending}
+							title={slide.is_favorite ? "Убрать из избранного" : "В избранное"}
+							className={cn(
+								"p-1.5 rounded-lg transition-colors",
+								slide.is_favorite
+									? "text-amber-400 hover:text-amber-500 bg-amber-50"
+									: "text-gray-400 hover:text-amber-400 hover:bg-amber-50"
+							)}
+						>
+							<Star className="w-4 h-4" fill={slide.is_favorite ? "currentColor" : "none"} />
+						</button>
+						<button
+							onClick={onClose}
+							className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"
+						>
+							<X className="w-5 h-5" />
+						</button>
+					</div>
 				</div>
 
 				{/* Slide preview */}

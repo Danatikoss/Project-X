@@ -123,6 +123,7 @@ export const authApi = {
 export interface ListSlidesParams {
 	page?: number;
 	page_size?: number;
+	slide_type?: "library" | "my_generated" | "favorites" | "all";
 	source_id?: number;
 	source_ids?: number[];
 	layout_type?: string;
@@ -190,10 +191,24 @@ export const libraryApi = {
 		await api.delete(`/library/slides/${id}`);
 	},
 
-	saveGeneratedSlides: async (slideIds: number[]): Promise<{ saved: number }> => {
-		const res = await api.post<{ saved: number }>("/library/slides/save-generated", {
-			slide_ids: slideIds,
-		});
+	saveGeneratedSlides: async (
+		slideIds: number[],
+		publishToLibrary = false
+	): Promise<{ saved: number; visibility: string }> => {
+		const res = await api.post<{ saved: number; visibility: string }>(
+			"/library/slides/save-generated",
+			{ slide_ids: slideIds, publish_to_library: publishToLibrary }
+		);
+		return res.data;
+	},
+
+	toggleFavorite: async (id: number): Promise<Slide> => {
+		const res = await api.post<Slide>(`/library/slides/${id}/favorite`);
+		return res.data;
+	},
+
+	publishSlide: async (id: number): Promise<Slide> => {
+		const res = await api.post<Slide>(`/library/slides/${id}/publish`);
 		return res.data;
 	},
 

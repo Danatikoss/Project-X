@@ -1,1 +1,1 @@
-/Users/danatikoss/desktop/project2/.claude/skills/gstack/learn/SKILL.md
+/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/learn/SKILL.md

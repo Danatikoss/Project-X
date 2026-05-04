@@ -127,7 +127,25 @@
       "Bash(npx biome:*)",
       "mcp__notion__notion-search",
       "mcp__notion__notion-create-pages",
-      "Skill(qa)"
+      "Skill(qa)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-learnings-log '{\"skill\":\"investigate\",\"type\":\"pitfall\",\"key\":\"gif_rect_off_screen\",\"insight\":\"PPTX slides can have GIFs positioned fully outside slide boundaries \\(for fly-in animations\\). gif_rect values with x>=1.0 or y>=1.0 must be discarded — they cause GIFs to render at 256%+ left/top, blowing out the canvas layout. Fix: \\(1\\) return None in _find_gif_rect_in_slide_xml when x_frac>=1.0 or y_frac>=1.0, \\(2\\) add overflow-hidden to SlideThumbnail container to clip any partially-overflowing GIFs.\",\"confidence\":9,\"source\":\"observed\",\"files\":[\"backend/services/thumbnail.py\",\"frontend/src/components/common/SlideCard.tsx\"]}')",
+      "Bash(sed -n '183,190p' /Users/danatikoss/Desktop/SLIDEX/backend/api/schemas.py)",
+      "Bash(sed -n '190,196p' /Users/danatikoss/Desktop/SLIDEX/frontend/src/types/index.ts)",
+      "Bash(/opt/homebrew/opt/python@3.11/bin/python3.11 -c ' *)",
+      "Bash(/opt/homebrew/opt/python@3.11/bin/python3.11 -m pip install passlib bcrypt -q)",
+      "Bash(git checkout *)",
+      "Bash(sed -n '148,180p' /Users/danatikoss/Desktop/SLIDEX/frontend/src/App.tsx)",
+      "Bash(sed -n '1,60p' /Users/danatikoss/Desktop/SLIDEX/frontend/src/pages/Profile.tsx)",
+      "Skill(browse)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse fill *)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse click *)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse screenshot *)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse console *)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse url *)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse goto *)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse snapshot *)",
+      "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse js *)",
+      "Bash(ssh *)"
     ]
   }
 }

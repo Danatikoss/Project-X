@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, FolderOpen, Layers, X } from "lucide-react";
+import { AlertCircle, Check, FolderOpen, Layers, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { libraryApi, projectsApi } from "../../api/client";
 import type { Project, Slide } from "../../types";
@@ -12,6 +12,7 @@ interface SlideCardProps {
 	isSelected?: boolean;
 	showRemove?: boolean;
 	showFolderAssign?: boolean;
+	showFavorite?: boolean;
 	compact?: boolean;
 	className?: string;
 }
@@ -101,6 +102,34 @@ function FolderAssignButton({ slide }: { slide: Slide }) {
 	);
 }
 
+/** Star button to toggle is_favorite */
+function FavoriteButton({ slide }: { slide: Slide }) {
+	const queryClient = useQueryClient();
+	const mutation = useMutation({
+		mutationFn: () => libraryApi.toggleFavorite(slide.id),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["slides"] });
+		},
+	});
+	return (
+		<button
+			onClick={(e) => {
+				e.stopPropagation();
+				mutation.mutate();
+			}}
+			title={slide.is_favorite ? "Убрать из избранного" : "В избранное"}
+			className={cn(
+				"w-6 h-6 rounded-full flex items-center justify-center shadow-md border transition-colors",
+				slide.is_favorite
+					? "bg-amber-400 border-amber-400 text-white"
+					: "bg-white border-gray-200 text-gray-400 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-500"
+			)}
+		>
+			<Star className="w-3 h-3" fill={slide.is_favorite ? "currentColor" : "none"} />
+		</button>
+	);
+}
+
 /** Renders slide thumbnail with animated GIF overlaid at its correct position */
 export function SlideThumbnail({ slide, className }: { slide: Slide; className?: string }) {
 	return (
@@ -154,6 +183,7 @@ export function SlideCard({
 	isSelected,
 	showRemove,
 	showFolderAssign,
+	showFavorite,
 	compact,
 	className,
 }: SlideCardProps) {
@@ -179,8 +209,16 @@ export function SlideCard({
 					</div>
 				)}
 
+				{/* Favorite indicator — always visible when favorited */}
+				{showFavorite && slide.is_favorite && (
+					<div className="absolute top-1.5 right-1.5 z-10 group-hover:hidden">
+						<Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+					</div>
+				)}
+
 				{/* Action buttons on hover */}
 				<div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+					{showFavorite && <FavoriteButton slide={slide} />}
 					{showFolderAssign && <FolderAssignButton slide={slide} />}
 					{showRemove && (
 						<button

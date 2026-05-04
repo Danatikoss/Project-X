@@ -113,6 +113,7 @@ async def upload_presentation(
 def list_slides(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, ge=1, le=100),
+    slide_type: str | None = Query(default=None),   # library|my_generated|favorites|all(admin)
     source_id: int | None = Query(default=None),
     source_ids: list[int] = Query(default=[]),
     layout_type: str | None = Query(default=None),
@@ -125,9 +126,35 @@ def list_slides(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    from sqlalchemy import or_, and_
+
     query = db.query(SlideLibraryEntry).filter(
         SlideLibraryEntry.is_generated == False,  # noqa: E712
     )
+
+    if slide_type == "all" and user.is_admin:
+        # Admin sees everything — no extra filters
+        pass
+    elif slide_type == "my_generated":
+        # Current user's AI-generated slides saved privately
+        owned = _owned_source_ids(db, user.id)
+        query = query.filter(
+            SlideLibraryEntry.source_id.in_(owned),
+            SlideLibraryEntry.visibility == "private",
+        )
+    elif slide_type == "favorites":
+        # Slides favorited by this user (from both library and their own private)
+        owned = _owned_source_ids(db, user.id)
+        query = query.filter(
+            SlideLibraryEntry.is_favorite == True,  # noqa: E712
+            or_(
+                SlideLibraryEntry.visibility == "library",
+                SlideLibraryEntry.source_id.in_(owned),
+            ),
+        )
+    else:
+        # Default: "library" tab — slides visible to everyone
+        query = query.filter(SlideLibraryEntry.visibility == "library")
 
     # Support both single and multi-select source filters
     effective_source_ids = list(source_ids)
@@ -206,9 +233,42 @@ def update_slide(slide_id: int, body: SlidePatchRequest, db: Session = Depends(g
         slide.is_outdated = body.is_outdated
     if body.access_level is not None:
         slide.access_level = body.access_level
+    if body.visibility is not None:
+        # Only admin can publish slides to the shared library
+        if body.visibility == "library" and not user.is_admin:
+            raise HTTPException(403, detail="Только администратор может публиковать слайды в библиотеку")
+        slide.visibility = body.visibility
     if "project_id" in body.model_fields_set:
         slide.project_id = body.project_id  # None = unassign, int = assign
 
+    db.commit()
+    db.refresh(slide)
+    return slide_to_response(slide, db)
+
+
+@router.post("/slides/{slide_id}/favorite", response_model=SlideResponse)
+def toggle_favorite(slide_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Toggle the is_favorite flag for a slide owned by the current user."""
+    slide = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).get(slide_id)
+    if not slide:
+        raise HTTPException(404, detail="Слайд не найден")
+    # Allow favoriting both library slides and own private slides
+    owned_ids = {r[0] for r in db.query(SourcePresentation.id).filter(SourcePresentation.owner_id == user.id).all()}
+    if slide.visibility != "library" and slide.source_id not in owned_ids:
+        raise HTTPException(403, detail="Нет доступа к этому слайду")
+    slide.is_favorite = not slide.is_favorite
+    db.commit()
+    db.refresh(slide)
+    return slide_to_response(slide, db)
+
+
+@router.post("/slides/{slide_id}/publish", response_model=SlideResponse)
+def publish_slide(slide_id: int, db: Session = Depends(get_db), user: User = Depends(get_admin_user)):
+    """Admin-only: publish a private generated slide to the shared library."""
+    slide = db.query(SlideLibraryEntry).options(joinedload(SlideLibraryEntry.source)).get(slide_id)
+    if not slide:
+        raise HTTPException(404, detail="Слайд не найден")
+    slide.visibility = "library"
     db.commit()
     db.refresh(slide)
     return slide_to_response(slide, db)
@@ -256,6 +316,7 @@ from pydantic import BaseModel as _BaseModel
 
 class _SaveGeneratedRequest(_BaseModel):
     slide_ids: list[int]
+    publish_to_library: bool = False  # True = admin promotes directly to shared library
 
 
 @router.post("/slides/save-generated", status_code=200)
@@ -264,7 +325,11 @@ def save_generated_slides(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Mark AI-generated slides as saved to library (is_generated=False)."""
+    """Mark AI-generated slides as saved. Regular users save privately; admins can publish directly."""
+    if body.publish_to_library and not user.is_admin:
+        raise HTTPException(403, detail="Только администратор может публиковать слайды в библиотеку")
+
+    visibility = "library" if body.publish_to_library else "private"
     owned = _owned_source_ids(db, user.id)
     updated = db.query(SlideLibraryEntry).filter(
         SlideLibraryEntry.id.in_(body.slide_ids),
@@ -273,8 +338,9 @@ def save_generated_slides(
     ).all()
     for slide in updated:
         slide.is_generated = False
+        slide.visibility = visibility
     db.commit()
-    return {"saved": len(updated)}
+    return {"saved": len(updated), "visibility": visibility}
 
 
 @router.get("/labels", response_model=list[str])
