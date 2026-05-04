@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowLeft,
 	Check,
+	CheckSquare,
 	ChevronDown,
 	ChevronUp,
 	ExternalLink,
@@ -14,7 +15,9 @@ import {
 	Plus,
 	Presentation,
 	RefreshCw,
+	SkipForward,
 	Sparkles,
+	Square,
 	Tag,
 	Trash2,
 	Upload,
@@ -24,12 +27,163 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { generateApi, type PresentationPlan, type SlideInPlan, type SlideTemplate } from "../api/client";
+import { assemblyApi, generateApi, libraryApi, type PresentationPlan, type SlideInPlan, type SlideTemplate } from "../api/client";
 import { GenerationCelebration, markGenerationCelebrated, shouldShowCelebration } from "../components/onboarding/GenerationCelebration";
 import { useAuthStore } from "../store/auth";
+import type { Slide } from "../types";
 import { cn } from "../utils/cn";
 
 type GenerationMode = "1slide" | "full";
+
+// ─── Save slides modal ────────────────────────────────────────────────────────
+
+function SaveSlidesModal({
+	assemblyId,
+	onConfirm,
+	onSkip,
+}: {
+	assemblyId: number;
+	onConfirm: (selectedIds: number[]) => void;
+	onSkip: () => void;
+}) {
+	const { data: assembly, isLoading } = useQuery({
+		queryKey: ["assembly-for-save", assemblyId],
+		queryFn: () => assemblyApi.get(assemblyId),
+	});
+
+	const slides: Slide[] = assembly?.slides ?? [];
+	const [selected, setSelected] = useState<Set<number>>(new Set());
+
+	// Select all once slides are loaded
+	useEffect(() => {
+		if (slides.length > 0) {
+			setSelected(new Set(slides.map((s) => s.id)));
+		}
+	}, [slides.length]);
+
+	const toggleSlide = (id: number) => {
+		setSelected((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	const selectAll = () => setSelected(new Set(slides.map((s) => s.id)));
+	const clearAll = () => setSelected(new Set());
+
+	return (
+		<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+			<div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+				{/* Header */}
+				<div className="p-5 border-b border-gray-100">
+					<h2 className="text-base font-semibold text-gray-900">Сохранить слайды в библиотеку?</h2>
+					<p className="text-xs text-gray-400 mt-1">
+						Выбранные слайды появятся во вкладке «Мои генерации». Снимите отметку с ненужных.
+					</p>
+				</div>
+
+				{/* Slides grid */}
+				<div className="flex-1 overflow-y-auto p-5">
+					{isLoading ? (
+						<div className="flex justify-center py-12 text-gray-400 text-sm">Загрузка слайдов...</div>
+					) : slides.length === 0 ? (
+						<div className="text-center py-12 text-gray-400 text-sm">Нет слайдов</div>
+					) : (
+						<>
+							<div className="flex items-center gap-3 mb-4">
+								<button
+									onClick={selectAll}
+									className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium"
+								>
+									<CheckSquare className="w-3.5 h-3.5" />
+									Выбрать все
+								</button>
+								<button
+									onClick={clearAll}
+									className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+								>
+									<Square className="w-3.5 h-3.5" />
+									Снять все
+								</button>
+								<span className="ml-auto text-xs text-gray-400">
+									{selected.size} из {slides.length} выбрано
+								</span>
+							</div>
+							<div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+								{slides.map((slide) => {
+									const isChecked = selected.has(slide.id);
+									return (
+										<div
+											key={slide.id}
+											onClick={() => toggleSlide(slide.id)}
+											className={cn(
+												"relative rounded-xl border-2 cursor-pointer overflow-hidden transition-all",
+												isChecked
+													? "border-brand-500 shadow-md"
+													: "border-gray-200 opacity-60 hover:opacity-80"
+											)}
+										>
+											{/* Thumbnail */}
+											<div className="relative" style={{ paddingTop: "56.25%" }}>
+												{slide.thumbnail_url ? (
+													<img
+														src={slide.thumbnail_url}
+														alt={slide.title || "Слайд"}
+														className="absolute inset-0 w-full h-full object-cover"
+													/>
+												) : (
+													<div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+														<Presentation className="w-6 h-6 text-gray-300" />
+													</div>
+												)}
+												{/* Checkbox overlay */}
+												<div className={cn(
+													"absolute top-2 right-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+													isChecked
+														? "bg-brand-600 border-brand-600"
+														: "bg-white/80 border-gray-300"
+												)}>
+													{isChecked && <Check className="w-3 h-3 text-white" />}
+												</div>
+											</div>
+											{/* Title */}
+											<div className="p-2">
+												<p className="text-xs font-medium text-gray-700 line-clamp-2 leading-tight">
+													{slide.title || `Слайд ${slide.slide_index + 1}`}
+												</p>
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						</>
+					)}
+				</div>
+
+				{/* Footer */}
+				<div className="p-4 border-t border-gray-100 flex items-center justify-between gap-3">
+					<button
+						onClick={onSkip}
+						className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-all"
+					>
+						<SkipForward className="w-3.5 h-3.5" />
+						Не сохранять
+					</button>
+					<button
+						onClick={() => onConfirm([...selected])}
+						disabled={selected.size === 0}
+						className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all disabled:opacity-40"
+					>
+						<Check className="w-4 h-4" />
+						Сохранить {selected.size > 0 ? `${selected.size} слайд${selected.size === 1 ? "" : selected.size < 5 ? "а" : "ов"}` : ""}
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}
 
 // ─── Mode toggle ──────────────────────────────────────────────────────────────
 
@@ -955,13 +1109,47 @@ export default function Generate() {
 		}
 	};
 
+	const [pendingSaveAssemblyId, setPendingSaveAssemblyId] = useState<number | null>(null);
+
+	const saveSlidesMutation = useMutation({
+		mutationFn: (ids: number[]) => libraryApi.saveGeneratedSlides(ids),
+		onSuccess: (_, ids) => {
+			queryClient.invalidateQueries({ queryKey: ["slides"] });
+			toast.success(`${ids.length} слайд${ids.length === 1 ? "" : ids.length < 5 ? "а" : "ов"} сохранено в «Мои генерации»`);
+		},
+	});
+
 	const handleOpenInEditor = (assemblyId: number) => {
-		toast.success("Презентация создана — открываю редактор");
+		setPendingSaveAssemblyId(assemblyId);
+	};
+
+	const handleSaveConfirm = async (selectedIds: number[]) => {
+		const assemblyId = pendingSaveAssemblyId!;
+		setPendingSaveAssemblyId(null);
+		if (selectedIds.length > 0) {
+			await saveSlidesMutation.mutateAsync(selectedIds);
+		}
+		toast.success("Открываю редактор");
+		navigate(`/assemble/${assemblyId}`);
+	};
+
+	const handleSaveSkip = () => {
+		const assemblyId = pendingSaveAssemblyId!;
+		setPendingSaveAssemblyId(null);
 		navigate(`/assemble/${assemblyId}`);
 	};
 
 	return (
 		<div className="max-w-3xl mx-auto px-4 py-8 space-y-10">
+			{/* Save slides modal — shown after generation before opening editor */}
+			{pendingSaveAssemblyId !== null && (
+				<SaveSlidesModal
+					assemblyId={pendingSaveAssemblyId}
+					onConfirm={handleSaveConfirm}
+					onSkip={handleSaveSkip}
+				/>
+			)}
+
 			{showCelebration && plan && (
 				<GenerationCelebration
 					slideCount={plan.slides.length}

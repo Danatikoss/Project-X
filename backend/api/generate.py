@@ -509,7 +509,8 @@ def _save_pptx_and_create_assembly(
             layout_type="content",
             language="ru",
             text_content=(sd.text[:5000] if sd.text else None),
-            is_generated=False,
+            is_generated=True,    # hidden until user explicitly saves to library
+            visibility="private", # owner-only when saved
         )
         db.add(entry)
         db.flush()
