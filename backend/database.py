@@ -44,7 +44,9 @@ def get_db():
 
 
 def _add_column_if_missing(conn, table: str, column: str, definition: str):
-    inspector = inspect(engine)
+    # Use the same connection (not a new pool connection) to avoid deadlocking
+    # on the ACCESS EXCLUSIVE lock held by a prior ALTER TABLE in this transaction.
+    inspector = inspect(conn)
     existing = [c["name"] for c in inspector.get_columns(table)]
     if column not in existing:
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
