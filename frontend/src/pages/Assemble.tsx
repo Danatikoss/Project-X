@@ -50,6 +50,7 @@ import { getNaturalAR } from "../utils/media";
 
 import { LibraryPanel } from "../components/assemble/LibraryPanel";
 import { MediaPanel } from "../components/assemble/MediaPanel";
+import RatingModal from "../components/assembly/RatingModal";
 
 // ─── Overlay Item ─────────────────────────────────────────────────────────────
 
@@ -471,6 +472,7 @@ export default function Assemble() {
 	const [isExporting, setIsExporting] = useState(false);
 	const [showShareModal, setShowShareModal] = useState(false);
 	const [showSlideshow, setShowSlideshow] = useState(false);
+	const [showRatingModal, setShowRatingModal] = useState(false);
 	const [editingSlideId, setEditingSlideId] = useState<number | null>(null);
 	const [canvasZoom, setCanvasZoom] = useState(1.0);
 	const [rightTab, setRightTab] = useState<"library" | "media">(
@@ -506,6 +508,24 @@ export default function Assemble() {
 			setOverlays(assembly.overlays || {});
 		}
 	}, [assembly]);
+
+	// Show rating modal 12s after loading if not yet rated and not a manual assembly
+	useEffect(() => {
+		if (!assembly || assembly.prompt === "(создано вручную)") return;
+		let cancelled = false;
+		const timer = setTimeout(async () => {
+			try {
+				const r = await assemblyApi.getMyRating(assemblyId);
+				if (!cancelled && !r.rated) setShowRatingModal(true);
+			} catch {
+				// silently skip if request fails
+			}
+		}, 12_000);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	}, [assembly?.id]);
 
 	useEffect(() => {
 		overlaysRef.current = overlays;
@@ -1424,6 +1444,13 @@ export default function Assemble() {
 					shareToken={assembly.share_token}
 					editToken={assembly.edit_token}
 					onClose={() => setShowShareModal(false)}
+				/>
+			)}
+
+			{showRatingModal && (
+				<RatingModal
+					assemblyId={assemblyId}
+					onClose={() => setShowRatingModal(false)}
 				/>
 			)}
 		</div>

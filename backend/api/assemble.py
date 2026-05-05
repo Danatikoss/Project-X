@@ -24,11 +24,18 @@ from database import get_db
 from models.assembly import AssembledPresentation
 from models.slide import SlideLibraryEntry
 from models.user import User
+from pydantic import BaseModel, Field
 from api.schemas import (
     AssembleRequest, AssembleBlankRequest, AssemblyPatchRequest,
     AssemblyResponse, AssemblyListItem,
     ExportRequest,
 )
+
+
+class RateRequest(BaseModel):
+    stars: int = Field(..., ge=1, le=5)
+    tags: list[str] = []
+    comment: str | None = None
 from api.utils import slide_to_response
 from api.deps import get_current_user
 from api.ws import assembly_room
@@ -317,6 +324,61 @@ async def update_collab_assembly(edit_token: str, body: AssemblyPatchRequest, db
         "data": response.model_dump(mode="json"),
     })
     return response
+
+
+@router.post("/{assembly_id}/rate", status_code=204)
+def rate_assembly(
+    assembly_id: int,
+    body: "RateRequest",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from models.stats import PresentationRating
+    import json
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    assembly = db.query(AssembledPresentation).get(assembly_id)
+    if not assembly:
+        raise HTTPException(404, detail="Сборка не найдена")
+
+    existing = db.query(PresentationRating).filter_by(
+        assembly_id=assembly_id, user_id=user.id
+    ).first()
+    if existing:
+        existing.stars = body.stars
+        existing.tags = json.dumps(body.tags or [], ensure_ascii=False)
+        existing.comment = body.comment or None
+    else:
+        db.add(PresentationRating(
+            assembly_id=assembly_id,
+            user_id=user.id,
+            stars=body.stars,
+            tags=json.dumps(body.tags or [], ensure_ascii=False),
+            comment=body.comment or None,
+        ))
+    db.commit()
+
+
+@router.get("/{assembly_id}/rating")
+def get_my_rating(
+    assembly_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from models.stats import PresentationRating
+    import json
+
+    row = db.query(PresentationRating).filter_by(
+        assembly_id=assembly_id, user_id=user.id
+    ).first()
+    if not row:
+        return {"rated": False}
+    return {
+        "rated": True,
+        "stars": row.stars,
+        "tags": json.loads(row.tags or "[]"),
+        "comment": row.comment,
+    }
 
 
 @router.post("/{assembly_id}/duplicate", response_model=AssemblyResponse, status_code=201)

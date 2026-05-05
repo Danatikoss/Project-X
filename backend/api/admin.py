@@ -243,6 +243,29 @@ def get_stats(
             "presentations": cnt,
         })
 
+    # ── Ratings ────────────────────────────────────────────────────────────────
+    from models.stats import PresentationRating
+    import json as _json
+
+    total_ratings = db.query(func.count(PresentationRating.id)).scalar() or 0
+    avg_stars_raw = db.query(func.avg(PresentationRating.stars)).scalar()
+    avg_stars = round(float(avg_stars_raw), 2) if avg_stars_raw else None
+
+    # Distribution 1..5
+    stars_dist = {}
+    for s in range(1, 6):
+        stars_dist[str(s)] = db.query(func.count(PresentationRating.id)).filter(
+            PresentationRating.stars == s
+        ).scalar() or 0
+
+    # Top tags from low ratings (≤2)
+    low_ratings = db.query(PresentationRating.tags).filter(PresentationRating.stars <= 2).all()
+    tag_counter: dict[str, int] = {}
+    for (tags_json,) in low_ratings:
+        for tag in _json.loads(tags_json or "[]"):
+            tag_counter[tag] = tag_counter.get(tag, 0) + 1
+    top_issues = sorted(tag_counter.items(), key=lambda x: x[1], reverse=True)[:5]
+
     # ── Recent activity ────────────────────────────────────────────────────────
     recent = db.query(GenerationLog).order_by(GenerationLog.created_at.desc()).limit(15).all()
     recent_list = [
@@ -282,6 +305,12 @@ def get_stats(
         },
         "top_users": top_users,
         "recent_activity": recent_list,
+        "ratings": {
+            "total": total_ratings,
+            "avg_stars": avg_stars,
+            "distribution": stars_dist,
+            "top_issues": [{"tag": t, "count": c} for t, c in top_issues],
+        },
     }
 
 

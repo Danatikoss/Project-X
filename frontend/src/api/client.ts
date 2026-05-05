@@ -375,6 +375,15 @@ export const assemblyApi = {
 		return res.data;
 	},
 
+	rate: async (id: number, data: { stars: number; tags?: string[]; comment?: string }): Promise<void> => {
+		await api.post(`/assemble/${id}/rate`, data);
+	},
+
+	getMyRating: async (id: number): Promise<{ rated: boolean; stars?: number; tags?: string[]; comment?: string }> => {
+		const res = await api.get(`/assemble/${id}/rating`);
+		return res.data;
+	},
+
 	export: async (id: number, format: "pptx" | "pdf" = "pptx"): Promise<void> => {
 		const res = await api.post(`/assemble/${id}/export`, { format }, { responseType: "blob" });
 		const url = window.URL.createObjectURL(res.data as Blob);
