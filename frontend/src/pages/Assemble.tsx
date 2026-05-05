@@ -1155,14 +1155,9 @@ export default function Assemble() {
 						>
 							{selectedSlide ? (
 								<div
-								className="flex flex-col items-center gap-4"
-								style={{
-									transform: `scale(${canvasZoom})`,
-									transformOrigin: "top center",
-									width: `${Math.round(100 / canvasZoom)}%`,
-									maxWidth: `${Math.round(896 / canvasZoom)}px`,
-								}}
-							>
+									className="flex flex-col items-center gap-4 w-full max-w-4xl"
+									style={{ zoom: canvasZoom }}
+								>
 									{/* Slide frame — overflow-visible so overlays can extend beyond the slide */}
 									<div className="relative w-full" style={{ padding: "8% 12%" }}>
 										<div
