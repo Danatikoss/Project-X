@@ -153,11 +153,11 @@ export function SlidePreviewModal({
 			onClick={onClose}
 		>
 			<div
-				className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden"
+				className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden max-h-[90vh]"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<div className="flex items-start gap-3 p-4 border-b border-gray-100">
+				<div className="flex items-start gap-3 p-4 border-b border-gray-100 shrink-0">
 					<div className="flex-1 min-w-0">
 						<h2 className="text-base font-semibold text-gray-900 leading-tight">
 							{slide.title || "(без названия)"}
@@ -273,7 +273,7 @@ export function SlidePreviewModal({
 				</div>
 
 				{/* Slide preview */}
-				<div className="relative bg-gray-50">
+				<div className="relative bg-gray-50 shrink-0">
 					{slide.video_url ? (
 						<video
 							src={slide.video_url}
@@ -318,7 +318,7 @@ export function SlidePreviewModal({
 				</div>
 
 				{/* Footer */}
-				<div className="px-4 py-3 flex flex-col gap-2">
+				<div className="px-4 py-3 flex flex-col gap-2 overflow-y-auto">
 					{/* Summary + AI tags */}
 					<div className="flex items-start gap-4">
 						{slide.summary && (
