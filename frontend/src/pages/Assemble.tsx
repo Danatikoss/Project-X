@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowLeft,
+	ArrowUpRight,
 	BookImage,
 	Check,
 	ChevronDown,
@@ -593,6 +594,59 @@ function OverlayItem({
 
 // ─── Share Modal ──────────────────────────────────────────────────────────────
 
+function CopyButton({ url, label }: { url: string; label: string }) {
+	const [copied, setCopied] = useState(false);
+
+	const handleCopy = async () => {
+		try {
+			await navigator.clipboard.writeText(url);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 1500);
+		} catch {
+			toast.error("Не удалось скопировать");
+		}
+	};
+
+	return (
+		<button
+			onClick={handleCopy}
+			title={label}
+			className={cn(
+				"shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150",
+				copied
+					? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+					: "bg-gray-100 hover:bg-gray-200 text-gray-600 border border-transparent"
+			)}
+		>
+			{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+			<span className="hidden sm:inline">{copied ? "Скопировано" : "Скопировать"}</span>
+		</button>
+	);
+}
+
+function ShareLinkRow({ url, dimmed }: { url: string; dimmed?: boolean }) {
+	return (
+		<div className={cn("flex items-center gap-2", dimmed && "opacity-60")}>
+			<input
+				readOnly
+				value={url}
+				onClick={(e) => (e.target as HTMLInputElement).select()}
+				className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-gray-700 cursor-text select-all font-mono truncate focus:outline-none focus:border-gray-300 focus:bg-white transition-colors"
+			/>
+			<CopyButton url={url} label="Скопировать ссылку" />
+			<a
+				href={url}
+				target="_blank"
+				rel="noopener noreferrer"
+				title="Открыть в новой вкладке"
+				className="shrink-0 p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors border border-transparent"
+			>
+				<ArrowUpRight className="w-3.5 h-3.5" />
+			</a>
+		</div>
+	);
+}
+
 function ShareModal({
 	assemblyId,
 	shareToken: initialShareToken,
@@ -604,6 +658,7 @@ function ShareModal({
 	editToken: string | null;
 	onClose: () => void;
 }) {
+	const [tab, setTab] = useState<"view" | "edit">("view");
 	const [shareToken, setShareToken] = useState(initialShareToken);
 	const [editToken, setEditToken] = useState(initialEditToken);
 	const [loadingView, setLoadingView] = useState(false);
@@ -612,17 +667,16 @@ function ShareModal({
 	const viewUrl = shareToken ? `${window.location.origin}/share/${shareToken}` : null;
 	const editUrl = editToken ? `${window.location.origin}/edit/${editToken}` : null;
 
-	const generateViewLink = async () => {
+	// Auto-generate view link on mount if not yet created
+	useEffect(() => {
+		if (shareToken) return;
 		setLoadingView(true);
-		try {
-			const { share_token } = await assemblyApi.share(assemblyId);
-			setShareToken(share_token);
-		} catch {
-			toast.error("Не удалось создать ссылку для просмотра");
-		} finally {
-			setLoadingView(false);
-		}
-	};
+		assemblyApi.share(assemblyId)
+			.then(({ share_token }) => setShareToken(share_token))
+			.catch(() => toast.error("Не удалось создать ссылку для просмотра"))
+			.finally(() => setLoadingView(false));
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	const generateEditLink = async () => {
 		setLoadingEdit(true);
@@ -636,96 +690,114 @@ function ShareModal({
 		}
 	};
 
-	const copyToClipboard = async (url: string, label: string) => {
-		try {
-			await navigator.clipboard.writeText(url);
-			toast.success(`${label} скопирована`);
-		} catch {
-			toast.error("Не удалось скопировать");
-		}
-	};
-
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center">
-			<div className="absolute inset-0 bg-black/40" onClick={onClose} />
-			<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+			<div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+			<div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
 				{/* Header */}
-				<div className="flex items-center justify-between mb-5">
-					<div className="flex items-center gap-2">
-						<Share2 className="w-5 h-5 text-brand-600" />
+				<div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+					<div className="flex items-center gap-2.5">
+						<div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center">
+							<Share2 className="w-4 h-4 text-brand-600" />
+						</div>
 						<h2 className="text-base font-semibold text-gray-900">Поделиться</h2>
 					</div>
-					<button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+					<button
+						onClick={onClose}
+						className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+					>
 						<X className="w-4 h-4" />
 					</button>
 				</div>
 
-				{/* View link */}
-				<div className="mb-4">
-					<div className="flex items-center gap-2 mb-2">
-						<Link2 className="w-4 h-4 text-gray-500" />
-						<span className="text-sm font-medium text-gray-700">Только просмотр</span>
-					</div>
-					<p className="text-xs text-gray-400 mb-2">Получатель видит слайды, но не может редактировать</p>
-					{viewUrl ? (
-						<div className="flex items-center gap-2">
-							<input
-								readOnly
-								value={viewUrl}
-								className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-600 truncate"
-							/>
-							<button
-								onClick={() => copyToClipboard(viewUrl, "Ссылка")}
-								className="shrink-0 p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
-								title="Скопировать"
-							>
-								<Copy className="w-3.5 h-3.5" />
-							</button>
+				{/* Tabs */}
+				<div className="flex px-6 pt-4 gap-1">
+					<button
+						onClick={() => setTab("view")}
+						className={cn(
+							"flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+							tab === "view"
+								? "bg-gray-100 text-gray-900"
+								: "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+						)}
+					>
+						<Link2 className="w-3.5 h-3.5" />
+						Просмотр
+					</button>
+					<button
+						onClick={() => setTab("edit")}
+						className={cn(
+							"flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+							tab === "edit"
+								? "bg-brand-50 text-brand-700"
+								: "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+						)}
+					>
+						<Users className="w-3.5 h-3.5" />
+						Редактирование
+					</button>
+				</div>
+
+				{/* Tab content */}
+				<div className="px-6 py-4 min-h-[130px]">
+					{tab === "view" && (
+						<div className="space-y-3">
+							<p className="text-xs text-gray-500">
+								Получатель видит все слайды и может скачать PPTX, но не может редактировать.
+							</p>
+							{loadingView ? (
+								<div className="flex items-center gap-2 py-2">
+									<Spinner size="sm" />
+									<span className="text-xs text-gray-400">Создаём ссылку...</span>
+								</div>
+							) : viewUrl ? (
+								<ShareLinkRow url={viewUrl} />
+							) : (
+								<p className="text-xs text-red-400">Не удалось создать ссылку. Попробуйте снова.</p>
+							)}
+							<div className="flex items-center gap-1.5 pt-1">
+								<div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+								<span className="text-xs text-gray-400">Доступ: просмотр — любой с ссылкой</span>
+							</div>
 						</div>
-					) : (
-						<button
-							onClick={generateViewLink}
-							disabled={loadingView}
-							className="w-full py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-gray-300 hover:text-gray-700 transition-colors disabled:opacity-50"
-						>
-							{loadingView ? "Создаём..." : "Создать ссылку для просмотра"}
-						</button>
+					)}
+
+					{tab === "edit" && (
+						<div className="space-y-3">
+							<p className="text-xs text-gray-500">
+								Любой с этой ссылкой сможет добавлять, удалять и перемещать слайды.
+							</p>
+							{loadingEdit ? (
+								<div className="flex items-center gap-2 py-2">
+									<Spinner size="sm" />
+									<span className="text-xs text-gray-400">Создаём ссылку...</span>
+								</div>
+							) : editUrl ? (
+								<ShareLinkRow url={editUrl} />
+							) : (
+								<button
+									onClick={generateEditLink}
+									className="w-full py-2.5 rounded-lg border border-dashed border-brand-300 text-sm text-brand-600 hover:bg-brand-50 hover:border-brand-400 transition-colors font-medium"
+								>
+									Создать ссылку для редактирования
+								</button>
+							)}
+							<div className="flex items-center gap-1.5 pt-1">
+								<div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+								<span className="text-xs text-gray-400">Доступ: редактирование — любой с ссылкой</span>
+							</div>
+						</div>
 					)}
 				</div>
 
-				<div className="border-t border-gray-100 my-4" />
-
-				{/* Edit link */}
-				<div>
-					<div className="flex items-center gap-2 mb-2">
-						<Users className="w-4 h-4 text-brand-600" />
-						<span className="text-sm font-medium text-gray-700">Совместное редактирование</span>
-					</div>
-					<p className="text-xs text-gray-400 mb-2">Любой с этой ссылкой сможет редактировать презентацию</p>
-					{editUrl ? (
-						<div className="flex items-center gap-2">
-							<input
-								readOnly
-								value={editUrl}
-								className="flex-1 text-xs bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 text-brand-700 truncate"
-							/>
-							<button
-								onClick={() => copyToClipboard(editUrl, "Ссылка на редактирование")}
-								className="shrink-0 p-2 rounded-lg bg-brand-100 hover:bg-brand-200 text-brand-600 transition-colors"
-								title="Скопировать"
-							>
-								<Copy className="w-3.5 h-3.5" />
-							</button>
-						</div>
-					) : (
-						<button
-							onClick={generateEditLink}
-							disabled={loadingEdit}
-							className="w-full py-2 rounded-lg border border-brand-200 text-sm text-brand-600 hover:bg-brand-50 hover:border-brand-300 transition-colors disabled:opacity-50"
-						>
-							{loadingEdit ? "Создаём..." : "Создать ссылку для редактирования"}
-						</button>
-					)}
+				{/* Footer */}
+				<div className="flex justify-end px-6 pb-5 pt-2 border-t border-gray-100">
+					<button
+						onClick={onClose}
+						className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
+					>
+						Готово
+					</button>
 				</div>
 			</div>
 		</div>
