@@ -78,7 +78,6 @@ function TopNavLink({
 function UserMenu() {
 	const user = useAuthStore((s) => s.user);
 	const clearAuth = useAuthStore((s) => s.clearAuth);
-	const refreshToken = useAuthStore((s) => s.refreshToken);
 	const navigate = useNavigate();
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
@@ -169,9 +168,7 @@ function UserMenu() {
 					<div className="my-1 border-t border-gray-100" />
 					<button
 						onClick={async () => {
-							if (refreshToken) {
-								try { await authApi.logout(refreshToken); } catch { /* ignore */ }
-							}
+							try { await authApi.logout(); } catch { /* ignore */ }
 							clearAuth();
 							navigate("/login");
 						}}

@@ -66,7 +66,7 @@ export default function Login() {
 		setLoading(true);
 		try {
 			const res = await authApi.login(email, password);
-			setAuth(res.user, res.access_token, res.refresh_token);
+			setAuth(res.user, res.access_token);
 			navigate("/dashboard", { replace: true });
 		} catch (err: any) {
 			const detail = err.response?.data?.detail ?? "Ошибка входа";

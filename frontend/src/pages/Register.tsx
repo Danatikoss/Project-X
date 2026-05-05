@@ -96,7 +96,7 @@ export default function Register() {
 		setLoading(true);
 		try {
 			const res = await authApi.register(email, password, name || undefined);
-			setAuth(res.user, res.access_token, res.refresh_token);
+			setAuth(res.user, res.access_token);
 			navigate("/dashboard", { replace: true });
 		} catch (err: any) {
 			const detail = err.response?.data?.detail ?? "Ошибка регистрации";

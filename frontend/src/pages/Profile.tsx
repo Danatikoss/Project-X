@@ -112,12 +112,9 @@ export default function Profile() {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const { clearAuth, user: authUser } = useAuthStore();
-	const refreshToken = useAuthStore((s) => s.refreshToken);
 
 	const handleLogout = async () => {
-		if (refreshToken) {
-			try { await authApi.logout(refreshToken); } catch { /* ignore */ }
-		}
+		try { await authApi.logout(); } catch { /* ignore */ }
 		clearAuth();
 		queryClient.clear();
 		navigate("/login");

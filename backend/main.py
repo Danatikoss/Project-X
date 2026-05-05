@@ -89,26 +89,75 @@ async def ws_indexing(websocket: WebSocket, ws_token: str):
 async def ws_assembly(websocket: WebSocket, assembly_id: int):
     await assembly_room_endpoint(websocket, assembly_id)
 
-# Static file serving (thumbnails + exports + media)
+# Static file serving
+# /thumbnails — public (PNG previews only, UUID-named, low sensitivity)
 thumbnail_dir = Path(settings.thumbnail_dir)
 thumbnail_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/thumbnails", StaticFiles(directory=str(thumbnail_dir)), name="thumbnails")
 
-export_dir = Path(settings.export_dir)
-export_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/exports", StaticFiles(directory=str(export_dir)), name="exports")
-
-media_dir = Path(settings.upload_dir) / "media"
-media_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/media-files", StaticFiles(directory=str(media_dir)), name="media-files")
-
+# /brand-backgrounds — public (admin-uploaded brand assets)
 brand_bg_dir = Path(settings.upload_dir) / "brand_backgrounds"
 brand_bg_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/brand-backgrounds", StaticFiles(directory=str(brand_bg_dir)), name="brand-backgrounds")
 
+# /exports — removed static mount; served only via authenticated POST /assemble/{id}/export
+export_dir = Path(settings.export_dir)
+export_dir.mkdir(parents=True, exist_ok=True)
+
+# /media-files — authenticated endpoint below (cookie or Bearer token)
+media_dir = Path(settings.upload_dir) / "media"
+media_dir.mkdir(parents=True, exist_ok=True)
+
+# /feedback-attachments — admin-only (protected by admin panel auth)
 feedback_attach_dir = Path(settings.upload_dir) / "feedback_attachments"
 feedback_attach_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/feedback-attachments", StaticFiles(directory=str(feedback_attach_dir)), name="feedback-attachments")
+
+
+@app.get("/media-files/{filename}")
+async def serve_media(filename: str, request: Request):
+    """Serve media assets — requires valid session (Bearer token or refresh cookie)."""
+    from fastapi import HTTPException as _HTTPException
+    from fastapi.responses import FileResponse as _FileResponse
+    from api.deps import get_current_user as _get_current_user
+    from database import get_db as _get_db
+    from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _Creds
+    from jose import jwt as _jwt, JWTError as _JWTError
+
+    # Try Bearer token first, then fall back to refresh cookie to verify identity
+    user_id: int | None = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+            if payload.get("type") == "access":
+                user_id = int(payload["sub"])
+        except (_JWTError, Exception):
+            pass
+
+    if user_id is None:
+        # Fall back to refresh cookie — proves the user has a valid session
+        from api.auth import _COOKIE_NAME
+        refresh_token = request.cookies.get(_COOKIE_NAME)
+        if refresh_token:
+            try:
+                payload = _jwt.decode(refresh_token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+                if payload.get("type") == "refresh":
+                    user_id = int(payload["sub"])
+            except (_JWTError, Exception):
+                pass
+
+    if user_id is None:
+        raise _HTTPException(status_code=401, detail="Требуется авторизация")
+
+    # Prevent path traversal
+    safe_filename = Path(filename).name
+    file_path = media_dir / safe_filename
+    if not file_path.exists() or not file_path.is_file():
+        raise _HTTPException(status_code=404, detail="Файл не найден")
+
+    return _FileResponse(str(file_path))
 
 
 @app.get("/health")

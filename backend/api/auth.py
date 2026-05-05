@@ -5,10 +5,13 @@ POST /api/auth/login
 POST /api/auth/refresh
 POST /api/auth/logout
 GET  /api/auth/me
+
+Refresh token is stored in an httpOnly Secure cookie — never exposed to JS.
+Access token is returned in the response body and kept in memory on the client.
 """
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from jose import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
@@ -22,6 +25,9 @@ from rate_limit import limiter
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+_COOKIE_NAME = "slidex_refresh"
+_COOKIE_MAX_AGE = settings.refresh_token_expire_days * 86400
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -37,13 +43,8 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
-class TokenResponse(BaseModel):
+class AccessTokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     user: "UserOut"
 
@@ -55,7 +56,7 @@ class UserOut(BaseModel):
     is_admin: bool = False
 
 
-TokenResponse.model_rebuild()
+AccessTokenResponse.model_rebuild()
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -89,13 +90,29 @@ def _store_refresh_token(db: Session, user_id: int, token: str) -> None:
     ))
 
 
-def _token_response(user: User, db: Session) -> TokenResponse:
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=_COOKIE_MAX_AGE,
+        path="/api/auth",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=_COOKIE_NAME, path="/api/auth")
+
+
+def _auth_response(user: User, db: Session, response: Response) -> AccessTokenResponse:
     refresh = _make_refresh_token(user.id)
     _store_refresh_token(db, user.id, refresh)
     db.commit()
-    return TokenResponse(
+    _set_refresh_cookie(response, refresh)
+    return AccessTokenResponse(
         access_token=_make_access_token(user.id),
-        refresh_token=refresh,
         user=UserOut(id=user.id, email=user.email, name=user.name,
                      is_admin=bool(user.is_admin)),
     )
@@ -103,9 +120,9 @@ def _token_response(user: User, db: Session) -> TokenResponse:
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
+@router.post("/register", response_model=AccessTokenResponse, status_code=201)
 @limiter.limit("5/minute")
-def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
+def register(request: Request, response: Response, body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Email уже зарегистрирован")
 
@@ -116,19 +133,19 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
     )
     db.add(user)
     db.flush()
-
-    profile = UserProfile(user_id=user.id)
-    db.add(profile)
+    db.add(UserProfile(user_id=user.id))
     db.flush()
     db.refresh(user)
-    return _token_response(user, db)
+    return _auth_response(user, db, response)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=AccessTokenResponse)
 @limiter.limit("10/minute")
-def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
+def login(request: Request, response: Response, body: LoginRequest, db: Session = Depends(get_db)):
     from models.stats import SecurityEvent
-    ip = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.client.host
+    ip = (request.headers.get("X-Real-IP")
+          or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+          or (request.client.host if request.client else "unknown"))
 
     user = db.query(User).filter(User.email == body.email).first()
     if not user or not _verify(body.password, user.hashed_password):
@@ -139,41 +156,56 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         db.add(SecurityEvent(event_type="failed_login", ip=ip, email=body.email, detail="account_disabled"))
         db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Аккаунт деактивирован")
-    return _token_response(user, db)
+    return _auth_response(user, db, response)
 
 
-@router.post("/refresh", response_model=TokenResponse)
-def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
+@router.post("/refresh", response_model=AccessTokenResponse)
+def refresh(
+    response: Response,
+    db: Session = Depends(get_db),
+    refresh_token: str | None = Cookie(default=None, alias=_COOKIE_NAME),
+):
     from jose import JWTError
+    if not refresh_token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Refresh token отсутствует")
     try:
-        payload = jwt.decode(body.refresh_token, settings.jwt_secret,
+        payload = jwt.decode(refresh_token, settings.jwt_secret,
                              algorithms=[settings.jwt_algorithm])
         if payload.get("type") != "refresh":
             raise ValueError
         user_id = int(payload["sub"])
     except (JWTError, ValueError, KeyError):
+        _clear_refresh_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Недействительный refresh token")
 
-    token_hash = RefreshToken.hash(body.refresh_token)
+    token_hash = RefreshToken.hash(refresh_token)
     stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
     if not stored:
+        _clear_refresh_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Недействительный refresh token")
 
     db.delete(stored)
 
     user = db.query(User).get(user_id)
     if not user or not user.is_active:
+        _clear_refresh_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден")
-    return _token_response(user, db)
+    return _auth_response(user, db, response)
 
 
 @router.post("/logout", status_code=204)
-def logout(body: RefreshRequest, db: Session = Depends(get_db)):
-    token_hash = RefreshToken.hash(body.refresh_token)
-    stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
-    if stored:
-        db.delete(stored)
-        db.commit()
+def logout(
+    response: Response,
+    db: Session = Depends(get_db),
+    refresh_token: str | None = Cookie(default=None, alias=_COOKIE_NAME),
+):
+    if refresh_token:
+        token_hash = RefreshToken.hash(refresh_token)
+        stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+        if stored:
+            db.delete(stored)
+            db.commit()
+    _clear_refresh_cookie(response)
 
 
 @router.get("/me", response_model=UserOut)

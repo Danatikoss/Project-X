@@ -27,6 +27,7 @@ import type {
 const api = axios.create({
 	baseURL: import.meta.env.VITE_API_URL ?? "/api",
 	headers: { "Content-Type": "application/json" },
+	withCredentials: true, // send httpOnly refresh cookie on every request
 });
 
 // Добавляем токен в каждый запрос
@@ -50,12 +51,7 @@ api.interceptors.response.use(
 			return Promise.reject(error);
 		}
 
-		const { refreshToken, setAuth, clearAuth } = useAuthStore.getState();
-		if (!refreshToken) {
-			clearAuth();
-			window.location.href = "/login";
-			return Promise.reject(error);
-		}
+		const { setAuth, clearAuth } = useAuthStore.getState();
 
 		if (_refreshing) {
 			return new Promise((resolve, reject) => {
@@ -74,11 +70,14 @@ api.interceptors.response.use(
 		_refreshing = true;
 
 		try {
-			const res = await axios.post(`${import.meta.env.VITE_API_URL ?? "/api"}/auth/refresh`, {
-				refresh_token: refreshToken,
-			});
-			const { access_token, refresh_token, user } = res.data;
-			setAuth(user, access_token, refresh_token);
+			// Cookie is sent automatically — no body needed
+			const res = await axios.post(
+				`${import.meta.env.VITE_API_URL ?? "/api"}/auth/refresh`,
+				{},
+				{ withCredentials: true }
+			);
+			const { access_token, user } = res.data;
+			setAuth(user, access_token);
 			_refreshQueue.forEach((cb) => cb(access_token));
 			_refreshQueue = [];
 			original.headers.Authorization = `Bearer ${access_token}`;
@@ -108,13 +107,13 @@ export const authApi = {
 		return res.data;
 	},
 
-	refresh: async (refresh_token: string): Promise<AuthResponse> => {
-		const res = await api.post<AuthResponse>("/auth/refresh", { refresh_token });
+	refresh: async (): Promise<AuthResponse> => {
+		const res = await api.post<AuthResponse>("/auth/refresh", {});
 		return res.data;
 	},
 
-	logout: async (refresh_token: string): Promise<void> => {
-		await api.post("/auth/logout", { refresh_token });
+	logout: async (): Promise<void> => {
+		await api.post("/auth/logout", {});
 	},
 };
 

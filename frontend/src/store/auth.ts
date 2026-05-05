@@ -5,8 +5,7 @@ import type { AuthUser } from "../types";
 interface AuthState {
 	user: AuthUser | null;
 	accessToken: string | null;
-	refreshToken: string | null;
-	setAuth: (user: AuthUser, accessToken: string, refreshToken: string) => void;
+	setAuth: (user: AuthUser, accessToken: string) => void;
 	clearAuth: () => void;
 	isAuthenticated: () => boolean;
 }
@@ -16,21 +15,17 @@ export const useAuthStore = create<AuthState>()(
 		(set, get) => ({
 			user: null,
 			accessToken: null,
-			refreshToken: null,
 
-			setAuth: (user, accessToken, refreshToken) => set({ user, accessToken, refreshToken }),
+			setAuth: (user, accessToken) => set({ user, accessToken }),
 
-			clearAuth: () => set({ user: null, accessToken: null, refreshToken: null }),
+			clearAuth: () => set({ user: null, accessToken: null }),
 
 			isAuthenticated: () => !!get().accessToken,
 		}),
 		{
 			name: "slidex-auth",
-			partialize: (state) => ({
-				user: state.user,
-				accessToken: state.accessToken,
-				refreshToken: state.refreshToken,
-			}),
+			// Only persist user profile — access token stays in memory only
+			partialize: (state) => ({ user: state.user }),
 		}
 	)
 );
