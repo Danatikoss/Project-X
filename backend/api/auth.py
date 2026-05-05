@@ -127,10 +127,17 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
+    from models.stats import SecurityEvent
+    ip = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.client.host
+
     user = db.query(User).filter(User.email == body.email).first()
     if not user or not _verify(body.password, user.hashed_password):
+        db.add(SecurityEvent(event_type="failed_login", ip=ip, email=body.email, detail="wrong_credentials"))
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     if not user.is_active:
+        db.add(SecurityEvent(event_type="failed_login", ip=ip, email=body.email, detail="account_disabled"))
+        db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Аккаунт деактивирован")
     return _token_response(user, db)
 

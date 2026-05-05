@@ -14,6 +14,17 @@ class GenerationLog(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String, nullable=False, index=True)  # "failed_login" | "rate_limited"
+    ip = Column(String, nullable=True, index=True)
+    email = Column(String, nullable=True)
+    detail = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class PresentationRating(Base):
     __tablename__ = "presentation_ratings"
     __table_args__ = (UniqueConstraint("assembly_id", "user_id", name="uq_rating_assembly_user"),)

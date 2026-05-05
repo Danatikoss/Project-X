@@ -25,6 +25,7 @@ services:
     env_file: .env.production
     volumes:
       - app_data:/app/data      # uploads, thumbnails, exports
+      - /var/log/fail2ban.log:/var/log/fail2ban.log:ro
     depends_on:
       db:
         condition: service_healthy

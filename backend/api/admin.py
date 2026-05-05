@@ -314,6 +314,85 @@ def get_stats(
     }
 
 
+@router.get("/security")
+def get_security(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_admin_user),
+):
+    from models.stats import SecurityEvent
+    import re, os
+
+    # ── App-level events (failed logins) ──────────────────────────────────────
+    events = (
+        db.query(SecurityEvent)
+        .order_by(SecurityEvent.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    events_list = [
+        {
+            "id": e.id,
+            "type": e.event_type,
+            "ip": e.ip,
+            "email": e.email,
+            "detail": e.detail,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in events
+    ]
+
+    # Top attacking IPs
+    from sqlalchemy import func
+    top_ips = (
+        db.query(SecurityEvent.ip, func.count(SecurityEvent.id).label("cnt"))
+        .filter(SecurityEvent.event_type == "failed_login", SecurityEvent.ip.isnot(None))
+        .group_by(SecurityEvent.ip)
+        .order_by(func.count(SecurityEvent.id).desc())
+        .limit(10)
+        .all()
+    )
+
+    # Top targeted emails
+    top_emails = (
+        db.query(SecurityEvent.email, func.count(SecurityEvent.id).label("cnt"))
+        .filter(SecurityEvent.event_type == "failed_login", SecurityEvent.email.isnot(None))
+        .group_by(SecurityEvent.email)
+        .order_by(func.count(SecurityEvent.id).desc())
+        .limit(10)
+        .all()
+    )
+
+    # ── fail2ban banned IPs (parse log file if available) ─────────────────────
+    banned = []
+    log_path = "/var/log/fail2ban.log"
+    if os.path.exists(log_path):
+        try:
+            ban_re = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*\[sshd\] Ban (\S+)")
+            unban_re = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*\[sshd\] Unban (\S+)")
+            currently_banned: dict[str, str] = {}
+            with open(log_path, "r", errors="replace") as f:
+                for line in f:
+                    m = ban_re.search(line)
+                    if m:
+                        currently_banned[m.group(2)] = m.group(1)
+                        continue
+                    m = unban_re.search(line)
+                    if m:
+                        currently_banned.pop(m.group(2), None)
+            banned = [{"ip": ip, "banned_at": ts} for ip, ts in currently_banned.items()]
+        except Exception:
+            pass
+
+    return {
+        "events": events_list,
+        "top_ips": [{"ip": r.ip, "count": r.cnt} for r in top_ips],
+        "top_emails": [{"email": r.email, "count": r.cnt} for r in top_emails],
+        "fail2ban_banned": banned,
+        "total_failed_logins": db.query(func.count(SecurityEvent.id))
+            .filter(SecurityEvent.event_type == "failed_login").scalar() or 0,
+    }
+
+
 def log_generation(
     db: Session,
     action: str,

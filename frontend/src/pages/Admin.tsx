@@ -340,6 +340,141 @@ function FeedbackTab() {
 	);
 }
 
+// ─── Security Tab ─────────────────────────────────────────────────────────────
+
+interface SecurityData {
+	events: { id: number; type: string; ip: string | null; email: string | null; detail: string | null; created_at: string }[];
+	top_ips: { ip: string; count: number }[];
+	top_emails: { email: string; count: number }[];
+	fail2ban_banned: { ip: string; banned_at: string }[];
+	total_failed_logins: number;
+}
+
+function SecurityTab() {
+	const { data, isLoading, refetch, isFetching } = useQuery<SecurityData>({
+		queryKey: ["admin-security"],
+		queryFn: async () => {
+			const res = await fetch("/api/admin/security", {
+				headers: { Authorization: `Bearer ${(await import("../store/auth")).useAuthStore.getState().accessToken}` },
+			});
+			return res.json();
+		},
+		refetchInterval: 30_000,
+	});
+
+	if (isLoading) return <div className="py-16 text-center text-sm text-gray-400">Загрузка...</div>;
+	if (!data) return null;
+
+	return (
+		<div className="space-y-6">
+			{/* Summary cards */}
+			<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+				<div className="bg-white border border-gray-200 rounded-2xl p-4">
+					<p className="text-xs text-gray-400 mb-1">Попыток взлома</p>
+					<p className="text-2xl font-bold text-red-500">{data.total_failed_logins}</p>
+					<p className="text-xs text-gray-400 mt-1">всего в базе</p>
+				</div>
+				<div className="bg-white border border-gray-200 rounded-2xl p-4">
+					<p className="text-xs text-gray-400 mb-1">Заблокировано IP</p>
+					<p className="text-2xl font-bold text-orange-500">{data.fail2ban_banned.length}</p>
+					<p className="text-xs text-gray-400 mt-1">fail2ban сейчас</p>
+				</div>
+				<div className="bg-white border border-gray-200 rounded-2xl p-4">
+					<p className="text-xs text-gray-400 mb-1">Уник. атак. IP</p>
+					<p className="text-2xl font-bold text-amber-500">{data.top_ips.length}</p>
+					<p className="text-xs text-gray-400 mt-1">уникальных</p>
+				</div>
+				<div className="bg-white border border-gray-200 rounded-2xl p-4">
+					<p className="text-xs text-gray-400 mb-1">Целевых email</p>
+					<p className="text-2xl font-bold text-slate-700">{data.top_emails.length}</p>
+					<p className="text-xs text-gray-400 mt-1">атакованных</p>
+				</div>
+			</div>
+
+			<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+				{/* Top attacking IPs */}
+				<div className="bg-white border border-gray-200 rounded-2xl p-5">
+					<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Топ атакующих IP</p>
+					{data.top_ips.length === 0 ? (
+						<p className="text-sm text-gray-400">Атак не зафиксировано</p>
+					) : (
+						<div className="space-y-2">
+							{data.top_ips.map((r) => (
+								<div key={r.ip} className="flex items-center justify-between">
+									<span className="text-sm font-mono text-gray-700">{r.ip}</span>
+									<span className="text-xs font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
+										{r.count} попыток
+									</span>
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+
+				{/* Banned IPs from fail2ban */}
+				<div className="bg-white border border-gray-200 rounded-2xl p-5">
+					<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Заблокированы fail2ban</p>
+					{data.fail2ban_banned.length === 0 ? (
+						<p className="text-sm text-gray-400">Нет активных банов</p>
+					) : (
+						<div className="space-y-2 max-h-48 overflow-y-auto">
+							{data.fail2ban_banned.map((b) => (
+								<div key={b.ip} className="flex items-center justify-between">
+									<span className="text-sm font-mono text-gray-700">{b.ip}</span>
+									<span className="text-xs text-gray-400">{b.banned_at.slice(0, 16)}</span>
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+			</div>
+
+			{/* Recent failed logins */}
+			<div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+				<div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+					<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Последние попытки входа</p>
+					<button onClick={() => refetch()} disabled={isFetching} className="text-xs text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40">
+						<RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+					</button>
+				</div>
+				{data.events.length === 0 ? (
+					<p className="text-sm text-gray-400 px-5 py-8 text-center">Событий нет</p>
+				) : (
+					<table className="w-full text-sm">
+						<thead>
+							<tr className="bg-gray-50 border-b border-gray-100">
+								<th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-400">Email</th>
+								<th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-400">IP</th>
+								<th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-400">Причина</th>
+								<th className="text-right px-5 py-2.5 text-xs font-semibold text-gray-400">Время</th>
+							</tr>
+						</thead>
+						<tbody>
+							{data.events.map((e) => (
+								<tr key={e.id} className="border-b border-gray-50 last:border-0 hover:bg-red-50/30">
+									<td className="px-5 py-2.5 font-mono text-xs text-gray-700">{e.email ?? "—"}</td>
+									<td className="px-3 py-2.5 font-mono text-xs text-gray-500">{e.ip ?? "—"}</td>
+									<td className="px-3 py-2.5">
+										<span className={cn(
+											"text-xs px-2 py-0.5 rounded-full font-medium",
+											e.detail === "wrong_credentials" ? "bg-red-50 text-red-500" : "bg-orange-50 text-orange-500"
+										)}>
+											{e.detail === "wrong_credentials" ? "Неверный пароль" : e.detail === "account_disabled" ? "Аккаунт отключён" : e.detail ?? "—"}
+										</span>
+									</td>
+									<td className="px-5 py-2.5 text-right text-xs text-gray-400 whitespace-nowrap">
+										{new Date(e.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				)}
+			</div>
+		</div>
+	);
+}
+
 // ─── Templates Tab ────────────────────────────────────────────────────────────
 
 function TemplatesTab() {
@@ -417,7 +552,7 @@ function TemplatesTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Admin() {
-	const [tab, setTab] = useState<"stats" | "users" | "feedback" | "templates">("stats");
+	const [tab, setTab] = useState<"stats" | "users" | "feedback" | "templates" | "security">("stats");
 
 	const { data: stats, isLoading, isError, refetch, isFetching } = useQuery<AdminStats>({
 		queryKey: ["admin-stats"],
@@ -466,6 +601,15 @@ export default function Admin() {
 					>
 						<LayoutTemplate className="w-4 h-4" /> Шаблоны
 					</button>
+					<button
+						onClick={() => setTab("security")}
+						className={cn(
+							"flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+							tab === "security" ? "bg-white text-red-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+						)}
+					>
+						<ShieldCheck className="w-4 h-4" /> Безопасность
+					</button>
 				</div>
 				{tab === "stats" && (
 					<button
@@ -487,6 +631,9 @@ export default function Admin() {
 
 			{/* Templates tab */}
 			{tab === "templates" && <TemplatesTab />}
+
+			{/* Security tab */}
+			{tab === "security" && <SecurityTab />}
 
 			{/* Stats tab */}
 			{tab === "stats" && isLoading && (
