@@ -12,10 +12,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertCircle,
+	BookImage,
 	Check,
 	ChevronLeft,
 	ChevronRight,
 	Edit2,
+	Film,
+	Image,
 	Layers,
 	Trash2,
 	Users,
@@ -24,12 +27,15 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { assemblyApi } from "../api/client";
-import { useAssemblyRoom } from "../hooks/useAssemblyRoom";
+import { assemblyApi, mediaApi } from "../api/client";
+import { LibraryPanel } from "../components/assemble/LibraryPanel";
+import { MediaPanel } from "../components/assemble/MediaPanel";
 import { Spinner } from "../components/common/Spinner";
 import { SlideThumbnail } from "../components/common/SlideCard";
-import type { Assembly, Slide, SlideOverlay } from "../types";
+import { useAssemblyRoom } from "../hooks/useAssemblyRoom";
+import type { Assembly, MediaAsset, Slide, SlideOverlay } from "../types";
 import { cn } from "../utils/cn";
+import { getNaturalAR } from "../utils/media";
 
 // ─── Overlay Item (same logic as in Assemble.tsx) ────────────────────────────
 
@@ -172,6 +178,8 @@ export default function CollabAssemble() {
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [titleValue, setTitleValue] = useState("");
 	const [assemblyId, setAssemblyId] = useState<number | null>(null);
+	const [rightTab, setRightTab] = useState<"library" | "media">("library");
+	const [uploadingCount, setUploadingCount] = useState(0);
 
 	const containerRef = useRef<HTMLDivElement>(null);
 	const overlaysRef = useRef<Record<string, SlideOverlay[]>>({});
@@ -308,6 +316,145 @@ export default function CollabAssemble() {
 		updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) });
 	};
 
+	const handleAddSlide = useCallback(
+		(slide: Slide) => {
+			if (localSlides.some((s) => s.id === slide.id)) return;
+			const newSlides = [...localSlides, slide];
+			setLocalSlides(newSlides);
+			setSelectedIndex(newSlides.length - 1);
+			updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) });
+		},
+		[localSlides, updateMutation]
+	);
+
+	const handleAddMultiple = useCallback(
+		(slides: Slide[]) => {
+			const existingIds = new Set(localSlides.map((s) => s.id));
+			const newOnes = slides.filter((s) => !existingIds.has(s.id));
+			if (!newOnes.length) return;
+			const newSlides = [...localSlides, ...newOnes];
+			setLocalSlides(newSlides);
+			setSelectedIndex(newSlides.length - 1);
+			updateMutation.mutate({ slide_ids: newSlides.map((s) => s.id) });
+		},
+		[localSlides, updateMutation]
+	);
+
+	const handleAddOverlay = useCallback(
+		async (asset: MediaAsset) => {
+			const slideId = String(localSlides[selectedIndex]?.id);
+			if (!slideId || slideId === "undefined") {
+				toast.error("Выберите слайд");
+				return;
+			}
+			const naturalAR = await getNaturalAR(asset);
+			const w0 = 35;
+			const h0 = naturalAR ? Math.round((w0 * (16 / 9)) / naturalAR) : 22;
+			const scale = Math.min(1, 90 / Math.max(w0, h0));
+			const w = Math.max(10, Math.round(w0 * scale));
+			const h = Math.max(5, Math.round(h0 * scale));
+			const newOverlay: SlideOverlay = {
+				id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+				asset_id: asset.id,
+				url: asset.url,
+				file_type: asset.file_type,
+				x: 5,
+				y: Math.max(5, Math.min(95 - h, 10)),
+				w,
+				h,
+			};
+			const newOverlays = {
+				...overlaysRef.current,
+				[slideId]: [...(overlaysRef.current[slideId] || []), newOverlay],
+			};
+			setOverlays(newOverlays);
+			setSelectedOverlayId(newOverlay.id);
+			updateMutation.mutate({ overlays: newOverlays });
+			toast.success("Медиа добавлено", { duration: 1500 });
+		},
+		[localSlides, selectedIndex, updateMutation]
+	);
+
+	const handlePageFiles = useCallback(
+		(files: FileList) => {
+			const slideId = String(localSlides[selectedIndex]?.id);
+			if (!slideId || slideId === "undefined") {
+				toast.error("Выберите слайд");
+				return;
+			}
+			Array.from(files).forEach((file) => {
+				const isVideo = file.type.startsWith("video/");
+				const isGif = file.type === "image/gif";
+				const fileType: "video" | "gif" | "image" = isVideo ? "video" : isGif ? "gif" : "image";
+				const localObjectUrl = URL.createObjectURL(file);
+				const tempOverlayId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+				const tempOverlay: SlideOverlay = {
+					id: tempOverlayId,
+					asset_id: -1,
+					url: localObjectUrl,
+					localObjectUrl,
+					file_type: fileType,
+					x: 5,
+					y: 10,
+					w: 35,
+					h: 22,
+					uploading: true,
+				};
+				const newOverlaysWithTemp = {
+					...overlaysRef.current,
+					[slideId]: [...(overlaysRef.current[slideId] || []), tempOverlay],
+				};
+				setOverlays(newOverlaysWithTemp);
+				setSelectedOverlayId(tempOverlayId);
+				if (rightTab !== "media") setRightTab("media");
+				getNaturalAR({ url: localObjectUrl, file_type: fileType } as MediaAsset).then((ar) => {
+					if (ar) {
+						const w0 = 35;
+						const h0 = Math.round((w0 * (16 / 9)) / ar);
+						const scale = Math.min(1, 90 / Math.max(w0, h0));
+						const w = Math.max(10, Math.round(w0 * scale));
+						const h = Math.max(5, Math.round(h0 * scale));
+						setOverlays((prev) => {
+							const slideOverlays = (prev[slideId] || []).map((o) =>
+								o.id === tempOverlayId ? { ...o, w, h } : o
+							);
+							return { ...prev, [slideId]: slideOverlays };
+						});
+					}
+				});
+				setUploadingCount((c) => c + 1);
+				mediaApi.upload(file, file.name).then(
+					(asset) => {
+						setUploadingCount((c) => Math.max(0, c - 1));
+						queryClient.invalidateQueries({ queryKey: ["media-assets"] });
+						toast.success(`«${asset.name}» загружен`, { duration: 1500 });
+						setOverlays((prev) => {
+							const slideOverlays = (prev[slideId] || []).map((o) =>
+								o.id === tempOverlayId
+									? { ...o, asset_id: asset.id, url: asset.url, uploading: false }
+									: o
+							);
+							const newOverlays = { ...prev, [slideId]: slideOverlays };
+							updateMutation.mutate({ overlays: newOverlays });
+							return newOverlays;
+						});
+						URL.revokeObjectURL(localObjectUrl);
+					},
+					() => {
+						setUploadingCount((c) => Math.max(0, c - 1));
+						toast.error("Не удалось загрузить файл");
+						setOverlays((prev) => {
+							const slideOverlays = (prev[slideId] || []).filter((o) => o.id !== tempOverlayId);
+							return { ...prev, [slideId]: slideOverlays };
+						});
+						URL.revokeObjectURL(localObjectUrl);
+					}
+				);
+			});
+		},
+		[localSlides, selectedIndex, overlaysRef, rightTab, queryClient, updateMutation]
+	);
+
 	const handleTitleSave = () => {
 		setEditingTitle(false);
 		if (titleValue !== assembly?.title) {
@@ -337,6 +484,7 @@ export default function CollabAssemble() {
 	const currentSlideId = selectedSlide ? String(selectedSlide.id) : null;
 	const currentOverlays = currentSlideId ? overlays[currentSlideId] || [] : [];
 	const isSaving = updateMutation.isPending;
+	const existingIds = new Set(localSlides.map((s) => s.id));
 
 	return (
 		<div className="flex flex-col h-screen overflow-hidden bg-gray-50">
@@ -516,6 +664,123 @@ export default function CollabAssemble() {
 						)}
 					</div>
 				</div>
+
+				{/* Right panel: Library + Media */}
+				<aside className="w-[300px] shrink-0 flex flex-col bg-white border-l border-gray-200">
+					{/* Tabs */}
+					<div className="flex items-center border-b border-gray-200 shrink-0">
+						{[
+							{ key: "library" as const, label: "Библиотека", icon: BookImage },
+							{ key: "media" as const, label: "Медиа", icon: Film },
+						].map(({ key, label, icon: Icon }) => (
+							<button
+								key={key}
+								onClick={() => setRightTab(key)}
+								className={cn(
+									"relative flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors border-b-2",
+									rightTab === key
+										? "text-brand-600 border-brand-500"
+										: "text-gray-400 hover:text-gray-600 border-transparent"
+								)}
+							>
+								<Icon className="w-3.5 h-3.5" />
+								{label}
+								{key === "media" && currentOverlays.length > 0 && (
+									<span className="absolute top-2 right-1 w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[8px] flex items-center justify-center font-bold">
+										{currentOverlays.length}
+									</span>
+								)}
+							</button>
+						))}
+					</div>
+
+					{/* Tab content */}
+					<div className="flex-1 overflow-hidden flex flex-col">
+						{rightTab === "library" && (
+							<LibraryPanel
+								existingIds={existingIds}
+								onAdd={handleAddSlide}
+								onAddMultiple={handleAddMultiple}
+							/>
+						)}
+
+						{rightTab === "media" && (
+							<div className="flex flex-col h-full overflow-hidden">
+								{!selectedSlide ? (
+									<div className="flex flex-col items-center justify-center flex-1 gap-2 p-6">
+										<Image className="w-8 h-8 text-gray-200" />
+										<p className="text-xs text-center text-gray-400">
+											Выберите слайд, чтобы добавить медиа
+										</p>
+									</div>
+								) : (
+									<>
+										{currentOverlays.length > 0 && (
+											<div className="p-3 border-b border-gray-200 shrink-0">
+												<p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mb-2">
+													На слайде ({currentOverlays.length})
+												</p>
+												<div className="flex flex-col gap-1">
+													{currentOverlays.map((overlay) => (
+														<div
+															key={overlay.id}
+															className={cn(
+																"flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors",
+																selectedOverlayId === overlay.id
+																	? "bg-brand-50 border border-brand-300"
+																	: "border border-transparent hover:bg-gray-50"
+															)}
+															onClick={() =>
+																setSelectedOverlayId(
+																	selectedOverlayId === overlay.id ? null : overlay.id
+																)
+															}
+														>
+															<div className="w-8 h-5 rounded overflow-hidden shrink-0 bg-gray-100">
+																{overlay.file_type === "video" ? (
+																	<video
+																		src={overlay.url}
+																		className="w-full h-full object-cover"
+																		muted
+																	/>
+																) : (
+																	<img
+																		src={overlay.url}
+																		alt=""
+																		className="w-full h-full object-cover"
+																	/>
+																)}
+															</div>
+															<span className="text-[10px] text-gray-500 flex-1 uppercase font-medium">
+																{overlay.file_type}
+															</span>
+															<button
+																onClick={(e) => {
+																	e.stopPropagation();
+																	deleteOverlay(currentSlideId!, overlay.id);
+																}}
+																className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-400/10 transition-colors"
+															>
+																<Trash2 className="w-3 h-3" />
+															</button>
+														</div>
+													))}
+												</div>
+											</div>
+										)}
+										<div className="flex-1 overflow-hidden">
+											<MediaPanel
+												onAdd={handleAddOverlay}
+												onUploadFiles={handlePageFiles}
+												isUploading={uploadingCount > 0}
+											/>
+										</div>
+									</>
+								)}
+							</div>
+						)}
+					</div>
+				</aside>
 			</div>
 		</div>
 	);

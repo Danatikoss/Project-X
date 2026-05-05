@@ -1,14 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, ChevronLeft, ChevronRight, Layers } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { assemblyApi } from "../api/client";
+import { Slideshow } from "../components/common/Slideshow";
 import { Spinner } from "../components/common/Spinner";
 import type { Slide } from "../types";
 import { cn } from "../utils/cn";
 
 export default function SharedAssembly() {
 	const { token } = useParams<{ token: string }>();
+	const [searchParams, setSearchParams] = useSearchParams();
+	const slideshowMode = searchParams.get("slideshow") === "1";
 	const [current, setCurrent] = useState(0);
 
 	const {
@@ -41,6 +44,17 @@ export default function SharedAssembly() {
 
 	const slides = assembly.slides;
 	const slide: Slide | undefined = slides[current];
+
+	if (slideshowMode) {
+		return (
+			<Slideshow
+				slides={slides}
+				onClose={() => {
+					setSearchParams({});
+				}}
+			/>
+		);
+	}
 
 	return (
 		<div className="flex flex-col h-screen bg-gray-950 text-white select-none">
