@@ -1141,7 +1141,7 @@ export default function Assemble() {
 						</div>
 					) : (
 						<div
-							className="flex-1 flex items-center justify-center p-8 overflow-auto"
+							className="flex-1 overflow-auto p-8"
 							onClick={() => setSelectedOverlayId(null)}
 							onWheel={(e) => {
 								if (e.ctrlKey || e.metaKey) {
@@ -1154,70 +1154,74 @@ export default function Assemble() {
 							}}
 						>
 							{selectedSlide ? (
-								<div
-									className="flex flex-col items-center gap-4 w-full max-w-4xl"
-									style={{ zoom: canvasZoom }}
-								>
-									{/* Slide frame — overflow-visible so overlays can extend beyond the slide */}
-									<div className="relative w-full" style={{ padding: "8% 12%" }}>
-										<div
-											ref={containerRef}
-											className="relative w-full rounded-2xl shadow-[0_4px_32px_rgba(0,0,0,0.12)] ring-1 ring-gray-200"
-										>
-											{selectedSlide.video_url ? (
-												<video
-													src={selectedSlide.video_url}
-													controls
-													className="w-full object-contain bg-black rounded-2xl"
-													style={{ aspectRatio: "16/9" }}
-													poster={selectedSlide.thumbnail_url || undefined}
-												/>
-											) : (
-												<SlideThumbnail slide={selectedSlide} />
-											)}
+								<div className="flex justify-center min-h-full">
+									<div
+										className="flex flex-col items-center gap-4 shrink-0"
+										style={{ width: `${Math.round(896 * canvasZoom)}px` }}
+									>
+										{/* Slide frame */}
+										<div className="relative w-full" style={{ padding: "8% 12%" }}>
+											<div
+												ref={containerRef}
+												className="relative w-full rounded-2xl shadow-[0_4px_32px_rgba(0,0,0,0.12)] ring-1 ring-gray-200"
+											>
+												{selectedSlide.video_url ? (
+													<video
+														src={selectedSlide.video_url}
+														controls
+														className="w-full object-contain bg-black rounded-2xl"
+														style={{ aspectRatio: "16/9" }}
+														poster={selectedSlide.thumbnail_url || undefined}
+													/>
+												) : (
+													<SlideThumbnail slide={selectedSlide} />
+												)}
 
-											{currentOverlays.map((overlay) => (
-												<OverlayItem
-													key={overlay.id}
-													overlay={overlay}
-													isSelected={selectedOverlayId === overlay.id}
-													onMouseDown={(e, mode) =>
-														handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)
-													}
-													onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
-												/>
-											))}
+												{currentOverlays.map((overlay) => (
+													<OverlayItem
+														key={overlay.id}
+														overlay={overlay}
+														isSelected={selectedOverlayId === overlay.id}
+														onMouseDown={(e, mode) =>
+															handleOverlayMouseDown(e, overlay.id, currentSlideId!, mode)
+														}
+														onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
+													/>
+												))}
+											</div>
 										</div>
-									</div>
 
-									{/* Below slide: hints */}
-									{currentOverlays.length > 0 && !selectedOverlayId && (
-										<p className="text-[11px] text-gray-600">
-											Нажмите на медиаэлемент → перетащите или измените размер (угол ▟)
-										</p>
-									)}
-									{selectedOverlayId && (
-										<button
-											onClick={() => setSelectedOverlayId(null)}
-											className="text-[11px] text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
-										>
-											Снять выделение
-										</button>
-									)}
+										{/* Below slide: hints */}
+										{currentOverlays.length > 0 && !selectedOverlayId && (
+											<p className="text-[11px] text-gray-600">
+												Нажмите на медиаэлемент → перетащите или измените размер (угол ▟)
+											</p>
+										)}
+										{selectedOverlayId && (
+											<button
+												onClick={() => setSelectedOverlayId(null)}
+												className="text-[11px] text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+											>
+												Снять выделение
+											</button>
+										)}
+									</div>
 								</div>
 							) : (
-								<div className="flex flex-col items-center justify-center gap-5">
-									<div className="w-32 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-										<Plus className="w-8 h-8 text-gray-200" />
-									</div>
-									<div className="text-center">
-										<p className="text-sm font-medium text-gray-500 mb-1">Нет слайдов</p>
-										<button
-											onClick={() => setRightTab("library")}
-											className="text-sm text-brand-600 hover:text-brand-500 transition-colors"
-										>
-											Добавить слайды из библиотеки →
-										</button>
+								<div className="flex items-center justify-center min-h-full">
+									<div className="flex flex-col items-center gap-5">
+										<div className="w-32 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
+											<Plus className="w-8 h-8 text-gray-200" />
+										</div>
+										<div className="text-center">
+											<p className="text-sm font-medium text-gray-500 mb-1">Нет слайдов</p>
+											<button
+												onClick={() => setRightTab("library")}
+												className="text-sm text-brand-600 hover:text-brand-500 transition-colors"
+											>
+												Добавить слайды из библиотеки →
+											</button>
+										</div>
 									</div>
 								</div>
 							)}
