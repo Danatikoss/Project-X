@@ -19,6 +19,8 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Не авторизован")
     try:
         payload = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        if payload.get("type") != "access":
+            raise ValueError("wrong token type")
         user_id: int = payload.get("sub")
         if user_id is None:
             raise ValueError

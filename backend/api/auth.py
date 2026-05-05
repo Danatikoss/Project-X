@@ -8,7 +8,7 @@ GET  /api/auth/me
 """
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
@@ -18,6 +18,7 @@ from config import settings
 from database import get_db
 from models.user import User, UserProfile, RefreshToken
 from api.deps import get_current_user
+from rate_limit import limiter
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -103,7 +104,8 @@ def _token_response(user: User, db: Session) -> TokenResponse:
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Email уже зарегистрирован")
 
@@ -123,7 +125,8 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
     if not user or not _verify(body.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
