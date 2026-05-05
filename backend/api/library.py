@@ -63,6 +63,8 @@ async def upload_presentation(
     if ext not in ("pptx", "pdf"):
         raise HTTPException(400, detail="Поддерживаются только файлы PPTX и PDF")
 
+    from api.magic import verify_pptx_or_pdf
+
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
 
     upload_dir = Path(settings.upload_dir)
@@ -71,6 +73,7 @@ async def upload_presentation(
     file_path = upload_dir / unique_name
 
     total = 0
+    header_buf = b""
     try:
         with open(file_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):  # 1MB chunks
@@ -80,7 +83,13 @@ async def upload_presentation(
                         413,
                         detail=f"Файл превышает {settings.max_upload_size_mb} МБ",
                     )
+                if len(header_buf) < 32:
+                    header_buf += chunk
                 f.write(chunk)
+        verify_pptx_or_pdf(header_buf[:32], ext)
+    except ValueError as e:
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(400, detail=str(e))
     except HTTPException:
         file_path.unlink(missing_ok=True)
         raise

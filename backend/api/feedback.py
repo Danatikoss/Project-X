@@ -57,9 +57,7 @@ async def submit_feedback(
     attachment_path: Optional[str] = None
 
     if attachment and attachment.filename:
-        content_type = attachment.content_type or ""
-        if content_type not in ALLOWED_IMAGE_TYPES:
-            raise HTTPException(400, detail="Разрешены только изображения (PNG, JPEG, GIF, WebP)")
+        from api.magic import verify_image
 
         _ATTACH_DIR.mkdir(parents=True, exist_ok=True)
         ext = Path(attachment.filename).suffix.lower() or ".png"
@@ -67,13 +65,21 @@ async def submit_feedback(
         dest = _ATTACH_DIR / filename
 
         total = 0
-        with open(dest, "wb") as f:
-            while chunk := await attachment.read(256 * 1024):
-                total += len(chunk)
-                if total > MAX_ATTACHMENT_BYTES:
-                    dest.unlink(missing_ok=True)
-                    raise HTTPException(413, detail="Файл превышает 10 МБ")
-                f.write(chunk)
+        header_buf = b""
+        try:
+            with open(dest, "wb") as f:
+                while chunk := await attachment.read(256 * 1024):
+                    total += len(chunk)
+                    if total > MAX_ATTACHMENT_BYTES:
+                        dest.unlink(missing_ok=True)
+                        raise HTTPException(413, detail="Файл превышает 10 МБ")
+                    if len(header_buf) < 32:
+                        header_buf += chunk
+                    f.write(chunk)
+            verify_image(header_buf[:32])
+        except ValueError as e:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(400, detail=str(e))
 
         attachment_path = filename
 

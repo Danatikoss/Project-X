@@ -208,11 +208,14 @@ async def upload_asset(
         if not folder:
             raise HTTPException(404, "Папка не найдена")
 
+    from api.magic import verify_media
+
     # Stream file to disk — avoids loading large videos into memory
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4()}{ext}"
     dest = MEDIA_DIR / filename
     total = 0
+    header_buf = b""
     try:
         with open(dest, "wb") as f:
             while chunk := await file.read(1024 * 1024):  # 1 MB chunks
@@ -221,7 +224,13 @@ async def upload_asset(
                     f.close()
                     dest.unlink(missing_ok=True)
                     raise HTTPException(413, f"Файл превышает {MAX_SIZE // 1024 // 1024} МБ")
+                if len(header_buf) < 32:
+                    header_buf += chunk
                 f.write(chunk)
+        verify_media(header_buf[:32], ext)
+    except ValueError as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(400, str(e))
     except HTTPException:
         raise
     except Exception as e:
