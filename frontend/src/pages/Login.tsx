@@ -1,4 +1,4 @@
-import { BookImage, Layers, Sparkles, Zap } from "lucide-react";
+import { BookImage, Eye, EyeOff, Layers, Sparkles, Zap } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -12,22 +12,71 @@ const features = [
 	{ icon: Zap, text: "Экспорт в PPTX за секунды" },
 ];
 
+function isValidEmail(value: string) {
+	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export default function Login() {
 	const navigate = useNavigate();
 	const setAuth = useAuthStore((s) => s.setAuth);
+
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
+	const [showPassword, setShowPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
+
+	const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+
+	function validateField(field: "email" | "password", value: string) {
+		if (field === "email") {
+			if (!value) return "Введите email";
+			if (!isValidEmail(value)) return "Некорректный формат email";
+			return undefined;
+		}
+		if (field === "password") {
+			if (!value) return "Введите пароль";
+			return undefined;
+		}
+	}
+
+	function handleBlur(field: "email" | "password") {
+		const value = field === "email" ? email : password;
+		const error = validateField(field, value);
+		setErrors((prev) => ({ ...prev, [field]: error }));
+	}
+
+	function handleChange(field: "email" | "password", value: string) {
+		if (field === "email") setEmail(value);
+		else setPassword(value);
+		if (errors[field]) {
+			setErrors((prev) => ({ ...prev, [field]: undefined }));
+		}
+	}
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+
+		const emailErr = validateField("email", email);
+		const passwordErr = validateField("password", password);
+		if (emailErr || passwordErr) {
+			setErrors({ email: emailErr, password: passwordErr });
+			return;
+		}
+
 		setLoading(true);
 		try {
 			const res = await authApi.login(email, password);
 			setAuth(res.user, res.access_token, res.refresh_token);
 			navigate("/dashboard", { replace: true });
 		} catch (err: any) {
-			toast.error(err.response?.data?.detail ?? "Ошибка входа");
+			const detail = err.response?.data?.detail ?? "Ошибка входа";
+			if (err.response?.status === 401) {
+				setErrors({ password: "Неверный email или пароль" });
+			} else if (err.response?.status === 429) {
+				toast.error("Слишком много попыток. Подождите минуту.");
+			} else {
+				toast.error(detail);
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -37,7 +86,6 @@ export default function Login() {
 		<div className="min-h-screen flex">
 			{/* Left — brand panel */}
 			<div className="hidden lg:flex w-[420px] shrink-0 flex-col bg-sidebar p-10">
-				{/* Logo */}
 				<div className="flex items-center gap-2.5 mb-auto">
 					<div className="w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-md">
 						<Layers className="w-5 h-5 text-white" />
@@ -86,43 +134,65 @@ export default function Login() {
 						<h1 className="text-xl font-bold text-slate-900 mb-1">Добро пожаловать</h1>
 						<p className="text-sm text-slate-500 mb-6">Войдите в свой аккаунт SLIDEX</p>
 
-						<form onSubmit={handleSubmit} className="space-y-4">
+						<form onSubmit={handleSubmit} className="space-y-4" noValidate>
+							{/* Email */}
 							<div>
 								<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
 									Email
 								</label>
 								<input
 									type="email"
-									required
 									autoComplete="email"
 									value={email}
-									onChange={(e) => setEmail(e.target.value)}
+									onChange={(e) => handleChange("email", e.target.value)}
+									onBlur={() => handleBlur("email")}
 									placeholder="you@company.com"
 									className={cn(
-										"w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800",
-										"placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400",
-										"transition-shadow hover:shadow-glow-sm"
+										"w-full px-4 py-2.5 rounded-xl border text-sm text-slate-800",
+										"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
+										errors.email
+											? "border-red-400 focus:ring-red-200 focus:border-red-400"
+											: "border-slate-200 focus:ring-brand-300 focus:border-brand-400 hover:shadow-glow-sm"
 									)}
 								/>
+								{errors.email && (
+									<p className="mt-1.5 text-xs text-red-500">{errors.email}</p>
+								)}
 							</div>
 
+							{/* Password */}
 							<div>
 								<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
 									Пароль
 								</label>
-								<input
-									type="password"
-									required
-									autoComplete="current-password"
-									value={password}
-									onChange={(e) => setPassword(e.target.value)}
-									placeholder="••••••••"
-									className={cn(
-										"w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800",
-										"placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400",
-										"transition-shadow hover:shadow-glow-sm"
-									)}
-								/>
+								<div className="relative">
+									<input
+										type={showPassword ? "text" : "password"}
+										autoComplete="current-password"
+										value={password}
+										onChange={(e) => handleChange("password", e.target.value)}
+										onBlur={() => handleBlur("password")}
+										placeholder="••••••••"
+										className={cn(
+											"w-full px-4 py-2.5 pr-11 rounded-xl border text-sm text-slate-800",
+											"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
+											errors.password
+												? "border-red-400 focus:ring-red-200 focus:border-red-400"
+												: "border-slate-200 focus:ring-brand-300 focus:border-brand-400 hover:shadow-glow-sm"
+										)}
+									/>
+									<button
+										type="button"
+										tabIndex={-1}
+										onClick={() => setShowPassword((v) => !v)}
+										className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+									>
+										{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+									</button>
+								</div>
+								{errors.password && (
+									<p className="mt-1.5 text-xs text-red-500">{errors.password}</p>
+								)}
 							</div>
 
 							<button
