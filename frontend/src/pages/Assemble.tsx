@@ -1131,6 +1131,18 @@ export default function Assemble() {
 	const handleExport = async (format: "pptx" | "pdf") => {
 		setIsExporting(true);
 		try {
+			// Flush current overlays to DB before export so the server sees the latest state.
+			// This guards against two races: (a) the auto-save PATCH still in-flight, and
+			// (b) a file-upload overlay not yet saved because its upload just finished.
+			const cleanOverlays: Record<string, SlideOverlay[]> = {};
+			for (const [k, list] of Object.entries(overlaysRef.current)) {
+				const clean = list
+					.filter((o) => !o.uploading)
+					// eslint-disable-next-line @typescript-eslint/no-unused-vars
+					.map(({ localObjectUrl: _l, uploading: _u, ...rest }) => rest);
+				if (clean.length) cleanOverlays[k] = clean;
+			}
+			await assemblyApi.update(assemblyId, { overlays: cleanOverlays });
 			await assemblyApi.export(assemblyId, format);
 			toast.success(`${format.toUpperCase()} экспортирован`);
 		} catch {
@@ -1291,7 +1303,7 @@ export default function Assemble() {
 					<ExportMenu
 						onExport={handleExport}
 						isExporting={isExporting}
-						disabled={localSlides.length === 0}
+						disabled={localSlides.length === 0 || uploadingCount > 0}
 					/>
 				</div>
 			</header>
