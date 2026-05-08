@@ -98,11 +98,13 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         secure=True,
         samesite="lax",
         max_age=_COOKIE_MAX_AGE,
-        path="/api/auth",
+        path="/",
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=_COOKIE_NAME, path="/")
+    # Also clear legacy cookie that was set with path="/api/auth"
     response.delete_cookie(key=_COOKIE_NAME, path="/api/auth")
 
 
