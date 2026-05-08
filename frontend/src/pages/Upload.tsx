@@ -64,15 +64,21 @@ function FileRow({ entry, onRemove }: { entry: UploadEntry; onRemove: () => void
 						</div>
 					</div>
 				)}
-				{entry.status === "indexing" && job && job.progress > 0 && (
+				{entry.status === "indexing" && (
 					<div className="mt-1.5">
 						<div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-							<div
-								className="h-full rounded-full transition-all duration-300 bg-gradient-brand"
-								style={{ width: `${Math.round(job.progress * 100)}%` }}
-							/>
+							{job && job.progress > 0 ? (
+								<div
+									className="h-full rounded-full transition-all duration-300 bg-gradient-brand"
+									style={{ width: `${Math.round(job.progress * 100)}%` }}
+								/>
+							) : (
+								<div className="h-full w-1/3 rounded-full bg-gradient-brand animate-pulse" />
+							)}
 						</div>
-						<p className="text-xs text-slate-400 mt-1">{job.message}</p>
+						<p className="text-xs text-slate-400 mt-1">
+							{job?.message || "Обработка файла..."}
+						</p>
 					</div>
 				)}
 			</div>
