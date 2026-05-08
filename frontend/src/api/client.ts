@@ -135,11 +135,14 @@ export interface ListSlidesParams {
 }
 
 export const libraryApi = {
-	upload: async (file: File): Promise<UploadResponse> => {
+	upload: async (file: File, onProgress?: (pct: number) => void): Promise<UploadResponse> => {
 		const form = new FormData();
 		form.append("file", file);
 		const res = await api.post<UploadResponse>("/library/upload", form, {
 			headers: { "Content-Type": "multipart/form-data" },
+			onUploadProgress: onProgress
+				? (e) => onProgress(e.total ? e.loaded / e.total : 0)
+				: undefined,
 		});
 		return res.data;
 	},

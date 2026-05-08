@@ -46,10 +46,24 @@ function FileRow({ entry, onRemove }: { entry: UploadEntry; onRemove: () => void
 				<p className="text-xs text-slate-400">
 					{(entry.fileSize / 1024 / 1024).toFixed(1)} МБ
 					{entry.status === "queued" && " · В очереди"}
-					{entry.status === "uploading" && " · Загрузка..."}
+					{entry.status === "uploading" && (
+						entry.uploadProgress > 0
+							? ` · Загрузка ${Math.round(entry.uploadProgress * 100)}%`
+							: " · Загрузка..."
+					)}
 					{isDone && " · Готово"}
 					{isError && ` · Ошибка: ${entry.error}`}
 				</p>
+				{entry.status === "uploading" && (
+					<div className="mt-1.5">
+						<div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+							<div
+								className="h-full rounded-full transition-all duration-300 bg-gradient-brand"
+								style={{ width: `${Math.round(entry.uploadProgress * 100)}%` }}
+							/>
+						</div>
+					</div>
+				)}
 				{entry.status === "indexing" && job && job.progress > 0 && (
 					<div className="mt-1.5">
 						<div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">

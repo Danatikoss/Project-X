@@ -18,6 +18,7 @@ export interface UploadEntry {
 	fileSize: number;
 	status: "queued" | "uploading" | "indexing" | "done" | "error";
 	wsToken: string | null;
+	uploadProgress: number; // 0–1 during "uploading"
 	error?: string;
 }
 
@@ -51,6 +52,7 @@ export const useIndexingStore = create<IndexingState>((set, get) => ({
 			fileSize: file.size,
 			status: "queued" as const,
 			wsToken: null,
+			uploadProgress: 0,
 		}));
 		set((s) => ({ uploadQueue: [...s.uploadQueue, ...newEntries] }));
 		if (!_queueRunning) {
@@ -70,10 +72,13 @@ export const useIndexingStore = create<IndexingState>((set, get) => ({
 				const next = get().uploadQueue.find((e) => e.status === "queued");
 				if (!next) break;
 
-				get()._updateEntry(next.id, { status: "uploading" });
+				get()._updateEntry(next.id, { status: "uploading", uploadProgress: 0 });
 
 				try {
-					const res = await libraryApi.upload(next.file);
+					const entryId = next.id;
+					const res = await libraryApi.upload(next.file, (pct) => {
+						get()._updateEntry(entryId, { uploadProgress: pct });
+					});
 					get()._updateEntry(next.id, { wsToken: res.ws_token, status: "indexing" });
 					get().addJob(res.ws_token, next.filename, res.source_id);
 
