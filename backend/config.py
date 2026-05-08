@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     collabora_url: str = Field(default="", env="COLLABORA_URL")
     wopi_base_url: str = Field(default="", env="WOPI_BASE_URL")
 
+    # ── Email alerts (optional — leave empty to disable) ──────────────────────
+    smtp_host: str = Field(default="", env="SMTP_HOST")
+    smtp_port: int = Field(default=587, env="SMTP_PORT")
+    smtp_user: str = Field(default="", env="SMTP_USER")
+    smtp_password: str = Field(default="", env="SMTP_PASSWORD")
+    smtp_from: str = Field(default="", env="SMTP_FROM")
+    alert_email: str = Field(default="", env="ALERT_EMAIL")
+
     # ── Fixed brand overrides (always applied to every generated slide) ──────
     # Set FIXED_BG_IMAGE to an absolute filesystem path to lock the background.
     fixed_bg_image: str = Field(default="", env="FIXED_BG_IMAGE")

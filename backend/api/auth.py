@@ -10,6 +10,10 @@ Refresh token is stored in an httpOnly Secure cookie — never exposed to JS.
 Access token is returned in the response body and kept in memory on the client.
 """
 from datetime import datetime, timedelta, timezone
+import smtplib
+import threading
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from jose import jwt
@@ -108,6 +112,53 @@ def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(key=_COOKIE_NAME, path="/api/auth")
 
 
+_LOCKOUT_THRESHOLD = 5
+_LOCKOUT_WINDOW = timedelta(minutes=15)
+
+
+def _get_recent_failures(db: Session, email: str) -> int:
+    from models.stats import SecurityEvent
+    since = datetime.now(timezone.utc) - _LOCKOUT_WINDOW
+    return (
+        db.query(SecurityEvent)
+        .filter(
+            SecurityEvent.email == email,
+            SecurityEvent.event_type == "failed_login",
+            SecurityEvent.created_at >= since,
+        )
+        .count()
+    )
+
+
+def _send_security_alert(email: str, ip: str) -> None:
+    if not settings.smtp_host or not settings.alert_email:
+        return
+
+    def _send():
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = settings.smtp_from or settings.smtp_user
+            msg["To"] = settings.alert_email
+            msg["Subject"] = "SLIDEX: попытка входа в ваш аккаунт"
+            body = (
+                f"Кто-то пытается войти в ваш аккаунт SLIDEX.\n\n"
+                f"Email: {email}\n"
+                f"IP: {ip}\n"
+                f"Время: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                f"После 5 неудачных попыток аккаунт блокируется на 15 минут.\n"
+                f"Если это не вы — смените пароль."
+            )
+            msg.attach(MIMEText(body, "plain"))
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as srv:
+                srv.starttls()
+                srv.login(settings.smtp_user, settings.smtp_password)
+                srv.send_message(msg)
+        except Exception:
+            pass
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
 def _auth_response(user: User, db: Session, response: Response) -> AccessTokenResponse:
     refresh = _make_refresh_token(user.id)
     _store_refresh_token(db, user.id, refresh)
@@ -142,17 +193,29 @@ def register(request: Request, response: Response, body: RegisterRequest, db: Se
 
 
 @router.post("/login", response_model=AccessTokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 def login(request: Request, response: Response, body: LoginRequest, db: Session = Depends(get_db)):
     from models.stats import SecurityEvent
     ip = (request.headers.get("X-Real-IP")
           or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
           or (request.client.host if request.client else "unknown"))
 
+    recent_failures = _get_recent_failures(db, body.email)
+    if recent_failures >= _LOCKOUT_THRESHOLD:
+        db.add(SecurityEvent(event_type="failed_login", ip=ip, email=body.email, detail="account_locked"))
+        db.commit()
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Слишком много попыток входа. Попробуйте через 15 минут.",
+        )
+
     user = db.query(User).filter(User.email == body.email).first()
     if not user or not _verify(body.password, user.hashed_password):
         db.add(SecurityEvent(event_type="failed_login", ip=ip, email=body.email, detail="wrong_credentials"))
         db.commit()
+        # Send alert only on first failure in this lockout window
+        if recent_failures == 0 and user and user.is_admin:
+            _send_security_alert(body.email, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     if not user.is_active:
         db.add(SecurityEvent(event_type="failed_login", ip=ip, email=body.email, detail="account_disabled"))
