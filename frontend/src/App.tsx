@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
+import { authApi } from "./api/client";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { AppShell } from "./components/layout/AppShell";
 import Assemble from "./pages/Assemble";
@@ -46,9 +48,45 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 	return user?.is_admin ? children : <Navigate to="/dashboard" replace />;
 }
 
+// При старте восстанавливает access token через httpOnly refresh cookie.
+// Без этого после перезагрузки страницы токен пуст → PrivateRoute выкидывает на /login.
+function AuthInitializer({ children }: { children: React.ReactNode }) {
+	const { user, accessToken, setAuth } = useAuthStore((s) => ({
+		user: s.user,
+		accessToken: s.accessToken,
+		setAuth: s.setAuth,
+	}));
+	const [ready, setReady] = useState(false);
+
+	useEffect(() => {
+		if (!user || accessToken) {
+			setReady(true);
+			return;
+		}
+		authApi
+			.refresh()
+			.then(({ user: u, access_token }) => setAuth(u, access_token))
+			.catch(() => {
+				// Refresh cookie истёк или отсутствует — PrivateRoute перенаправит на /login
+			})
+			.finally(() => setReady(true));
+	}, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+	if (!ready) {
+		return (
+			<div className="flex h-screen items-center justify-center bg-background">
+				<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+			</div>
+		);
+	}
+
+	return <>{children}</>;
+}
+
 export default function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
+			<AuthInitializer>
 			<BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
 				<Routes>
 					{/* Публичные страницы */}
@@ -177,6 +215,7 @@ export default function App() {
 					</Route>
 				</Routes>
 			</BrowserRouter>
+			</AuthInitializer>
 			<Toaster richColors position="top-right" />
 		</QueryClientProvider>
 	);
