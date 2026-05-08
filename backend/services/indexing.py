@@ -159,12 +159,14 @@ async def index_presentation(source_id: int, ws_token: str):
                                         "Извлечение слайдов из файла...")
 
         # --- Step 1: Extract slides ---
+        # Run in thread executor — LibreOffice + PIL are blocking and would freeze the event loop.
         file_path = source.file_path
+        loop = asyncio.get_event_loop()
         try:
             if source.file_type == "pptx":
-                slide_data_list = extract_pptx_slides(file_path)
+                slide_data_list = await loop.run_in_executor(None, extract_pptx_slides, file_path)
             else:
-                slide_data_list = extract_pdf_slides(file_path)
+                slide_data_list = await loop.run_in_executor(None, extract_pdf_slides, file_path)
         except Exception as e:
             logger.error(f"Slide extraction failed: {e}")
             source.status = "error"

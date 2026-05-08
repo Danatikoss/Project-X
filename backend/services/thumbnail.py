@@ -639,7 +639,7 @@ def _pptx_to_pdf_via_libreoffice(pptx_path: str) -> str | None:
     try:
         result = subprocess.run(
             [soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp_dir, pptx_path],
-            capture_output=True, text=True, timeout=120
+            capture_output=True, text=True, timeout=300
         )
         if result.returncode != 0:
             logger.warning(f"LibreOffice conversion failed: {result.stderr[:200]}")
@@ -688,12 +688,12 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
             pdf_tmp_dir = os.path.dirname(pdf_path)
             doc = fitz.open(pdf_path)
             for i, page in enumerate(doc):
-                pix = page.get_pixmap(matrix=fitz.Matrix(3.0, 3.0))
+                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
                 from PIL import Image
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                img = img.resize((3840, 2160), Image.LANCZOS)
+                img = img.resize((1280, 720), Image.LANCZOS)
                 buf = io.BytesIO()
-                img.save(buf, "PNG")
+                img.save(buf, "JPEG", quality=90)
                 thumbnail_map[i] = buf.getvalue()
             doc.close()
     except Exception as e:
