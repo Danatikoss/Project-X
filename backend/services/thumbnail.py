@@ -688,12 +688,12 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
             pdf_tmp_dir = os.path.dirname(pdf_path)
             doc = fitz.open(pdf_path)
             for i, page in enumerate(doc):
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
                 from PIL import Image
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                img = img.resize((1280, 720), Image.LANCZOS)
+                img = img.resize((1920, 1080), Image.LANCZOS)
                 buf = io.BytesIO()
-                img.save(buf, "JPEG", quality=90)
+                img.save(buf, "PNG")
                 thumbnail_map[i] = buf.getvalue()
             doc.close()
     except Exception as e:
