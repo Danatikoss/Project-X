@@ -51,11 +51,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 // При старте восстанавливает access token через httpOnly refresh cookie.
 // Без этого после перезагрузки страницы токен пуст → PrivateRoute выкидывает на /login.
 function AuthInitializer({ children }: { children: React.ReactNode }) {
-	const { user, accessToken, setAuth } = useAuthStore((s) => ({
-		user: s.user,
-		accessToken: s.accessToken,
-		setAuth: s.setAuth,
-	}));
+	const user = useAuthStore((s) => s.user);
+	const accessToken = useAuthStore((s) => s.accessToken);
+	const setAuth = useAuthStore((s) => s.setAuth);
 	const [ready, setReady] = useState(false);
 
 	useEffect(() => {
