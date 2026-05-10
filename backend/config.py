@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     upload_dir: str = Field(default="./data/uploads", env="UPLOAD_DIR")
     thumbnail_dir: str = Field(default="./data/thumbnails", env="THUMBNAIL_DIR")
     export_dir: str = Field(default="./data/exports", env="EXPORT_DIR")
+    template_dir: str = Field(default="./data/slide_templates", env="TEMPLATE_DIR")
     embedding_model: str = Field(default="text-embedding-3-small", env="EMBEDDING_MODEL")
     assembly_model: str = Field(default="gpt-4o", env="ASSEMBLY_MODEL")
     generator_model: str = Field(default="anthropic/claude-opus-4-6", env="GENERATOR_MODEL")

@@ -3,6 +3,7 @@ SLIDEX Backend — FastAPI Application Entry Point
 """
 import logging
 import os
+import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -35,6 +36,14 @@ async def lifespan(app: FastAPI):
     for d in [settings.upload_dir, settings.thumbnail_dir, settings.export_dir]:
         Path(d).mkdir(parents=True, exist_ok=True)
     Path(settings.upload_dir, "media").mkdir(parents=True, exist_ok=True)
+
+    # Seed slide_templates into the persistent volume on first run
+    template_dir = Path(settings.template_dir)
+    seed_dir = Path(__file__).parent / "slide_templates"
+    if not (template_dir / "catalog.json").exists() and seed_dir.exists():
+        logger.info("Seeding slide_templates into persistent volume at %s", template_dir)
+        shutil.copytree(str(seed_dir), str(template_dir), dirs_exist_ok=True)
+        logger.info("Template seed complete")
 
     # Create DB tables
     create_tables()

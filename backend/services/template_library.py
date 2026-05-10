@@ -8,10 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from config import settings
+
 logger = logging.getLogger(__name__)
 
-CATALOG_PATH = Path(__file__).parent.parent / "slide_templates" / "catalog.json"
-TEMPLATES_DIR = Path(__file__).parent.parent / "slide_templates"
+CATALOG_PATH = Path(settings.template_dir) / "catalog.json"
+TEMPLATES_DIR = Path(settings.template_dir)
 
 
 @dataclass
