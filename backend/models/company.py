@@ -51,6 +51,6 @@ class InviteToken(Base):
     def is_valid(self) -> bool:
         if self.used_at:
             return False
-        if datetime.now(timezone.utc) > self.expires_at.replace(tzinfo=timezone.utc) if self.expires_at.tzinfo is None else self.expires_at:
+        if datetime.now(timezone.utc) > (self.expires_at.replace(tzinfo=timezone.utc) if self.expires_at.tzinfo is None else self.expires_at):
             return False
         return True
