@@ -28,7 +28,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { assemblyApi, generateApi, libraryApi, type PresentationPlan, type SlideInPlan, type SlideTemplate } from "../api/client";
+import { adminApi, assemblyApi, generateApi, libraryApi, type PresentationPlan, type SlideInPlan, type SlideTemplate } from "../api/client";
 import { GenerationCelebration, markGenerationCelebrated, shouldShowCelebration } from "../components/onboarding/GenerationCelebration";
 import { useAuthStore } from "../store/auth";
 import type { Slide } from "../types";
@@ -917,6 +917,14 @@ function UploadTemplateModal({
 	const [uploading, setUploading] = useState(false);
 	const [result, setResult] = useState<{ created: number } | null>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
+	const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin());
+	const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
+	const { data: companies = [] } = useQuery({
+		queryKey: ["admin-companies-upload"],
+		queryFn: adminApi.listCompanies,
+		enabled: isSuperAdmin,
+	});
+	const activeCompanyName = companies.find((c) => c.id === activeCompanyId)?.name;
 
 	const handleUpload = async () => {
 		if (!file) return;
@@ -939,7 +947,19 @@ function UploadTemplateModal({
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
 			<div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
 				<div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-					<h3 className="text-sm font-semibold text-gray-900">Загрузить шаблоны</h3>
+					<div>
+						<h3 className="text-sm font-semibold text-gray-900">Загрузить шаблоны</h3>
+						{isSuperAdmin && activeCompanyId && (
+							<p className="text-[11px] text-amber-600 mt-0.5">
+								{activeCompanyName ? `Компания: ${activeCompanyName}` : `Компания ID ${activeCompanyId}`}
+							</p>
+						)}
+						{!isSuperAdmin && (
+							<p className="text-[11px] text-gray-400 mt-0.5">
+								Шаблоны будут доступны только вашей компании
+							</p>
+						)}
+					</div>
 					<button
 						onClick={onClose}
 						className="text-gray-400 hover:text-gray-600 text-xl leading-none"

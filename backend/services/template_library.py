@@ -29,6 +29,7 @@ class TemplateInfo:
     layout_role: str = "content"  # "title" | "content"
     ai_description: str = ""
     embedding: list = None
+    company_id: int | None = None  # None = global (visible to all companies)
 
     def __post_init__(self):
         if self.embedding is None:
@@ -39,32 +40,35 @@ class TemplateInfo:
         return TEMPLATES_DIR / self.pptx_file
 
 
-def load_catalog() -> list[TemplateInfo]:
+def load_catalog(company_id: int | None = None) -> list[TemplateInfo]:
+    """Load catalog. If company_id given, returns company-specific + global templates."""
     with open(CATALOG_PATH, encoding="utf-8") as f:
         raw = json.load(f)
-    # Strip unknown fields so old catalog entries without 'theme' load fine
     known = {f.name for f in TemplateInfo.__dataclass_fields__.values()}
-    return [TemplateInfo(**{k: v for k, v in entry.items() if k in known}) for entry in raw]
+    all_templates = [TemplateInfo(**{k: v for k, v in entry.items() if k in known}) for entry in raw]
+    if company_id is None:
+        return all_templates
+    return [t for t in all_templates if t.company_id is None or t.company_id == company_id]
 
 
-def list_themes(catalog: Optional[list[TemplateInfo]] = None) -> list[str]:
+def list_themes(catalog: Optional[list[TemplateInfo]] = None, company_id: int | None = None) -> list[str]:
     """Return sorted list of distinct themes present in the catalog."""
     if catalog is None:
-        catalog = load_catalog()
+        catalog = load_catalog(company_id=company_id)
     return sorted({t.theme for t in catalog})
 
 
-def get_title_slides(theme: str = "default", catalog: Optional[list[TemplateInfo]] = None) -> list[TemplateInfo]:
+def get_title_slides(theme: str = "default", catalog: Optional[list[TemplateInfo]] = None, company_id: int | None = None) -> list[TemplateInfo]:
     """Return all title slides for a given theme."""
     if catalog is None:
-        catalog = load_catalog()
+        catalog = load_catalog(company_id=company_id)
     return [t for t in catalog if t.layout_role == "title" and t.theme == theme]
 
 
-def get_content_catalog(theme: str = "default", catalog: Optional[list[TemplateInfo]] = None) -> list[TemplateInfo]:
+def get_content_catalog(theme: str = "default", catalog: Optional[list[TemplateInfo]] = None, company_id: int | None = None) -> list[TemplateInfo]:
     """Return only content (non-title) slides for a given theme, used by AI for plan generation."""
     if catalog is None:
-        catalog = load_catalog()
+        catalog = load_catalog(company_id=company_id)
     return [t for t in catalog if t.layout_role == "content" and t.theme == theme]
 
 

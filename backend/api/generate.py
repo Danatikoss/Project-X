@@ -182,9 +182,12 @@ def _make_streaming_response(buf: io.BytesIO, filename: str) -> StreamingRespons
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/templates", response_model=list[TemplateSlotInfo])
-def list_templates(current_user: User = Depends(get_current_user)):
-    """Return all available slide templates with their slot schemas."""
-    catalog = load_catalog()
+def list_templates(
+    current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
+):
+    """Return slide templates scoped to the current company + global templates."""
+    catalog = load_catalog(company_id=company_id)
     return [
         TemplateSlotInfo(
             id=t.id,
@@ -200,18 +203,22 @@ def list_templates(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/themes", response_model=list[str])
-def list_available_themes(current_user: User = Depends(get_current_user)):
-    """Return all distinct themes present in the catalog."""
-    return list_themes()
+def list_available_themes(
+    current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
+):
+    """Return all distinct themes present in the catalog for the current company."""
+    return list_themes(company_id=company_id)
 
 
 @router.get("/title-slides", response_model=list[TemplateSlotInfo])
 def list_title_slides(
     theme: str = "default",
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
-    """Return title slides available for a given theme."""
-    slides = get_title_slides(theme=theme)
+    """Return title slides available for a given theme, scoped to the current company."""
+    slides = get_title_slides(theme=theme, company_id=company_id)
     return [
         TemplateSlotInfo(
             id=t.id,
@@ -238,7 +245,7 @@ async def create_plan(
     Returns structured plan (template IDs + slots) for preview before rendering.
     """
     # Guard: must have at least one content slide with a valid embedding
-    full_catalog = load_catalog()
+    full_catalog = load_catalog(company_id=company_id)
     content_slides = [t for t in full_catalog if t.layout_role == "content"]
     if not content_slides:
         raise HTTPException(
@@ -976,12 +983,13 @@ async def upload_template(
     theme: str = Form(default="default"),
     layout_role: str = Form(default="content"),  # "title" | "content"
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     """
-    Upload a new PPTX slide template.
+    Upload a new PPTX slide template, scoped to the current company.
     If shapes are already named slot_*, they are used directly.
     Otherwise AI auto-detects and renames shapes automatically.
-    Only admins can upload templates (they are shared across all users).
+    Only admins can upload templates.
     """
     import time as _time
     _t0 = _time.perf_counter()
@@ -1074,6 +1082,7 @@ async def upload_template(
         "layout_role": role_clean,
         "ai_description": ai_description,
         "embedding": [],
+        "company_id": company_id,
     }
 
     # Append to catalog
@@ -1083,7 +1092,7 @@ async def upload_template(
     _save_catalog(catalog_data)
 
     elapsed = round(_time.perf_counter() - _t0, 2)
-    logger.info("Uploaded new template %r in %.2fs (theme=%r, role=%r) by user %d", template_id, elapsed, theme_clean, role_clean, current_user.id)
+    logger.info("Uploaded new template %r in %.2fs (theme=%r, role=%r, company=%d) by user %d", template_id, elapsed, theme_clean, role_clean, company_id, current_user.id)
     return TemplateSlotInfo(
         id=template_id,
         name=name,
@@ -1107,10 +1116,12 @@ async def upload_templates_batch(
     file: UploadFile = File(...),
     layout_role: str = Form(default="content"),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     """
-    Upload a PPTX with one or more slides. Each slide that has slot_* shapes becomes
-    a separate template. AI auto-generates name, description, and tags for each slide.
+    Upload a PPTX with one or more slides, scoped to the current company.
+    Each slide that has slot_* shapes becomes a separate template.
+    AI auto-generates name, description, and tags for each slide.
     """
     import time as _time
     _t0 = _time.perf_counter()
@@ -1214,6 +1225,7 @@ async def upload_templates_batch(
             "layout_role": role_clean,
             "ai_description": meta["ai_description"],
             "embedding": embedding,
+            "company_id": company_id,
         })
 
     if not new_entries:
@@ -1299,8 +1311,9 @@ async def reindex_templates(
 def delete_template(
     template_id: str,
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
-    """Remove a template from the catalog. Built-in templates cannot be deleted."""
+    """Remove a template from the catalog. Only the owning company's templates can be deleted."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администратор может удалять шаблоны")
 
@@ -1311,37 +1324,42 @@ def delete_template(
     if not entry:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
 
+    entry_company = entry.get("company_id")
+    if entry_company is not None and entry_company != company_id:
+        raise HTTPException(status_code=403, detail="Нет доступа к этому шаблону")
+
     # Remove file (only uploaded files, built-in pptx files are shared — don't delete them)
     pptx_file = entry.get("pptx_file", "")
     if pptx_file.startswith("uploads/"):
         pptx_path = TEMPLATES_DIR / pptx_file
         pptx_path.unlink(missing_ok=True)
 
-    # Remove from catalog
     catalog_data = [e for e in catalog_data if e["id"] != template_id]
     _save_catalog(catalog_data)
 
-    logger.info("Deleted template %r by user %d", template_id, current_user.id)
+    logger.info("Deleted template %r by user %d (company=%d)", template_id, current_user.id, company_id)
     return None
 
 
 @router.delete("/templates", status_code=200)
 def delete_all_custom_templates(
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
-    """Remove all templates from the catalog. Uploaded files are deleted from disk; built-in pptx files are kept."""
+    """Remove all templates for the current company. Global (null company_id) templates are not affected."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администратор может удалять шаблоны")
 
     with open(CATALOG_PATH, encoding="utf-8") as f:
         catalog_data = json.load(f)
 
-    total = len(catalog_data)
-    for entry in catalog_data:
+    to_delete = [e for e in catalog_data if e.get("company_id") == company_id]
+    for entry in to_delete:
         if entry.get("pptx_file", "").startswith("uploads/"):
             pptx_path = TEMPLATES_DIR / entry["pptx_file"]
             pptx_path.unlink(missing_ok=True)
 
-    _save_catalog([])
-    logger.info("Deleted all %d templates by user %d", total, current_user.id)
-    return {"deleted": total}
+    remaining = [e for e in catalog_data if e.get("company_id") != company_id]
+    _save_catalog(remaining)
+    logger.info("Deleted %d templates for company %d by user %d", len(to_delete), company_id, current_user.id)
+    return {"deleted": len(to_delete)}
