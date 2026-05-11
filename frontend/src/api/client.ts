@@ -11,6 +11,7 @@ import type {
 	AssemblyPatchRequest,
 	AssemblyTemplate,
 	AuthResponse,
+	AssetShareInfo,
 	MediaAsset,
 	MediaFolder,
 	ProfileStats,
@@ -574,6 +575,15 @@ export const mediaApi = {
 
 	deleteAsset: async (id: number): Promise<void> => {
 		await api.delete(`/media/assets/${id}`);
+	},
+
+	shareAssets: async (asset_ids: number[], company_ids: number[]): Promise<void> => {
+		await api.post("/media/assets/share", { asset_ids, company_ids });
+	},
+
+	getAssetShares: async (asset_ids: number[]): Promise<AssetShareInfo[]> => {
+		const res = await api.post<AssetShareInfo[]>("/media/assets/shares/query", asset_ids);
+		return res.data;
 	},
 };
 

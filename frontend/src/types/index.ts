@@ -249,6 +249,12 @@ export interface MediaAsset {
 	mime_type: string | null;
 	file_size: number | null;
 	url: string;
+	owner_company_id?: number | null; // set when asset is shared from another company
+}
+
+export interface AssetShareInfo {
+	asset_id: number;
+	company_ids: number[];
 }
 
 // ─── Text Editing ─────────────────────────────────────────────────────────────

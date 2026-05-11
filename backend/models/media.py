@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from database import Base
@@ -33,3 +33,17 @@ class MediaAsset(Base):
 
     owner = relationship("User", backref="media_assets")
     folder = relationship("MediaFolder", back_populates="assets")
+    shares = relationship("MediaAssetShare", back_populates="asset", cascade="all, delete-orphan")
+
+
+class MediaAssetShare(Base):
+    """Which companies can access an asset that belongs to another company."""
+    __tablename__ = "media_asset_shares"
+    __table_args__ = (UniqueConstraint("asset_id", "company_id"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(Integer, ForeignKey("media_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    asset = relationship("MediaAsset", back_populates="shares")

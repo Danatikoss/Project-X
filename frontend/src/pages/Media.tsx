@@ -24,15 +24,17 @@ import {
 	MoreHorizontal,
 	Play,
 	Plus,
+	Share2,
 	Trash2,
 	Upload,
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { mediaApi } from "../api/client";
+import { adminApi, mediaApi } from "../api/client";
 import { Spinner } from "../components/common/Spinner";
-import type { MediaAsset, MediaFolder } from "../types";
+import { useAuthStore } from "../store/auth";
+import type { AssetShareInfo, MediaAsset, MediaFolder } from "../types";
 import { cn } from "../utils/cn";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -204,6 +206,122 @@ function UploadModal({
 	);
 }
 
+// ─── Share modal ─────────────────────────────────────────────────────────────
+
+interface ShareModalProps {
+	selectedIds: number[];
+	onClose: () => void;
+	onDone: () => void;
+}
+
+function ShareModal({ selectedIds, onClose, onDone }: ShareModalProps) {
+	const { data: companies = [], isLoading } = useQuery({
+		queryKey: ["admin-companies"],
+		queryFn: adminApi.listCompanies,
+	});
+
+	const { data: existingShares = [] } = useQuery({
+		queryKey: ["asset-shares", selectedIds],
+		queryFn: () => mediaApi.getAssetShares(selectedIds),
+		enabled: selectedIds.length > 0,
+	});
+
+	// Company IDs that are in ALL selected assets' shares (intersection)
+	const [selectedCompanies, setSelectedCompanies] = useState<Set<number>>(new Set());
+
+	useEffect(() => {
+		if (existingShares.length === 0 || selectedIds.length === 0) return;
+		// Intersection: companies shared to all selected assets
+		const allSets = selectedIds.map((aid) => {
+			const info = (existingShares as AssetShareInfo[]).find((s) => s.asset_id === aid);
+			return new Set(info?.company_ids ?? []);
+		});
+		const intersection = allSets.reduce((acc, set) => {
+			return new Set([...acc].filter((id) => set.has(id)));
+		});
+		setSelectedCompanies(intersection);
+	}, [existingShares, selectedIds]);
+
+	const shareMutation = useMutation({
+		mutationFn: () => mediaApi.shareAssets(selectedIds, Array.from(selectedCompanies)),
+		onSuccess: () => {
+			toast.success("Доступ обновлён");
+			onDone();
+		},
+		onError: () => toast.error("Не удалось обновить доступ"),
+	});
+
+	const toggle = (id: number) => {
+		setSelectedCompanies((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	return (
+		<div
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+			onClick={onClose}
+		>
+			<div
+				className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm animate-slide-up"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<h2 className="text-base font-bold text-slate-900 mb-1">Поделиться с компаниями</h2>
+				<p className="text-xs text-slate-400 mb-4">
+					{selectedIds.length} {selectedIds.length === 1 ? "файл" : "файлов"} · выберите компании
+				</p>
+
+				{isLoading ? (
+					<div className="flex justify-center py-6">
+						<Spinner />
+					</div>
+				) : (
+					<div className="space-y-2 max-h-64 overflow-y-auto mb-5">
+						{companies.map((company) => (
+							<label
+								key={company.id}
+								className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 cursor-pointer hover:border-brand-400 hover:bg-brand-50/40 transition-all"
+							>
+								<input
+									type="checkbox"
+									checked={selectedCompanies.has(company.id)}
+									onChange={() => toggle(company.id)}
+									className="w-4 h-4 accent-brand-600"
+								/>
+								<span className="text-sm font-medium text-slate-800">{company.name}</span>
+							</label>
+						))}
+					</div>
+				)}
+
+				<div className="flex gap-2">
+					<button
+						onClick={onClose}
+						className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+					>
+						Отмена
+					</button>
+					<button
+						onClick={() => shareMutation.mutate()}
+						disabled={shareMutation.isPending}
+						className="flex-1 py-2.5 rounded-xl bg-gradient-brand text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+					>
+						{shareMutation.isPending ? (
+							<Spinner size="sm" className="border-white border-t-transparent" />
+						) : (
+							<Share2 className="w-4 h-4" />
+						)}
+						Сохранить
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 // ─── Draggable media card ─────────────────────────────────────────────────────
 
 function MediaCard({
@@ -211,11 +329,17 @@ function MediaCard({
 	onDelete,
 	onRename,
 	onPreview,
+	selectMode,
+	selected,
+	onToggleSelect,
 }: {
 	asset: MediaAsset;
 	onDelete: () => void;
 	onRename: (name: string) => void;
 	onPreview: () => void;
+	selectMode?: boolean;
+	selected?: boolean;
+	onToggleSelect?: () => void;
 }) {
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [renaming, setRenaming] = useState(false);
@@ -252,16 +376,23 @@ function MediaCard({
 	return (
 		<div
 			ref={setNodeRef}
-			{...attributes}
-			{...listeners}
+			{...(!selectMode ? attributes : {})}
+			{...(!selectMode ? listeners : {})}
 			className={cn(
-				"group relative rounded-2xl border border-slate-200 bg-white overflow-hidden",
-				"cursor-grab active:cursor-grabbing transition-all",
-				isDragging
-					? "opacity-40 scale-95 shadow-lg"
-					: "hover:border-brand-300 hover:shadow-card-hover hover:-translate-y-0.5"
+				"group relative rounded-2xl border bg-white overflow-hidden transition-all",
+				selectMode
+					? "cursor-pointer"
+					: "cursor-grab active:cursor-grabbing",
+				selected
+					? "border-brand-500 ring-2 ring-brand-300 shadow-md"
+					: isDragging
+						? "opacity-40 scale-95 shadow-lg border-slate-200"
+						: "border-slate-200 hover:border-brand-300 hover:shadow-card-hover hover:-translate-y-0.5"
 			)}
-			onClick={() => { if (!isDragging && !menuOpen && !renaming) onPreview(); }}
+			onClick={() => {
+				if (selectMode) { onToggleSelect?.(); return; }
+				if (!isDragging && !menuOpen && !renaming) onPreview();
+			}}
 		>
 			{/* Preview area */}
 			<div
@@ -321,9 +452,33 @@ function MediaCard({
 				)}
 			</div>
 
+			{/* Select checkbox */}
+			{selectMode && (
+				<div className="absolute top-1.5 left-1.5 z-10">
+					<div className={cn(
+						"w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all",
+						selected ? "bg-brand-600 border-brand-600" : "bg-white/90 border-slate-300"
+					)}>
+						{selected && <Check className="w-3 h-3 text-white" />}
+					</div>
+				</div>
+			)}
+
+			{/* Shared badge */}
+			{asset.owner_company_id != null && (
+				<div className="absolute top-1.5 right-1.5 z-10">
+					<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700">
+						Shared
+					</span>
+				</div>
+			)}
+
 			{/* Action menu */}
 			<div
-				className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+				className={cn(
+					"absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity",
+					selectMode && "hidden"
+				)}
 				onPointerDown={(e) => e.stopPropagation()}
 			>
 				<button
@@ -494,6 +649,7 @@ const TYPE_TABS: { value: TypeFilter; label: string; icon: React.ReactNode; colo
 export default function Media() {
 	const qc = useQueryClient();
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin());
 
 	const [activeFolder, setActiveFolder] = useState<FolderFilter>("all");
 	const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -503,6 +659,9 @@ export default function Media() {
 	const [newFolderName, setNewFolderName] = useState("");
 	const [dragOverFolder, setDragOverFolder] = useState<number | null>(null);
 	const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+	const [selectMode, setSelectMode] = useState(false);
+	const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+	const [shareModalOpen, setShareModalOpen] = useState(false);
 
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -582,6 +741,22 @@ export default function Media() {
 		},
 		onError: () => toast.error("Не удалось удалить"),
 	});
+
+	const toggleSelectMode = () => {
+		setSelectMode((v) => {
+			if (v) setSelectedIds(new Set());
+			return !v;
+		});
+	};
+
+	const toggleAsset = (id: number) => {
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
 
 	const handleFileSelect = useCallback((files: FileList | null) => {
 		if (!files?.length) return;
@@ -863,7 +1038,35 @@ export default function Media() {
 							</div>
 						)}
 
-						<div className="ml-auto">
+						<div className="ml-auto flex items-center gap-2">
+							{isSuperAdmin && (
+								<>
+									{selectMode && selectedIds.size > 0 && (
+										<button
+											onClick={() => setShareModalOpen(true)}
+											className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:opacity-90 transition-all shadow-sm"
+										>
+											<Share2 className="w-4 h-4" />
+											<span className="hidden sm:inline">Поделиться ({selectedIds.size})</span>
+										</button>
+									)}
+									<button
+										onClick={toggleSelectMode}
+										className={cn(
+											"flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all",
+											selectMode
+												? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+												: "border border-slate-200 text-slate-600 hover:border-brand-400 hover:text-brand-700"
+										)}
+									>
+										{selectMode ? (
+											<><X className="w-4 h-4" /><span className="hidden sm:inline">Отмена</span></>
+										) : (
+											<><Check className="w-4 h-4" /><span className="hidden sm:inline">Выбрать</span></>
+										)}
+									</button>
+								</>
+							)}
 							<input
 								ref={fileInputRef}
 								type="file"
@@ -920,6 +1123,9 @@ export default function Media() {
 											updateAssetMutation.mutate({ id: asset.id, data: { name } })
 										}
 										onPreview={() => setPreviewAsset(asset)}
+										selectMode={selectMode}
+										selected={selectedIds.has(asset.id)}
+										onToggleSelect={() => toggleAsset(asset.id)}
 									/>
 								))}
 							</div>
@@ -964,6 +1170,20 @@ export default function Media() {
 						uploadMutation.mutate({ file: pendingFile, name, folderId })
 					}
 					onCancel={() => setPendingFile(null)}
+				/>
+			)}
+
+			{/* Share modal */}
+			{shareModalOpen && (
+				<ShareModal
+					selectedIds={Array.from(selectedIds)}
+					onClose={() => setShareModalOpen(false)}
+					onDone={() => {
+						setShareModalOpen(false);
+						setSelectMode(false);
+						setSelectedIds(new Set());
+						qc.invalidateQueries({ queryKey: ["media-assets"] });
+					}}
 				/>
 			)}
 		</DndContext>

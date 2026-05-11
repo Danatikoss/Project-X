@@ -7,11 +7,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, select
 
-from api.deps import get_current_user, get_company_id
+from api.deps import get_current_user, get_company_id, get_admin_user
 from config import settings
 from database import get_db
-from models.media import MediaAsset, MediaFolder
+from models.media import MediaAsset, MediaAssetShare, MediaFolder
 from models.user import User
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ class AssetResponse(BaseModel):
     mime_type: Optional[str] = None
     file_size: Optional[int] = None
     url: str
+    owner_company_id: Optional[int] = None  # set when asset belongs to another company (shared)
 
     class Config:
         from_attributes = True
@@ -77,6 +79,16 @@ class AssetPatch(BaseModel):
     name: Optional[str] = None
     folder_id: Optional[int] = None  # None means "move to root"
     clear_folder: bool = False        # explicit flag to remove from folder
+
+
+class ShareRequest(BaseModel):
+    asset_ids: list[int]
+    company_ids: list[int]  # companies to grant access (replaces current shares for these assets)
+
+
+class AssetShareInfo(BaseModel):
+    asset_id: int
+    company_ids: list[int]
 
 
 # ── Folder endpoints ─────────────────────────────────────────────────────────
@@ -162,7 +174,12 @@ def list_assets(
     user: User = Depends(get_current_user),
     company_id: int = Depends(get_company_id),
 ):
-    q = db.query(MediaAsset).filter(MediaAsset.company_id == company_id)
+    shared_asset_ids = select(MediaAssetShare.asset_id).where(
+        MediaAssetShare.company_id == company_id
+    )
+    q = db.query(MediaAsset).filter(
+        or_(MediaAsset.company_id == company_id, MediaAsset.id.in_(shared_asset_ids))
+    )
     if unfoldered:
         q = q.filter(MediaAsset.folder_id.is_(None))
     elif folder_id is not None:
@@ -179,6 +196,7 @@ def list_assets(
             mime_type=a.mime_type,
             file_size=a.file_size,
             url=_media_url(a.file_path),
+            owner_company_id=a.company_id if a.company_id != company_id else None,
         )
         for a in assets
     ]
@@ -305,6 +323,41 @@ def update_asset(
         file_size=asset.file_size,
         url=_media_url(asset.file_path),
     )
+
+
+# ── Share endpoints (admin only) ─────────────────────────────────────────────
+
+@router.post("/assets/share", status_code=200)
+def share_assets(
+    body: ShareRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    """Set exactly which companies can access each asset (replaces existing shares)."""
+    for asset_id in body.asset_ids:
+        asset = db.query(MediaAsset).filter(MediaAsset.id == asset_id).first()
+        if not asset:
+            raise HTTPException(404, f"Медиа {asset_id} не найдено")
+        # Remove existing shares for this asset then re-add
+        db.query(MediaAssetShare).filter(MediaAssetShare.asset_id == asset_id).delete()
+        for company_id in body.company_ids:
+            db.add(MediaAssetShare(asset_id=asset_id, company_id=company_id))
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/assets/shares/query", response_model=list[AssetShareInfo])
+def get_asset_shares(
+    asset_ids: list[int],
+    db: Session = Depends(get_db),
+    _: User = Depends(get_admin_user),
+):
+    """Return current share state for a list of assets."""
+    rows = db.query(MediaAssetShare).filter(MediaAssetShare.asset_id.in_(asset_ids)).all()
+    by_asset: dict[int, list[int]] = {aid: [] for aid in asset_ids}
+    for row in rows:
+        by_asset[row.asset_id].append(row.company_id)
+    return [AssetShareInfo(asset_id=aid, company_ids=cids) for aid, cids in by_asset.items()]
 
 
 @router.delete("/assets/{asset_id}", status_code=204)

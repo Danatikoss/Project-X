@@ -183,6 +183,7 @@ def migrate_db():
 
 def create_tables():
     from models import slide, assembly, user, project, media, template, company  # noqa: F401
+    from models.media import MediaAssetShare  # noqa: F401 — ensure table is registered
     import models.stats  # noqa: F401
     from models.user import RefreshToken  # noqa: F401
     from models import feedback  # noqa: F401
