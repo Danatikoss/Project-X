@@ -80,6 +80,7 @@ async def run_assembly(
     prompt: str,
     max_slides: int = 15,
     user_id: int | None = None,
+    company_id: int | None = None,
 ) -> AssembledPresentation:
     """
     Full assembly pipeline: embed → hybrid search → GPT select → store.
@@ -102,6 +103,7 @@ async def run_assembly(
         # Empty library
         assembly = AssembledPresentation(
             owner_id=user_id,
+            company_id=company_id,
             title="Новая презентация",
             prompt=prompt,
             slide_ids_json="[]",
@@ -170,6 +172,7 @@ async def run_assembly(
 
     assembly = AssembledPresentation(
         owner_id=user_id,
+        company_id=company_id,
         title=title[:200],
         prompt=prompt,
         slide_ids_json=json.dumps(selected_ids),

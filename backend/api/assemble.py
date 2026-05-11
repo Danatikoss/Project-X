@@ -37,7 +37,7 @@ class RateRequest(BaseModel):
     tags: list[str] = []
     comment: str | None = None
 from api.utils import slide_to_response
-from api.deps import get_current_user
+from api.deps import get_current_user, get_company_id
 from api.ws import assembly_room
 from services.assembly import run_assembly
 from services.export import export_to_pptx, export_to_pdf
@@ -82,10 +82,11 @@ def _check_owner(assembly: AssembledPresentation, user_id: int):
 
 
 @router.post("/blank", response_model=AssemblyResponse, status_code=201)
-def create_blank_assembly(body: AssembleBlankRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_blank_assembly(body: AssembleBlankRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user), company_id: int = Depends(get_company_id)):
     """Create an empty assembly for manual slide selection."""
     assembly = AssembledPresentation(
         owner_id=user.id,
+        company_id=company_id,
         title=body.title,
         prompt="(создано вручную)",
         slide_ids_json="[]",
@@ -128,8 +129,8 @@ def create_from_template(
 
 
 @router.post("", response_model=AssemblyResponse, status_code=201)
-async def create_assembly(body: AssembleRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    assembly = await run_assembly(db, body.prompt, body.max_slides, user_id=user.id)
+async def create_assembly(body: AssembleRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user), company_id: int = Depends(get_company_id)):
+    assembly = await run_assembly(db, body.prompt, body.max_slides, user_id=user.id, company_id=company_id)
     return _assembly_to_response(assembly, db)
 
 

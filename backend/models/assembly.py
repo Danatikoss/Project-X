@@ -9,6 +9,7 @@ class AssembledPresentation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     title = Column(String, default="Без названия")
     prompt = Column(Text, nullable=False)
     slide_ids_json = Column(Text, default="[]")

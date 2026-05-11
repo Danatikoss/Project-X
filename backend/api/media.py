@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user
+from api.deps import get_current_user, get_company_id
 from config import settings
 from database import get_db
 from models.media import MediaAsset, MediaFolder
@@ -85,8 +85,9 @@ class AssetPatch(BaseModel):
 def list_folders(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
-    folders = db.query(MediaFolder).all()
+    folders = db.query(MediaFolder).filter(MediaFolder.company_id == company_id).all()
     result = []
     for f in folders:
         count = db.query(MediaAsset).filter(MediaAsset.folder_id == f.id).count()
@@ -99,11 +100,12 @@ def create_folder(
     body: FolderCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "Название папки не может быть пустым")
-    folder = MediaFolder(owner_id=user.id, name=name)
+    folder = MediaFolder(owner_id=user.id, company_id=company_id, name=name)
     db.add(folder)
     db.commit()
     db.refresh(folder)
@@ -158,8 +160,9 @@ def list_assets(
     file_type: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
-    q = db.query(MediaAsset)
+    q = db.query(MediaAsset).filter(MediaAsset.company_id == company_id)
     if unfoldered:
         q = q.filter(MediaAsset.folder_id.is_(None))
     elif folder_id is not None:
@@ -188,6 +191,7 @@ async def upload_asset(
     folder_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     # Validate extension
     ext = Path(file.filename or "").suffix.lower()
@@ -240,6 +244,7 @@ async def upload_asset(
 
     asset = MediaAsset(
         owner_id=user.id,
+        company_id=company_id,
         folder_id=folder_id,
         name=name.strip() or Path(file.filename or "file").stem,
         file_path=filename,

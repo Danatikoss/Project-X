@@ -154,6 +154,8 @@ export interface AuthUser {
 	email: string;
 	name: string | null;
 	is_admin?: boolean;
+	company_id: number | null;
+	company_name: string | null;
 }
 
 export interface AuthResponse {
@@ -168,8 +170,38 @@ export interface AdminUser {
 	name: string | null;
 	is_admin: boolean;
 	is_active: boolean;
+	company_id: number | null;
+	company_name: string | null;
 	created_at: string | null;
 	presentations_count: number;
+}
+
+export interface Company {
+	id: number;
+	name: string;
+	slug: string;
+	is_active: boolean;
+	user_count: number;
+	created_at: string | null;
+}
+
+export interface InviteToken {
+	id: number;
+	token: string;
+	company_id: number;
+	company_name: string;
+	email: string | null;
+	note: string | null;
+	expires_at: string;
+	used_at: string | null;
+	used_by_name: string | null;
+	created_at: string | null;
+}
+
+export interface InviteInfo {
+	company_id: number;
+	company_name: string;
+	email: string | null;
 }
 
 // ─── User Profile ────────────────────────────────────────────────────────────

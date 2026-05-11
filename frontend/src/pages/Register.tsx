@@ -1,9 +1,10 @@
-import { BookImage, Eye, EyeOff, Layers, Sparkles, Zap } from "lucide-react";
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { BookImage, Building2, Eye, EyeOff, Layers, Sparkles, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { authApi } from "../api/client";
 import { useAuthStore } from "../store/auth";
+import type { InviteInfo } from "../types";
 import { cn } from "../utils/cn";
 
 const features = [
@@ -33,7 +34,14 @@ function passwordStrength(pwd: string): { score: number; label: string; color: s
 
 export default function Register() {
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const setAuth = useAuthStore((s) => s.setAuth);
+
+	const token = searchParams.get("token") ?? "";
+
+	const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+	const [inviteError, setInviteError] = useState<string | null>(null);
+	const [inviteLoading, setInviteLoading] = useState(!!token);
 
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -41,10 +49,23 @@ export default function Register() {
 	const [showPassword, setShowPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [passwordTouched, setPasswordTouched] = useState(false);
-
 	const [errors, setErrors] = useState<{ email?: string; password?: string; name?: string }>({});
-
 	const strength = passwordStrength(password);
+
+	useEffect(() => {
+		if (!token) {
+			setInviteError("Регистрация возможна только по приглашению.");
+			setInviteLoading(false);
+			return;
+		}
+		authApi.getInviteInfo(token)
+			.then((info) => {
+				setInviteInfo(info);
+				if (info.email) setEmail(info.email);
+			})
+			.catch(() => setInviteError("Приглашение недействительно или истекло."))
+			.finally(() => setInviteLoading(false));
+	}, [token]);
 
 	function validateField(field: "email" | "password" | "name", value: string) {
 		if (field === "email") {
@@ -76,13 +97,12 @@ export default function Register() {
 		if (field === "email") setEmail(value);
 		else if (field === "password") setPassword(value);
 		else setName(value);
-		if (errors[field]) {
-			setErrors((prev) => ({ ...prev, [field]: undefined }));
-		}
+		if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
 	}
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (!inviteInfo) return;
 
 		const emailErr = validateField("email", email);
 		const passwordErr = validateField("password", password);
@@ -95,7 +115,7 @@ export default function Register() {
 
 		setLoading(true);
 		try {
-			const res = await authApi.register(email, password, name || undefined);
+			const res = await authApi.register(email, password, name, token);
 			setAuth(res.user, res.access_token);
 			navigate("/dashboard", { replace: true });
 		} catch (err: any) {
@@ -125,9 +145,9 @@ export default function Register() {
 
 				<div className="mb-auto">
 					<h2 className="text-3xl font-bold text-white leading-tight mb-4">
-						Начните бесплатно
+						Начните работу
 						<br />
-						<span className="text-gradient">прямо сейчас</span>
+						<span className="text-gradient">по приглашению</span>
 					</h2>
 					<p className="text-slate-400 text-sm leading-relaxed mb-8">
 						Загрузите слайды, опишите нужную презентацию — AI соберёт её из вашей библиотеки за
@@ -161,142 +181,142 @@ export default function Register() {
 					</div>
 
 					<div className="bg-white rounded-2xl shadow-card border border-slate-200 p-8">
-						<h1 className="text-xl font-bold text-slate-900 mb-1">Создать аккаунт</h1>
-						<p className="text-sm text-slate-500 mb-6">Начните работу с SLIDEX бесплатно</p>
-
-						<form onSubmit={handleSubmit} className="space-y-4" noValidate>
-							{/* Name */}
-							<div>
-								<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-									Имя <span className="text-slate-400 normal-case font-normal">(необязательно)</span>
-								</label>
-								<input
-									type="text"
-									autoComplete="name"
-									value={name}
-									onChange={(e) => handleChange("name", e.target.value)}
-									onBlur={() => handleBlur("name")}
-									placeholder="Иван Иванов"
-									className={cn(
-										"w-full px-4 py-2.5 rounded-xl border text-sm text-slate-800",
-										"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
-										errors.name
-											? "border-red-400 focus:ring-red-200 focus:border-red-400"
-											: "border-slate-200 focus:ring-brand-300 focus:border-brand-400"
-									)}
-								/>
-								{errors.name && (
-									<p className="mt-1.5 text-xs text-red-500">{errors.name}</p>
-								)}
+						{inviteLoading ? (
+							<div className="text-center py-8 text-slate-400 text-sm">Проверяем приглашение…</div>
+						) : inviteError ? (
+							<div className="text-center py-8">
+								<p className="text-red-500 text-sm mb-4">{inviteError}</p>
+								<Link to="/login" className="text-brand-600 text-sm font-medium hover:underline">
+									Войти в аккаунт
+								</Link>
 							</div>
+						) : (
+							<>
+								<h1 className="text-xl font-bold text-slate-900 mb-1">Создать аккаунт</h1>
+								<p className="text-sm text-slate-500 mb-6">Регистрация для {inviteInfo?.company_name}</p>
 
-							{/* Email */}
-							<div>
-								<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-									Email
-								</label>
-								<input
-									type="email"
-									autoComplete="email"
-									value={email}
-									onChange={(e) => handleChange("email", e.target.value)}
-									onBlur={() => handleBlur("email")}
-									placeholder="you@company.com"
-									className={cn(
-										"w-full px-4 py-2.5 rounded-xl border text-sm text-slate-800",
-										"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
-										errors.email
-											? "border-red-400 focus:ring-red-200 focus:border-red-400"
-											: "border-slate-200 focus:ring-brand-300 focus:border-brand-400 hover:shadow-glow-sm"
-									)}
-								/>
-								{errors.email && (
-									<p className="mt-1.5 text-xs text-red-500">{errors.email}</p>
-								)}
-							</div>
-
-							{/* Password */}
-							<div>
-								<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-									Пароль
-								</label>
-								<div className="relative">
-									<input
-										type={showPassword ? "text" : "password"}
-										autoComplete="new-password"
-										value={password}
-										onChange={(e) => handleChange("password", e.target.value)}
-										onBlur={() => handleBlur("password")}
-										placeholder="Минимум 8 символов"
-										className={cn(
-											"w-full px-4 py-2.5 pr-11 rounded-xl border text-sm text-slate-800",
-											"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
-											errors.password
-												? "border-red-400 focus:ring-red-200 focus:border-red-400"
-												: "border-slate-200 focus:ring-brand-300 focus:border-brand-400 hover:shadow-glow-sm"
-										)}
-									/>
-									<button
-										type="button"
-										tabIndex={-1}
-										onClick={() => setShowPassword((v) => !v)}
-										className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-									>
-										{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-									</button>
+								{/* Company badge */}
+								<div className="flex items-center gap-2 bg-brand-50 border border-brand-200 rounded-xl px-3 py-2.5 mb-5">
+									<Building2 className="w-4 h-4 text-brand-500 shrink-0" />
+									<span className="text-sm font-medium text-brand-700">{inviteInfo?.company_name}</span>
 								</div>
 
-								{/* Strength bar */}
-								{passwordTouched && password.length > 0 && (
-									<div className="mt-2">
-										<div className="flex gap-1 mb-1">
-											{[1, 2, 3, 4].map((i) => (
-												<div
-													key={i}
-													className={cn(
-														"h-1 flex-1 rounded-full transition-colors",
-														strength.score >= i ? strength.color : "bg-slate-200"
-													)}
-												/>
-											))}
-										</div>
-										<p className={cn(
-											"text-xs",
-											strength.score <= 1 ? "text-red-500" :
-											strength.score <= 2 ? "text-yellow-600" :
-											strength.score <= 3 ? "text-blue-500" : "text-green-600"
-										)}>
-											{strength.label}
-										</p>
+								<form onSubmit={handleSubmit} className="space-y-4" noValidate>
+									{/* Name */}
+									<div>
+										<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+											Имя <span className="text-slate-400 normal-case font-normal">(необязательно)</span>
+										</label>
+										<input
+											type="text"
+											autoComplete="name"
+											value={name}
+											onChange={(e) => handleChange("name", e.target.value)}
+											onBlur={() => handleBlur("name")}
+											placeholder="Иван Иванов"
+											className={cn(
+												"w-full px-4 py-2.5 rounded-xl border text-sm text-slate-800",
+												"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
+												errors.name
+													? "border-red-400 focus:ring-red-200 focus:border-red-400"
+													: "border-slate-200 focus:ring-brand-300 focus:border-brand-400"
+											)}
+										/>
+										{errors.name && <p className="mt-1.5 text-xs text-red-500">{errors.name}</p>}
 									</div>
-								)}
 
-								{errors.password && (
-									<p className="mt-1.5 text-xs text-red-500">{errors.password}</p>
-								)}
-							</div>
+									{/* Email */}
+									<div>
+										<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+											Email
+										</label>
+										<input
+											type="email"
+											autoComplete="email"
+											value={email}
+											onChange={(e) => handleChange("email", e.target.value)}
+											onBlur={() => handleBlur("email")}
+											readOnly={!!inviteInfo?.email}
+											placeholder="ivan@company.kz"
+											className={cn(
+												"w-full px-4 py-2.5 rounded-xl border text-sm text-slate-800",
+												"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
+												inviteInfo?.email ? "bg-slate-50 cursor-not-allowed" : "",
+												errors.email
+													? "border-red-400 focus:ring-red-200 focus:border-red-400"
+													: "border-slate-200 focus:ring-brand-300 focus:border-brand-400"
+											)}
+										/>
+										{errors.email && <p className="mt-1.5 text-xs text-red-500">{errors.email}</p>}
+									</div>
 
-							<button
-								type="submit"
-								disabled={loading}
-								className={cn(
-									"w-full py-2.5 bg-gradient-brand text-white rounded-xl text-sm font-semibold",
-									"hover:opacity-90 disabled:opacity-50 transition-all shadow-sm hover:shadow-md"
-								)}
-							>
-								{loading ? "Создаём аккаунт..." : "Зарегистрироваться"}
-							</button>
-						</form>
+									{/* Password */}
+									<div>
+										<label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+											Пароль
+										</label>
+										<div className="relative">
+											<input
+												type={showPassword ? "text" : "password"}
+												autoComplete="new-password"
+												value={password}
+												onChange={(e) => handleChange("password", e.target.value)}
+												onBlur={() => handleBlur("password")}
+												placeholder="Минимум 8 символов"
+												className={cn(
+													"w-full px-4 py-2.5 pr-11 rounded-xl border text-sm text-slate-800",
+													"placeholder-slate-400 focus:outline-none focus:ring-2 transition-shadow",
+													errors.password
+														? "border-red-400 focus:ring-red-200 focus:border-red-400"
+														: "border-slate-200 focus:ring-brand-300 focus:border-brand-400"
+												)}
+											/>
+											<button
+												type="button"
+												onClick={() => setShowPassword((v) => !v)}
+												className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+											>
+												{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+											</button>
+										</div>
+										{password && (
+											<div className="mt-2 flex items-center gap-2">
+												<div className="flex gap-0.5 flex-1">
+													{[1, 2, 3, 4].map((i) => (
+														<div
+															key={i}
+															className={cn(
+																"h-1 flex-1 rounded-full transition-colors",
+																strength.score >= i ? strength.color : "bg-slate-200"
+															)}
+														/>
+													))}
+												</div>
+												<span className="text-xs text-slate-500 w-16 text-right">{strength.label}</span>
+											</div>
+										)}
+										{errors.password && passwordTouched && (
+											<p className="mt-1.5 text-xs text-red-500">{errors.password}</p>
+										)}
+									</div>
 
-						<p className="mt-5 text-center text-sm text-slate-500">
-							Уже есть аккаунт?{" "}
-							<Link
-								to="/login"
-								className="text-brand-600 font-semibold hover:text-brand-700 transition-colors"
-							>
-								Войти
-							</Link>
-						</p>
+									<button
+										type="submit"
+										disabled={loading}
+										className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-semibold text-sm transition-colors mt-2"
+									>
+										{loading ? "Создаём аккаунт…" : "Создать аккаунт"}
+									</button>
+								</form>
+
+								<p className="text-center text-xs text-slate-500 mt-6">
+									Уже есть аккаунт?{" "}
+									<Link to="/login" className="text-brand-600 font-medium hover:underline">
+										Войти
+									</Link>
+								</p>
+							</>
+						)}
 					</div>
 				</div>
 			</div>

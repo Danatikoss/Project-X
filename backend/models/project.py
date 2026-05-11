@@ -9,6 +9,7 @@ class Project(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     name = Column(String, nullable=False)
     color = Column(String, default="#1E3A8A")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

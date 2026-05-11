@@ -55,6 +55,53 @@ def _add_column_if_missing(conn, table: str, column: str, definition: str):
 def migrate_db():
     """Apply incremental schema migrations (works with both SQLite and PostgreSQL)."""
     tables = inspect(engine).get_table_names()
+
+    # ── Multi-tenancy: companies + invite_tokens ──────────────────────────────
+    with engine.begin() as conn:
+        if "companies" in tables and "users" in tables:
+            _add_column_if_missing(conn, "users", "company_id", "INTEGER REFERENCES companies(id)")
+        if "companies" in tables and "source_presentations" in tables:
+            _add_column_if_missing(conn, "source_presentations", "company_id", "INTEGER REFERENCES companies(id)")
+        if "companies" in tables and "assembled_presentations" in tables:
+            _add_column_if_missing(conn, "assembled_presentations", "company_id", "INTEGER REFERENCES companies(id)")
+        if "companies" in tables and "projects" in tables:
+            _add_column_if_missing(conn, "projects", "company_id", "INTEGER REFERENCES companies(id)")
+        if "companies" in tables and "media_folders" in tables:
+            _add_column_if_missing(conn, "media_folders", "company_id", "INTEGER REFERENCES companies(id)")
+        if "companies" in tables and "media_assets" in tables:
+            _add_column_if_missing(conn, "media_assets", "company_id", "INTEGER REFERENCES companies(id)")
+        if "companies" in tables and "assembly_templates" in tables:
+            _add_column_if_missing(conn, "assembly_templates", "company_id", "INTEGER REFERENCES companies(id)")
+
+    # ── Seed companies (МИИЦР + НИТ) and assign existing data to МИИЦР ───────
+    with engine.begin() as conn:
+        if "companies" in tables:
+            existing = conn.execute(text("SELECT COUNT(*) FROM companies")).scalar()
+            if existing == 0:
+                conn.execute(text(
+                    "INSERT INTO companies (name, slug, is_active, created_at) VALUES "
+                    "(:n1, :s1, true, NOW()), (:n2, :s2, true, NOW())"
+                ), {"n1": "МИИЦР", "s1": "miicr", "n2": "НИТ", "s2": "nit"})
+
+            miicr_id = conn.execute(text("SELECT id FROM companies WHERE slug = 'miicr'")).scalar()
+            if miicr_id:
+                # Assign existing content to МИИЦР (only rows without company_id)
+                for tbl in ("source_presentations", "assembled_presentations", "projects",
+                            "media_folders", "media_assets", "assembly_templates"):
+                    if tbl in tables:
+                        existing_cols = [c["name"] for c in inspect(conn).get_columns(tbl)]
+                        if "company_id" in existing_cols:
+                            conn.execute(text(
+                                f"UPDATE {tbl} SET company_id = :cid WHERE company_id IS NULL"
+                            ), {"cid": miicr_id})
+                # Non-super-admin users without company → assign to МИИЦР
+                if "users" in tables:
+                    existing_cols = [c["name"] for c in inspect(conn).get_columns("users")]
+                    if "company_id" in existing_cols:
+                        conn.execute(text(
+                            "UPDATE users SET company_id = :cid "
+                            "WHERE company_id IS NULL AND is_admin = false"
+                        ), {"cid": miicr_id})
     with engine.begin() as conn:
         if "source_presentations" in tables:
             _add_column_if_missing(conn, "source_presentations", "owner_id", "INTEGER REFERENCES users(id)")
@@ -135,7 +182,7 @@ def migrate_db():
 
 
 def create_tables():
-    from models import slide, assembly, user, project, media, template  # noqa: F401
+    from models import slide, assembly, user, project, media, template, company  # noqa: F401
     import models.stats  # noqa: F401
     from models.user import RefreshToken  # noqa: F401
     from models import feedback  # noqa: F401

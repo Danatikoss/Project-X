@@ -15,7 +15,7 @@ from models.project import Project
 from models.slide import SlideLibraryEntry, SourcePresentation
 from models.user import User
 from api.schemas import ProjectResponse, ProjectCreateRequest
-from api.deps import get_current_user
+from api.deps import get_current_user, get_company_id
 
 router = APIRouter()
 
@@ -26,8 +26,8 @@ def _check_project_owner(project: Project, user_id: int):
 
 
 @router.get("", response_model=list[ProjectResponse])
-def list_projects(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    projects = db.query(Project).filter(Project.owner_id == user.id).order_by(Project.name).all()
+def list_projects(db: Session = Depends(get_db), user: User = Depends(get_current_user), company_id: int = Depends(get_company_id)):
+    projects = db.query(Project).filter(Project.company_id == company_id).order_by(Project.name).all()
     result = []
     for p in projects:
         count = db.query(SlideLibraryEntry).filter(SlideLibraryEntry.project_id == p.id).count()
@@ -42,11 +42,11 @@ def list_projects(db: Session = Depends(get_db), user: User = Depends(get_curren
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
-def create_project(body: ProjectCreateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    existing = db.query(Project).filter(Project.owner_id == user.id, Project.name == body.name).first()
+def create_project(body: ProjectCreateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user), company_id: int = Depends(get_company_id)):
+    existing = db.query(Project).filter(Project.company_id == company_id, Project.name == body.name).first()
     if existing:
         raise HTTPException(409, detail="Проект с таким названием уже существует")
-    project = Project(owner_id=user.id, name=body.name, color=body.color)
+    project = Project(owner_id=user.id, company_id=company_id, name=body.name, color=body.color)
     db.add(project)
     db.commit()
     db.refresh(project)

@@ -28,7 +28,7 @@ from api.schemas import (
     SlideResponse, SlidePatchRequest, SlideListResponse,
 )
 from api.utils import slide_to_response
-from api.deps import get_current_user, get_admin_user
+from api.deps import get_current_user, get_admin_user, get_company_id
 from services.indexing import index_presentation
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,7 @@ async def upload_presentation(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_admin_user),
+    company_id: int = Depends(get_company_id),
 ):
     filename = file.filename or "upload"
     ext = Path(filename).suffix.lower().lstrip(".")
@@ -96,6 +97,7 @@ async def upload_presentation(
 
     source = SourcePresentation(
         owner_id=user.id,
+        company_id=company_id,
         filename=filename,
         file_path=str(file_path.resolve()),
         file_type=ext,
@@ -134,15 +136,22 @@ def list_slides(
     project_ids: list[int] = Query(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     from sqlalchemy import or_, and_
 
+    # Scope to company via SourcePresentation join
+    company_source_ids = db.query(SourcePresentation.id).filter(
+        SourcePresentation.company_id == company_id
+    ).subquery()
+
     query = db.query(SlideLibraryEntry).filter(
         SlideLibraryEntry.is_generated == False,  # noqa: E712
+        SlideLibraryEntry.source_id.in_(company_source_ids),
     )
 
     if slide_type == "all" and user.is_admin:
-        # Admin sees everything — no extra filters
+        # Admin sees all within their company — no extra filters beyond company scope
         pass
     elif slide_type == "my_generated":
         # Current user's AI-generated slides saved privately

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-from api.deps import get_admin_user, get_current_user
+from api.deps import get_admin_user, get_current_user, get_company_id
 from database import get_db
 from models.template import AssemblyTemplate
 from models.slide import SlideLibraryEntry
@@ -101,11 +101,10 @@ def _template_to_response(template: AssemblyTemplate, db: Session) -> TemplateRe
 def list_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
-    q = db.query(AssemblyTemplate)
-    if current_user.is_admin:
-        pass  # admin sees everything
-    else:
+    q = db.query(AssemblyTemplate).filter(AssemblyTemplate.company_id == company_id)
+    if not current_user.is_admin:
         q = q.filter(
             or_(
                 AssemblyTemplate.owner_id == current_user.id,
@@ -135,9 +134,11 @@ def create_template(
     body: TemplateCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     template = AssemblyTemplate(
         owner_id=current_user.id,
+        company_id=company_id,
         name=body.name,
         description=body.description,
         slide_ids_json=json.dumps(body.slide_ids),

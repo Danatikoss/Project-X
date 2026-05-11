@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import get_db
 from models.user import User, UserProfile, RefreshToken
+from models.company import InviteToken
 from api.deps import get_current_user
 from rate_limit import limiter
 
@@ -40,6 +41,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8)
     name: str = Field(default="", max_length=100)
+    invite_token: str = Field(..., min_length=10)
 
 
 class LoginRequest(BaseModel):
@@ -58,6 +60,8 @@ class UserOut(BaseModel):
     email: str
     name: str | None
     is_admin: bool = False
+    company_id: int | None = None
+    company_name: str | None = None
 
 
 AccessTokenResponse.model_rebuild()
@@ -166,16 +170,35 @@ def _auth_response(user: User, db: Session, response: Response) -> AccessTokenRe
     _set_refresh_cookie(response, refresh)
     return AccessTokenResponse(
         access_token=_make_access_token(user.id),
-        user=UserOut(id=user.id, email=user.email, name=user.name,
-                     is_admin=bool(user.is_admin)),
+        user=UserOut(
+            id=user.id, email=user.email, name=user.name,
+            is_admin=bool(user.is_admin),
+            company_id=user.company_id,
+            company_name=user.company.name if user.company else None,
+        ),
     )
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
+@router.get("/invite-info")
+def invite_info(token: str, db: Session = Depends(get_db)):
+    """Return company name for an invite token (for pre-filling the registration form)."""
+    invite = db.query(InviteToken).filter(InviteToken.token == token).first()
+    if not invite or not invite.is_valid:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Приглашение недействительно или истекло")
+    return {"company_id": invite.company_id, "company_name": invite.company.name, "email": invite.email}
+
+
 @router.post("/register", response_model=AccessTokenResponse, status_code=201)
 @limiter.limit("5/minute")
 def register(request: Request, response: Response, body: RegisterRequest, db: Session = Depends(get_db)):
+    invite = db.query(InviteToken).filter(InviteToken.token == body.invite_token).first()
+    if not invite or not invite.is_valid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Приглашение недействительно или истекло")
+    if invite.email and invite.email.lower() != body.email.lower():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Email не совпадает с приглашением")
+
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Email уже зарегистрирован")
 
@@ -183,10 +206,13 @@ def register(request: Request, response: Response, body: RegisterRequest, db: Se
         email=body.email,
         hashed_password=_hash(body.password),
         name=body.name or None,
+        company_id=invite.company_id,
     )
     db.add(user)
     db.flush()
     db.add(UserProfile(user_id=user.id))
+    invite.used_at = datetime.now(timezone.utc)
+    invite.used_by_id = user.id
     db.flush()
     db.refresh(user)
     return _auth_response(user, db, response)
@@ -275,5 +301,9 @@ def logout(
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
-    return UserOut(id=user.id, email=user.email, name=user.name,
-                   is_admin=bool(user.is_admin))
+    return UserOut(
+        id=user.id, email=user.email, name=user.name,
+        is_admin=bool(user.is_admin),
+        company_id=user.company_id,
+        company_name=user.company.name if user.company else None,
+    )

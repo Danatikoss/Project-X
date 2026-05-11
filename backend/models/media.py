@@ -9,6 +9,7 @@ class MediaFolder(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     name = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -21,6 +22,7 @@ class MediaAsset(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     folder_id = Column(Integer, ForeignKey("media_folders.id"), nullable=True, index=True)
     name = Column(String, nullable=False)
     file_path = Column(String, nullable=False)   # relative: {uuid}.{ext}

@@ -15,13 +15,56 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, get_admin_user
+from fastapi import Request
+from api.deps import get_current_user, get_admin_user, get_company_id_optional
 from database import get_db
 from models.user import User
+from models.company import Company, InviteToken
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
+# ─── Company schemas ──────────────────────────────────────────────────────────
+
+class CompanyOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    is_active: bool
+    user_count: int = 0
+    created_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+
+class CompanyCreate(BaseModel):
+    name: str
+    slug: str
+
+
+class InviteOut(BaseModel):
+    id: int
+    token: str
+    company_id: int
+    company_name: str
+    email: str | None
+    note: str | None
+    expires_at: datetime
+    used_at: datetime | None
+    used_by_name: str | None
+    created_at: datetime | None
+
+
+class InviteCreate(BaseModel):
+    company_id: int
+    email: str | None = None
+    note: str | None = None
+    days: int = 7
+
+
+# ─── User schemas ─────────────────────────────────────────────────────────────
 
 class UserAdminOut(BaseModel):
     id: int
@@ -29,6 +72,8 @@ class UserAdminOut(BaseModel):
     name: str | None
     is_admin: bool
     is_active: bool
+    company_id: int | None
+    company_name: str | None
     created_at: datetime | None
     presentations_count: int = 0
 
@@ -60,10 +105,100 @@ def bootstrap_admin(
     return user
 
 
+# ─── Companies ────────────────────────────────────────────────────────────────
+
+@router.get("/companies", response_model=list[CompanyOut])
+def list_companies(db: Session = Depends(get_db), _: User = Depends(get_admin_user)):
+    companies = db.query(Company).order_by(Company.id).all()
+    result = []
+    for c in companies:
+        count = db.query(User).filter(User.company_id == c.id).count()
+        result.append(CompanyOut(
+            id=c.id, name=c.name, slug=c.slug, is_active=c.is_active,
+            user_count=count, created_at=c.created_at,
+        ))
+    return result
+
+
+@router.post("/companies", response_model=CompanyOut, status_code=201)
+def create_company(body: CompanyCreate, db: Session = Depends(get_db), _: User = Depends(get_admin_user)):
+    if db.query(Company).filter(Company.slug == body.slug).first():
+        raise HTTPException(409, "Компания с таким slug уже существует")
+    company = Company(name=body.name, slug=body.slug)
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    return CompanyOut(id=company.id, name=company.name, slug=company.slug,
+                      is_active=company.is_active, user_count=0, created_at=company.created_at)
+
+
+# ─── Invites ──────────────────────────────────────────────────────────────────
+
+@router.get("/invites", response_model=list[InviteOut])
+def list_invites(
+    company_id: int | None = None,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_admin_user),
+):
+    q = db.query(InviteToken)
+    if current.is_super_admin:
+        if company_id:
+            q = q.filter(InviteToken.company_id == company_id)
+    else:
+        q = q.filter(InviteToken.company_id == current.company_id)
+    invites = q.order_by(InviteToken.created_at.desc()).all()
+    return [_invite_out(i) for i in invites]
+
+
+@router.post("/invites", response_model=InviteOut, status_code=201)
+def create_invite(body: InviteCreate, db: Session = Depends(get_db), current: User = Depends(get_admin_user)):
+    company_id = body.company_id if current.is_super_admin else current.company_id
+    if not db.query(Company).get(company_id):
+        raise HTTPException(404, "Компания не найдена")
+    invite = InviteToken.generate(
+        company_id=company_id,
+        created_by_id=current.id,
+        days=body.days,
+        email=body.email,
+        note=body.note,
+    )
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+    return _invite_out(invite)
+
+
+@router.delete("/invites/{invite_id}", status_code=204)
+def delete_invite(invite_id: int, db: Session = Depends(get_db), current: User = Depends(get_admin_user)):
+    invite = db.query(InviteToken).get(invite_id)
+    if not invite:
+        raise HTTPException(404, "Приглашение не найдено")
+    if not current.is_super_admin and invite.company_id != current.company_id:
+        raise HTTPException(403, "Нет доступа")
+    db.delete(invite)
+    db.commit()
+
+
+def _invite_out(i: InviteToken) -> InviteOut:
+    return InviteOut(
+        id=i.id,
+        token=i.token,
+        company_id=i.company_id,
+        company_name=i.company.name if i.company else "",
+        email=i.email,
+        note=i.note,
+        expires_at=i.expires_at,
+        used_at=i.used_at,
+        used_by_name=i.used_by.name or i.used_by.email if i.used_by else None,
+        created_at=i.created_at,
+    )
+
+
 @router.get("/users", response_model=list[UserAdminOut])
 def list_users(
+    company_id: int | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(get_admin_user),
+    current: User = Depends(get_admin_user),
 ):
     from models.assembly import AssembledPresentation
     from sqlalchemy import func
@@ -74,15 +209,20 @@ def list_users(
         .group_by(AssembledPresentation.owner_id)
         .all()
     )
-    users = db.query(User).order_by(User.id).all()
+    q = db.query(User)
+    if current.is_super_admin:
+        if company_id:
+            q = q.filter(User.company_id == company_id)
+    else:
+        q = q.filter(User.company_id == current.company_id)
+    users = q.order_by(User.id).all()
     result = []
     for u in users:
         result.append(UserAdminOut(
-            id=u.id,
-            email=u.email,
-            name=u.name,
-            is_admin=bool(u.is_admin),
-            is_active=bool(u.is_active),
+            id=u.id, email=u.email, name=u.name,
+            is_admin=bool(u.is_admin), is_active=bool(u.is_active),
+            company_id=u.company_id,
+            company_name=u.company.name if u.company else None,
             created_at=u.created_at,
             presentations_count=counts.get(u.id, 0),
         ))
@@ -122,6 +262,8 @@ def patch_user(
     return UserAdminOut(
         id=target.id, email=target.email, name=target.name,
         is_admin=bool(target.is_admin), is_active=bool(target.is_active),
+        company_id=target.company_id,
+        company_name=target.company.name if target.company else None,
         created_at=target.created_at, presentations_count=pcount,
     )
 
@@ -144,47 +286,71 @@ def reset_password(
 
 @router.get("/stats")
 def get_stats(
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(get_admin_user),
+    current: User = Depends(get_admin_user),
+    company_id: int | None = None,
 ):
     from models.assembly import AssembledPresentation
     from models.stats import GenerationLog
     from services.template_library import load_catalog
     from sqlalchemy import func
 
+    # Determine company scope
+    scope_company_id = company_id
+    if not current.is_super_admin:
+        scope_company_id = current.company_id
+    elif not scope_company_id:
+        header = request.headers.get("X-Active-Company")
+        scope_company_id = int(header) if header else None
+
     now = datetime.now(timezone.utc)
     week_ago = now - timedelta(days=7)
 
+    def _user_ids_in_scope() -> list[int]:
+        q = db.query(User.id)
+        if scope_company_id:
+            q = q.filter(User.company_id == scope_company_id)
+        return [r[0] for r in q.all()]
+
+    user_ids = _user_ids_in_scope()
+
     # ── Users ──────────────────────────────────────────────────────────────────
-    total_users = db.query(func.count(User.id)).scalar() or 0
-    new_users_7d = db.query(func.count(User.id)).filter(User.created_at >= week_ago).scalar() or 0
+    uq = db.query(User)
+    if scope_company_id:
+        uq = uq.filter(User.company_id == scope_company_id)
+    total_users = uq.count()
+    new_users_7d = uq.filter(User.created_at >= week_ago).count()
 
     # Returning users: have 2+ presentations
+    ap_q = db.query(AssembledPresentation).filter(AssembledPresentation.owner_id.isnot(None))
+    if user_ids:
+        ap_q = ap_q.filter(AssembledPresentation.owner_id.in_(user_ids))
+    elif scope_company_id and not user_ids:
+        ap_q = ap_q.filter(False)  # no users in scope
     returning_users = (
         db.query(func.count())
         .select_from(
-            db.query(AssembledPresentation.owner_id)
-            .filter(AssembledPresentation.owner_id.isnot(None))
-            .group_by(AssembledPresentation.owner_id)
+            ap_q.group_by(AssembledPresentation.owner_id)
             .having(func.count(AssembledPresentation.id) >= 2)
             .subquery()
         )
         .scalar() or 0
     )
     users_with_any = (
-        db.query(func.count(func.distinct(AssembledPresentation.owner_id)))
-        .filter(AssembledPresentation.owner_id.isnot(None))
+        ap_q.with_entities(func.count(func.distinct(AssembledPresentation.owner_id)))
         .scalar() or 0
     )
     retention_rate = round(returning_users / users_with_any * 100) if users_with_any else 0
 
     # ── Presentations ──────────────────────────────────────────────────────────
-    total_presentations = db.query(func.count(AssembledPresentation.id)).scalar() or 0
-    new_presentations_7d = (
-        db.query(func.count(AssembledPresentation.id))
-        .filter(AssembledPresentation.created_at >= week_ago)
-        .scalar() or 0
-    )
+    pres_q = db.query(AssembledPresentation)
+    if user_ids:
+        pres_q = pres_q.filter(AssembledPresentation.owner_id.in_(user_ids))
+    elif scope_company_id and not user_ids:
+        pres_q = pres_q.filter(False)
+    total_presentations = pres_q.count()
+    new_presentations_7d = pres_q.filter(AssembledPresentation.created_at >= week_ago).count()
 
     # ── Templates ─────────────────────────────────────────────────────────────
     try:
@@ -223,13 +389,14 @@ def get_stats(
     avg_slides = round(float(avg_slides), 1) if avg_slides else None
 
     # ── Top users ──────────────────────────────────────────────────────────────
+    top_q = db.query(
+        AssembledPresentation.owner_id,
+        func.count(AssembledPresentation.id).label("cnt"),
+    ).filter(AssembledPresentation.owner_id.isnot(None))
+    if user_ids:
+        top_q = top_q.filter(AssembledPresentation.owner_id.in_(user_ids))
     top_rows = (
-        db.query(
-            AssembledPresentation.owner_id,
-            func.count(AssembledPresentation.id).label("cnt"),
-        )
-        .filter(AssembledPresentation.owner_id.isnot(None))
-        .group_by(AssembledPresentation.owner_id)
+        top_q.group_by(AssembledPresentation.owner_id)
         .order_by(func.count(AssembledPresentation.id).desc())
         .limit(5)
         .all()

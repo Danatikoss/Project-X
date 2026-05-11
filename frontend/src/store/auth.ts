@@ -5,9 +5,12 @@ import type { AuthUser } from "../types";
 interface AuthState {
 	user: AuthUser | null;
 	accessToken: string | null;
+	activeCompanyId: number | null; // for super-admin: which company they're acting as
 	setAuth: (user: AuthUser, accessToken: string) => void;
 	clearAuth: () => void;
 	isAuthenticated: () => boolean;
+	setActiveCompany: (companyId: number | null) => void;
+	isSuperAdmin: () => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -15,17 +18,28 @@ export const useAuthStore = create<AuthState>()(
 		(set, get) => ({
 			user: null,
 			accessToken: null,
+			activeCompanyId: null,
 
-			setAuth: (user, accessToken) => set({ user, accessToken }),
+			setAuth: (user, accessToken) => {
+				// For regular users/company-admins, active company = their own
+				const activeCompanyId = user.company_id ?? get().activeCompanyId;
+				set({ user, accessToken, activeCompanyId });
+			},
 
-			clearAuth: () => set({ user: null, accessToken: null }),
+			clearAuth: () => set({ user: null, accessToken: null, activeCompanyId: null }),
 
 			isAuthenticated: () => !!get().accessToken,
+
+			setActiveCompany: (companyId) => set({ activeCompanyId: companyId }),
+
+			isSuperAdmin: () => {
+				const u = get().user;
+				return !!u?.is_admin && u.company_id === null;
+			},
 		}),
 		{
 			name: "slidex-auth",
-			// Only persist user profile — access token stays in memory only
-			partialize: (state) => ({ user: state.user }),
+			partialize: (state) => ({ user: state.user, activeCompanyId: state.activeCompanyId }),
 		}
 	)
 );

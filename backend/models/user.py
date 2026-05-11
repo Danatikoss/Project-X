@@ -14,12 +14,18 @@ class User(Base):
     name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    company = relationship("Company", back_populates="users")
     sources = relationship("SourcePresentation", back_populates="owner")
     assemblies = relationship("AssembledPresentation", back_populates="owner")
     projects = relationship("Project", back_populates="owner")
     profile = relationship("UserProfile", back_populates="user", uselist=False)
+
+    @property
+    def is_super_admin(self) -> bool:
+        return bool(self.is_admin) and self.company_id is None
 
 
 class UserProfile(Base):

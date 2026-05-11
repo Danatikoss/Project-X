@@ -1,5 +1,5 @@
 """FastAPI dependencies: auth, current user."""
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -39,6 +39,41 @@ def get_admin_user(user: User = Depends(get_current_user)) -> User:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Требуются права администратора")
     return user
+
+
+def get_company_id(
+    request: Request,
+    user: User = Depends(get_current_user),
+) -> int:
+    """Returns company_id for content scoping.
+    Regular users/company-admins: their own company_id.
+    Super-admin: must send X-Active-Company header.
+    """
+    if user.company_id is not None:
+        return user.company_id
+    header = request.headers.get("X-Active-Company")
+    if not header:
+        raise HTTPException(status_code=400, detail="Выберите компанию для работы")
+    try:
+        return int(header)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректный ID компании")
+
+
+def get_company_id_optional(
+    request: Request,
+    user: User = Depends(get_admin_user),
+) -> int | None:
+    """For admin-only endpoints: returns company_id or None (super-admin sees all when unset)."""
+    if user.company_id is not None:
+        return user.company_id
+    header = request.headers.get("X-Active-Company")
+    if not header:
+        return None
+    try:
+        return int(header)
+    except ValueError:
+        return None
 
 
 def get_optional_user(

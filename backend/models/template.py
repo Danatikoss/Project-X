@@ -8,6 +8,7 @@ class AssemblyTemplate(Base):
     __tablename__ = "assembly_templates"
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     name = Column(String(100), nullable=False)
     description = Column(String(200), default="")
     slide_ids_json = Column(Text, default="[]")   # JSON array of SlideLibraryEntry IDs (ordered)

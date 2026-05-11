@@ -2,6 +2,9 @@ import axios from "axios";
 import { useAuthStore } from "../store/auth";
 import type {
 	AdminUser,
+	Company,
+	InviteToken,
+	InviteInfo,
 	AssembleRequest,
 	Assembly,
 	AssemblyListItem,
@@ -30,11 +33,14 @@ const api = axios.create({
 	withCredentials: true, // send httpOnly refresh cookie on every request
 });
 
-// Добавляем токен в каждый запрос
+// Добавляем токен и активную компанию в каждый запрос
 api.interceptors.request.use((config) => {
-	const token = useAuthStore.getState().accessToken;
-	if (token) {
-		config.headers.Authorization = `Bearer ${token}`;
+	const { accessToken, activeCompanyId, isSuperAdmin } = useAuthStore.getState();
+	if (accessToken) {
+		config.headers.Authorization = `Bearer ${accessToken}`;
+	}
+	if (isSuperAdmin() && activeCompanyId) {
+		config.headers["X-Active-Company"] = String(activeCompanyId);
 	}
 	return config;
 });
@@ -97,8 +103,13 @@ api.interceptors.response.use(
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export const authApi = {
-	register: async (email: string, password: string, name?: string): Promise<AuthResponse> => {
-		const res = await api.post<AuthResponse>("/auth/register", { email, password, name });
+	register: async (email: string, password: string, name: string, invite_token: string): Promise<AuthResponse> => {
+		const res = await api.post<AuthResponse>("/auth/register", { email, password, name, invite_token });
+		return res.data;
+	},
+
+	getInviteInfo: async (token: string): Promise<InviteInfo> => {
+		const res = await api.get<InviteInfo>("/auth/invite-info", { params: { token } });
 		return res.data;
 	},
 
@@ -410,11 +421,6 @@ export const adminApi = {
 		return res.data;
 	},
 
-	listUsers: async (): Promise<AdminUser[]> => {
-		const res = await api.get<AdminUser[]>("/admin/users");
-		return res.data;
-	},
-
 	patchUser: async (userId: number, data: { is_admin?: boolean; is_active?: boolean }): Promise<AdminUser> => {
 		const res = await api.patch<AdminUser>(`/admin/users/${userId}`, data);
 		return res.data;
@@ -425,9 +431,43 @@ export const adminApi = {
 		return res.data;
 	},
 
-	getStats: async (): Promise<AdminStats> => {
-		const res = await api.get<AdminStats>("/admin/stats");
+	getStats: async (companyId?: number | null): Promise<AdminStats> => {
+		const params = companyId ? { company_id: companyId } : {};
+		const res = await api.get<AdminStats>("/admin/stats", { params });
 		return res.data;
+	},
+
+	listUsers: async (companyId?: number | null): Promise<AdminUser[]> => {
+		const params = companyId ? { company_id: companyId } : {};
+		const res = await api.get<AdminUser[]>("/admin/users", { params });
+		return res.data;
+	},
+
+	// Companies
+	listCompanies: async (): Promise<Company[]> => {
+		const res = await api.get<Company[]>("/admin/companies");
+		return res.data;
+	},
+
+	createCompany: async (data: { name: string; slug: string }): Promise<Company> => {
+		const res = await api.post<Company>("/admin/companies", data);
+		return res.data;
+	},
+
+	// Invites
+	listInvites: async (companyId?: number | null): Promise<InviteToken[]> => {
+		const params = companyId ? { company_id: companyId } : {};
+		const res = await api.get<InviteToken[]>("/admin/invites", { params });
+		return res.data;
+	},
+
+	createInvite: async (data: { company_id: number; email?: string; note?: string; days?: number }): Promise<InviteToken> => {
+		const res = await api.post<InviteToken>("/admin/invites", data);
+		return res.data;
+	},
+
+	deleteInvite: async (inviteId: number): Promise<void> => {
+		await api.delete(`/admin/invites/${inviteId}`);
 	},
 };
 
