@@ -8,6 +8,7 @@ import {
 	ExternalLink,
 	FileDown,
 	FileText,
+	HelpCircle,
 	ImageIcon,
 	Layers,
 	LayoutTemplate,
@@ -330,6 +331,7 @@ function InputStep({
 	const [generating, setGenerating] = useState(false);
 	const [hasMedia, setHasMedia] = useState(false);
 	const [slowHint, setSlowHint] = useState(false);
+	const [showTips, setShowTips] = useState(false);
 	const fileRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
@@ -471,6 +473,80 @@ function InputStep({
 					</button>
 				)}
 			</div>
+
+			{/* Tips toggle */}
+			<button
+				type="button"
+				onClick={() => setShowTips((v) => !v)}
+				className="flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-700 transition-colors self-start"
+			>
+				<HelpCircle className="w-3.5 h-3.5" />
+				Как писать эффективные запросы?
+			</button>
+
+			{showTips && (
+				<div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-xs text-gray-700 space-y-3">
+					<p className="font-semibold text-gray-800 text-sm">Как писать запросы для лучшего результата</p>
+					<div className="space-y-2">
+						<p className="font-medium text-gray-500 uppercase tracking-wide text-[10px]">Что включить в запрос</p>
+						<ul className="space-y-1 list-disc list-inside text-gray-600">
+							<li><span className="font-medium">Тема</span> — о чём презентация</li>
+							<li><span className="font-medium">Цель</span> — убедить, отчитаться, представить, обучить</li>
+							<li><span className="font-medium">Аудитория</span> — руководство, инвесторы, партнёры, сотрудники</li>
+							<li><span className="font-medium">Ключевые цифры</span> — AI вставит их в слайды вместо заглушек</li>
+							{mode === "full" && <li><span className="font-medium">Объём</span> — если важно ("5 слайдов", "не более 7")</li>}
+						</ul>
+					</div>
+					<div className="space-y-1.5">
+						<p className="font-medium text-gray-500 uppercase tracking-wide text-[10px]">Примеры: плохой → хороший</p>
+						<div className="space-y-1.5">
+							{(mode === "full" ? [
+								{
+									bad: "о компании",
+									good: "Корпоративная презентация для новых партнёров — история, продукты, рынки и ключевые показатели 2024",
+								},
+								{
+									bad: "итоги года",
+									good: "Итоги 2024 года для заседания правления: выручка 2.3 млрд, рост +34%, топ-3 продукта, планы на 2025",
+								},
+								{
+									bad: "стратегия",
+									good: "Стратегия цифровой трансформации на 2025–2027 для инвесторов: проблема, решение, дорожная карта, бюджет",
+								},
+							] : [
+								{
+									bad: "метрики",
+									good: "Слайд с ключевыми KPI за Q1 2024: 1.2 млн пользователей, NPS 72, конверсия 4.8%",
+								},
+								{
+									bad: "команда",
+									good: "Слайд о команде проекта: 3 направления, 12 человек, опыт в fintech и govtech",
+								},
+								{
+									bad: "проблема",
+									good: "Слайд-проблема: 70% госуслуг до сих пор требуют личного визита — потеря 18 часов/год на гражданина",
+								},
+							]).map(({ bad, good }) => (
+								<div key={bad} className="flex gap-2 items-start">
+									<span className="shrink-0 text-red-400 mt-0.5">✗</span>
+									<span className="text-gray-400 line-through">{bad}</span>
+									<span className="text-gray-300 shrink-0">→</span>
+									<button
+										type="button"
+										onClick={() => { setPrompt(good); setShowTips(false); }}
+										className="text-left text-indigo-700 hover:text-indigo-500 hover:underline"
+									>
+										{good}
+									</button>
+								</div>
+							))}
+						</div>
+					</div>
+					<p className="pt-1 border-t border-indigo-100 text-[11px] text-gray-400">
+						Чем конкретнее запрос — тем точнее AI подберёт шаблоны и заполнит слайды реальными данными.
+					</p>
+				</div>
+			)}
 
 			{/* Media checkbox — only for single slide mode */}
 			{mode === "1slide" && (
