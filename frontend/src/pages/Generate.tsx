@@ -1006,15 +1006,31 @@ function UploadTemplateModal({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Generate() {
+	const [pageTab, setPageTab] = useState<"generate" | "assemble">("generate");
 	const [mode, setMode] = useState<GenerationMode>("full");
 	const [plan, setPlan] = useState<PresentationPlan | null>(null);
 	const [showUpload, setShowUpload] = useState(false);
 	const [selectedTheme, setSelectedTheme] = useState("default");
 	const [selectedTitleId, setSelectedTitleId] = useState<string | null>(null);
+
+	// Assembly from library
+	const [assemblyPrompt, setAssemblyPrompt] = useState("");
+	const [showAssemblyTips, setShowAssemblyTips] = useState(false);
+	const assemblyPromptRef = useRef<HTMLTextAreaElement>(null);
+
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const user = useAuthStore((s) => s.user);
 	const isAdmin = user?.is_admin ?? false;
+
+	const assemblyMutation = useMutation({
+		mutationFn: () => assemblyApi.create({ prompt: assemblyPrompt.trim(), max_slides: 15 }),
+		onSuccess: (assembly) => {
+			queryClient.invalidateQueries({ queryKey: ["assemblies"] });
+			navigate(`/assemble/${assembly.id}`);
+		},
+		onError: () => toast.error("Не удалось собрать презентацию"),
+	});
 
 	const { data: templates = [], isLoading } = useQuery({
 		queryKey: ["slide-templates"],
@@ -1140,7 +1156,7 @@ export default function Generate() {
 	};
 
 	return (
-		<div className="max-w-3xl mx-auto px-4 py-8 space-y-10">
+		<div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
 			{/* Save slides modal — shown after generation before opening editor */}
 			{pendingSaveAssemblyId !== null && (
 				<SaveSlidesModal
@@ -1148,6 +1164,181 @@ export default function Generate() {
 					onConfirm={handleSaveConfirm}
 					onSkip={handleSaveSkip}
 				/>
+			)}
+
+			{/* ── Page tab switcher ─────────────────────────────────────────────── */}
+			<div className="grid grid-cols-2 gap-3">
+				<button
+					onClick={() => setPageTab("generate")}
+					className={cn(
+						"relative flex flex-col items-start gap-1 p-4 rounded-2xl border-2 text-left transition-all",
+						pageTab === "generate"
+							? "border-indigo-500 bg-indigo-50/60 shadow-sm"
+							: "border-gray-200 bg-white hover:border-indigo-200 hover:bg-gray-50"
+					)}
+				>
+					<div className={cn(
+						"w-8 h-8 rounded-xl flex items-center justify-center mb-1",
+						pageTab === "generate" ? "bg-indigo-600" : "bg-gray-100"
+					)}>
+						<Sparkles className={cn("w-4 h-4", pageTab === "generate" ? "text-white" : "text-gray-400")} />
+					</div>
+					<span className={cn("text-sm font-bold", pageTab === "generate" ? "text-indigo-700" : "text-gray-700")}>
+						Создать с нуля
+					</span>
+					<span className="text-xs text-gray-400 leading-snug">
+						AI генерирует новые слайды по вашему запросу
+					</span>
+					{pageTab === "generate" && (
+						<div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-indigo-500" />
+					)}
+				</button>
+
+				<button
+					onClick={() => setPageTab("assemble")}
+					className={cn(
+						"relative flex flex-col items-start gap-1 p-4 rounded-2xl border-2 text-left transition-all",
+						pageTab === "assemble"
+							? "border-brand-500 bg-brand-50/60 shadow-sm"
+							: "border-gray-200 bg-white hover:border-brand-200 hover:bg-gray-50"
+					)}
+				>
+					<div className={cn(
+						"w-8 h-8 rounded-xl flex items-center justify-center mb-1",
+						pageTab === "assemble" ? "bg-brand-600" : "bg-gray-100"
+					)}>
+						<Layers className={cn("w-4 h-4", pageTab === "assemble" ? "text-white" : "text-gray-400")} />
+					</div>
+					<span className={cn("text-sm font-bold", pageTab === "assemble" ? "text-brand-700" : "text-gray-700")}>
+						Собрать из библиотеки
+					</span>
+					<span className="text-xs text-gray-400 leading-snug">
+						AI подбирает готовые слайды из вашего архива
+					</span>
+					{pageTab === "assemble" && (
+						<div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-brand-500" />
+					)}
+				</button>
+			</div>
+
+			{/* ── Assemble from library tab ─────────────────────────────────────── */}
+			{pageTab === "assemble" && (
+				<div className="space-y-4">
+					<div className="flex items-center gap-2.5">
+						<div className="w-8 h-8 rounded-xl bg-gradient-brand flex items-center justify-center shadow-sm">
+							<Layers className="w-4 h-4 text-white" />
+						</div>
+						<div>
+							<h1 className="text-base font-bold text-gray-900">Сборка из библиотеки</h1>
+							<p className="text-xs text-gray-400">AI выберет подходящие слайды из вашего архива</p>
+						</div>
+					</div>
+
+					<div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-3">
+						{/* Example chips */}
+						<div className="flex flex-wrap gap-1.5">
+							{[
+								"Презентация о цифровизации госуслуг для руководства",
+								"Стратегия развития ИИ в Казахстане на 2025–2027",
+								"Итоги года: достижения и планы",
+								"Введение в проект для новых сотрудников",
+							].map((ex) => (
+								<button
+									key={ex}
+									type="button"
+									onClick={() => {
+										setAssemblyPrompt(ex);
+										assemblyPromptRef.current?.focus();
+									}}
+									className="text-[11px] px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50 transition-all"
+								>
+									{ex}
+								</button>
+							))}
+						</div>
+
+						<textarea
+							ref={assemblyPromptRef}
+							value={assemblyPrompt}
+							onChange={(e) => setAssemblyPrompt(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && assemblyPrompt.trim()) {
+									assemblyMutation.mutate();
+								}
+							}}
+							placeholder="Опишите тему, цель и аудиторию презентации..."
+							rows={3}
+							className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 focus:bg-white transition-all"
+						/>
+
+						<div className="flex items-center justify-between">
+							<button
+								type="button"
+								onClick={() => setShowAssemblyTips((v) => !v)}
+								className="text-[11px] text-brand-500 hover:text-brand-700 font-medium underline underline-offset-2"
+							>
+								Как писать эффективные запросы?
+							</button>
+							<div className="flex items-center gap-3">
+								<p className="text-[11px] text-gray-400">⌘ + Enter</p>
+								<button
+									type="button"
+									onClick={() => assemblyMutation.mutate()}
+									disabled={!assemblyPrompt.trim() || assemblyMutation.isPending}
+									className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-brand text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+								>
+									{assemblyMutation.isPending ? (
+										<div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+									) : (
+										<Layers className="w-3.5 h-3.5" />
+									)}
+									{assemblyMutation.isPending ? "Собираю..." : "Собрать"}
+								</button>
+							</div>
+						</div>
+
+						{showAssemblyTips && (
+							<div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4 text-xs text-gray-700 space-y-3">
+								<p className="font-semibold text-gray-800 text-sm">Как писать запросы для лучшего результата</p>
+								<div className="space-y-2">
+									<p className="font-medium text-gray-500 uppercase tracking-wide text-[10px]">Что включить в запрос</p>
+									<ul className="space-y-1 list-disc list-inside text-gray-600">
+										<li><span className="font-medium">Тема</span> — о чём презентация</li>
+										<li><span className="font-medium">Цель</span> — убедить, проинформировать, отчитаться</li>
+										<li><span className="font-medium">Аудитория</span> — руководство, партнёры, новые сотрудники</li>
+										<li><span className="font-medium">Объём</span> — если нужен конкретный (5 слайдов, 10 слайдов)</li>
+									</ul>
+								</div>
+								<div className="space-y-1.5">
+									<p className="font-medium text-gray-500 uppercase tracking-wide text-[10px]">Примеры: плохой → хороший</p>
+									<div className="space-y-1.5">
+										{[
+											{ bad: "итоги", good: "Итоги работы министерства за 2024 год для коллегии — достижения, показатели и планы на 2025" },
+											{ bad: "цифровизация", good: "Презентация о цифровизации госуслуг для руководства акимата — что сделано и что планируется" },
+											{ bad: "проект", good: "Введение в проект ЦОН 2.0 для новых сотрудников — цели, команда, ключевые этапы" },
+										].map(({ bad, good }) => (
+											<div key={bad} className="flex gap-2 items-start">
+												<span className="shrink-0 text-red-400 mt-0.5">✗</span>
+												<span className="text-gray-400 line-through">{bad}</span>
+												<span className="text-gray-300 shrink-0">→</span>
+												<button
+													type="button"
+													onClick={() => { setAssemblyPrompt(good); setShowAssemblyTips(false); assemblyPromptRef.current?.focus(); }}
+													className="text-left text-emerald-700 hover:text-brand-600 hover:underline"
+												>
+													{good}
+												</button>
+											</div>
+										))}
+									</div>
+								</div>
+								<p className="pt-1 border-t border-brand-100 text-[11px] text-gray-400">
+									Чем точнее запрос — тем лучше AI подберёт слайды из вашей библиотеки.
+								</p>
+							</div>
+						)}
+					</div>
+				</div>
 			)}
 
 			{showCelebration && plan && (
@@ -1162,14 +1353,15 @@ export default function Generate() {
 				/>
 			)}
 
-			{/* ── Generate section ── */}
-			<div>
+			{/* ── Generate section + Template library ── */}
+			{pageTab === "generate" && <>
+				<div>
 				<div className="flex items-center gap-2.5 mb-5">
 					<div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm">
 						<Sparkles className="w-4 h-4 text-white" />
 					</div>
 					<div>
-						<h1 className="text-base font-bold text-gray-900">Генерация презентации</h1>
+						<h1 className="text-base font-bold text-gray-900">Генерация с нуля</h1>
 						<p className="text-xs text-gray-400">AI подберёт шаблоны и заполнит слайды</p>
 					</div>
 				</div>
@@ -1351,6 +1543,7 @@ export default function Generate() {
 					</div>
 				</div>
 			)}
+			</>}
 		</div>
 	);
 }

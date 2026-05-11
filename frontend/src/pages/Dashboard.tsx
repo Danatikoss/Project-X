@@ -341,16 +341,12 @@ export default function Dashboard() {
 	const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
 	const [previewTemplate, setPreviewTemplate] = useState<UserTemplateCard | null>(null);
 	const [templateSearch, setTemplateSearch] = useState("");
-	const [customOpen, setCustomOpen] = useState(false);
-	const [customPrompt, setCustomPrompt] = useState("");
-	const [showPromptTips, setShowPromptTips] = useState(false);
 	const [manualTitle, setManualTitle] = useState("");
 const [editingId, setEditingId] = useState<number | null>(null);
 	const [editTitle, setEditTitle] = useState("");
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 	const editInputRef = useRef<HTMLInputElement>(null);
 	const cancelRenameRef = useRef(false);
-	const promptRef = useRef<HTMLTextAreaElement>(null);
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 
@@ -382,16 +378,6 @@ const [editingId, setEditingId] = useState<number | null>(null);
 			navigate(`/assemble/${assembly.id}`);
 		},
 		onError: () => toast.error("Не удалось создать презентацию из шаблона"),
-	});
-
-	// Custom prompt assembly
-	const customMutation = useMutation({
-		mutationFn: () => assemblyApi.create({ prompt: customPrompt, max_slides: 15 }),
-		onSuccess: (assembly) => {
-			queryClient.invalidateQueries({ queryKey: ["assemblies"] });
-			navigate(`/assemble/${assembly.id}`);
-		},
-		onError: () => toast.error("Не удалось собрать презентацию"),
 	});
 
 	const blankMutation = useMutation({
@@ -476,10 +462,6 @@ const [editingId, setEditingId] = useState<number | null>(null);
 		if (editingId !== null) editInputRef.current?.focus();
 	}, [editingId]);
 
-	useEffect(() => {
-		if (customOpen) promptRef.current?.focus();
-	}, [customOpen]);
-
 	const handleTemplateClick = (t: UserTemplateCard) => {
 		setPreviewTemplate(t);
 	};
@@ -489,12 +471,6 @@ const [editingId, setEditingId] = useState<number | null>(null);
 		createFromTemplateMutation.mutate(t.dbId, {
 			onSuccess: () => setPreviewTemplate(null),
 		});
-	};
-
-	const handleCustomSubmit = (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!customPrompt.trim()) return;
-		customMutation.mutate();
 	};
 
 	const isBuilding = createFromTemplateMutation.isPending;
@@ -606,145 +582,6 @@ const [editingId, setEditingId] = useState<number | null>(null);
 						<Plus className="w-8 h-8" />
 						<span className="text-sm font-medium">Добавить шаблон</span>
 					</button>
-				</div>
-
-				{/* ── Secondary: custom prompt ─────────────────────────────────────────── */}
-				<div className="mt-4 rounded-2xl border border-slate-200 bg-white overflow-hidden">
-					<button
-						onClick={() => setCustomOpen((v) => !v)}
-						className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-					>
-						<span className="flex items-center gap-2">
-							<Sparkles className="w-4 h-4 text-brand-500" />
-							Свой запрос
-						</span>
-						<ChevronDown
-							className={cn(
-								"w-4 h-4 text-slate-400 transition-transform duration-200",
-								customOpen && "rotate-180"
-							)}
-						/>
-					</button>
-
-					{customOpen && (
-						<form
-							onSubmit={handleCustomSubmit}
-							className="px-4 pb-4 border-t border-slate-100 pt-3 animate-fade-in space-y-3"
-						>
-							{/* Example prompt chips */}
-							<div className="flex flex-wrap gap-1.5">
-								{[
-									"Презентация о цифровизации госуслуг для руководства",
-									"Стратегия развития ИИ в Казахстане на 2025–2027",
-									"Итоги года: достижения и планы",
-									"Введение в проект для новых сотрудников",
-								].map((ex) => (
-									<button
-										key={ex}
-										type="button"
-										onClick={() => {
-											setCustomPrompt(ex);
-											promptRef.current?.focus();
-										}}
-										className="text-[11px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50 transition-all"
-									>
-										{ex}
-									</button>
-								))}
-							</div>
-
-							<textarea
-								ref={promptRef}
-								value={customPrompt}
-								onChange={(e) => setCustomPrompt(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleCustomSubmit(e);
-								}}
-								placeholder="Опишите тему, цель и аудиторию презентации..."
-								rows={3}
-								className={cn(
-									"w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3",
-									"text-sm text-slate-800 placeholder-slate-400 resize-none",
-									"focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 focus:bg-white",
-									"transition-all"
-								)}
-							/>
-
-							<div className="flex items-center justify-between">
-								<button
-									type="button"
-									onClick={() => setShowPromptTips((v) => !v)}
-									className="text-[11px] text-brand-500 hover:text-brand-700 font-medium underline underline-offset-2"
-								>
-									Как писать эффективные запросы?
-								</button>
-								<div className="flex items-center gap-3">
-									<p className="text-[11px] text-slate-400">⌘ + Enter</p>
-									<button
-										type="submit"
-										disabled={!customPrompt.trim() || customMutation.isPending}
-										className={cn(
-											"flex items-center gap-1.5 px-4 py-2 rounded-xl",
-											"bg-gradient-brand text-white text-xs font-semibold transition-all",
-											"hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
-										)}
-									>
-										{customMutation.isPending ? (
-											<Spinner size="sm" className="border-white border-t-transparent" />
-										) : (
-											<Sparkles className="w-3.5 h-3.5" />
-										)}
-										Собрать
-									</button>
-								</div>
-							</div>
-
-							{/* Prompt tips panel */}
-							{showPromptTips && (
-								<div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4 text-xs text-slate-700 space-y-3 animate-fade-in">
-									<p className="font-semibold text-slate-800 text-sm">Как писать запросы для лучшего результата</p>
-
-									<div className="space-y-2">
-										<p className="font-medium text-slate-600 uppercase tracking-wide text-[10px]">Что включить в запрос</p>
-										<ul className="space-y-1 list-disc list-inside text-slate-600">
-											<li><span className="font-medium">Тема</span> — о чём презентация</li>
-											<li><span className="font-medium">Цель</span> — убедить, проинформировать, отчитаться</li>
-											<li><span className="font-medium">Аудитория</span> — руководство, партнёры, новые сотрудники</li>
-											<li><span className="font-medium">Объём</span> — если нужен конкретный (5 слайдов, 10 слайдов)</li>
-										</ul>
-									</div>
-
-									<div className="space-y-1.5">
-										<p className="font-medium text-slate-600 uppercase tracking-wide text-[10px]">Примеры хороших запросов</p>
-										<div className="space-y-1">
-											{[
-												{ bad: "итоги", good: "Итоги работы министерства за 2024 год для коллегии — достижения, показатели и планы на 2025" },
-												{ bad: "цифровизация", good: "Презентация о цифровизации госуслуг для руководства акимата — что сделано и что планируется" },
-												{ bad: "проект", good: "Введение в проект ЦОН 2.0 для новых сотрудников — цели, команда, ключевые этапы" },
-											].map(({ bad, good }) => (
-												<div key={bad} className="flex gap-2 items-start">
-													<span className="shrink-0 text-red-400 mt-0.5">✗</span>
-													<span className="text-slate-400 line-through">{bad}</span>
-													<span className="text-slate-300 shrink-0">→</span>
-													<button
-														type="button"
-														onClick={() => { setCustomPrompt(good); setShowPromptTips(false); promptRef.current?.focus(); }}
-														className="text-left text-emerald-700 hover:text-brand-600 hover:underline"
-													>
-														{good}
-													</button>
-												</div>
-											))}
-										</div>
-									</div>
-
-									<div className="pt-1 border-t border-brand-100 text-[11px] text-slate-400">
-										Чем точнее запрос — тем лучше AI подберёт слайды из вашей библиотеки.
-									</div>
-								</div>
-							)}
-						</form>
-					)}
 				</div>
 
 				{/* ── Собрать вручную ──────────────────────────────────────────────────── */}
