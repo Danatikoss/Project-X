@@ -505,8 +505,10 @@ export default function TemplateEditor() {
 					o.x = Math.max(0, Math.min(100 - o.w, startOverlay.x + dx));
 					o.y = Math.max(0, Math.min(100 - o.h, startOverlay.y + dy));
 				} else {
-					o.w = Math.max(10, Math.min(100 - startOverlay.x, startOverlay.w + dx));
-					o.h = Math.max(5, Math.min(100 - startOverlay.y, startOverlay.h + dy));
+					const ratio = startOverlay.h / startOverlay.w;
+					const newW = Math.max(10, Math.min(100 - startOverlay.x, startOverlay.w + dx));
+					o.w = newW;
+					o.h = Math.max(5, newW * ratio);
 				}
 				list[i] = o;
 				return { ...prev, [slideId]: list };
