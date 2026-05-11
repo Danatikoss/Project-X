@@ -2,19 +2,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowDownToLine,
 	Bug,
+	Building2,
+	ChevronDown,
 	Clock,
+	Copy,
 	Eye,
 	EyeOff,
 	KeyRound,
 	LayoutTemplate,
 	Lightbulb,
+	Link2,
 	MessageCircle,
 	MessageSquare,
+	Plus,
 	RefreshCw,
 	Repeat2,
 	ShieldCheck,
 	ShieldOff,
 	Sparkles,
+	Trash2,
 	TrendingUp,
 	UserCheck,
 	UserX,
@@ -23,7 +29,8 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { adminApi, feedbackApi, templatesApi, type AdminStats } from "../api/client";
-import type { AdminUser, AssemblyTemplate } from "../types";
+import { useAuthStore } from "../store/auth";
+import type { AdminUser, AssemblyTemplate, Company, InviteToken } from "../types";
 import { cn } from "../utils/cn";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -139,13 +146,13 @@ function FunnelBar({ plans, downloads, rate }: { plans: number; downloads: numbe
 
 // ─── Users Tab ────────────────────────────────────────────────────────────────
 
-function UsersTab() {
+function UsersTab({ companyId }: { companyId?: number | null }) {
 	const queryClient = useQueryClient();
 	const [tempPasswords, setTempPasswords] = useState<Record<number, string>>({});
 
 	const { data: users, isLoading } = useQuery<AdminUser[]>({
-		queryKey: ["admin-users"],
-		queryFn: adminApi.listUsers,
+		queryKey: ["admin-users", companyId],
+		queryFn: () => adminApi.listUsers(companyId),
 	});
 
 	const patchMutation = useMutation({
@@ -172,6 +179,7 @@ function UsersTab() {
 				<thead>
 					<tr className="border-b border-gray-100 bg-gray-50">
 						<th className="text-left px-4 py-3 text-xs font-semibold text-gray-400">Пользователь</th>
+						<th className="text-center px-3 py-3 text-xs font-semibold text-gray-400">Компания</th>
 						<th className="text-center px-3 py-3 text-xs font-semibold text-gray-400">Презентаций</th>
 						<th className="text-center px-3 py-3 text-xs font-semibold text-gray-400">Роль</th>
 						<th className="text-center px-3 py-3 text-xs font-semibold text-gray-400">Статус</th>
@@ -191,6 +199,9 @@ function UsersTab() {
 										с {new Date(u.created_at).toLocaleDateString("ru-RU")}
 									</p>
 								)}
+							</td>
+							<td className="px-3 py-3 text-center">
+								<span className="text-xs text-gray-500">{u.company_name ?? "—"}</span>
 							</td>
 							<td className="px-3 py-3 text-center">
 								<span className="inline-flex items-center justify-center bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full px-2.5 py-0.5">
@@ -215,7 +226,6 @@ function UsersTab() {
 							</td>
 							<td className="px-4 py-3">
 								<div className="flex items-center justify-end gap-1">
-									{/* Reset password */}
 									<button
 										onClick={() => resetMutation.mutate(u.id)}
 										disabled={resetMutation.isPending}
@@ -224,8 +234,6 @@ function UsersTab() {
 									>
 										<KeyRound className="w-4 h-4" />
 									</button>
-
-									{/* Toggle admin */}
 									<button
 										onClick={() => patchMutation.mutate({ id: u.id, data: { is_admin: !u.is_admin } })}
 										disabled={patchMutation.isPending}
@@ -234,8 +242,6 @@ function UsersTab() {
 									>
 										{u.is_admin ? <ShieldOff className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
 									</button>
-
-									{/* Toggle active */}
 									<button
 										onClick={() => patchMutation.mutate({ id: u.id, data: { is_active: !u.is_active } })}
 										disabled={patchMutation.isPending}
@@ -245,8 +251,6 @@ function UsersTab() {
 										{u.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
 									</button>
 								</div>
-
-								{/* Temp password display */}
 								{tempPasswords[u.id] && (
 									<div className="mt-1.5 flex items-center gap-1.5 justify-end">
 										<code className="text-xs bg-amber-50 text-amber-800 px-2 py-0.5 rounded font-mono">
@@ -265,6 +269,288 @@ function UsersTab() {
 					))}
 				</tbody>
 			</table>
+		</div>
+	);
+}
+
+// ─── Companies Tab ────────────────────────────────────────────────────────────
+
+function CompaniesTab() {
+	const queryClient = useQueryClient();
+	const [newCompanyName, setNewCompanyName] = useState("");
+	const [newCompanySlug, setNewCompanySlug] = useState("");
+	const [showNewCompany, setShowNewCompany] = useState(false);
+	const [selectedCompanyForInvite, setSelectedCompanyForInvite] = useState<number | null>(null);
+	const [inviteEmail, setInviteEmail] = useState("");
+	const [inviteNote, setInviteNote] = useState("");
+	const [showInviteForm, setShowInviteForm] = useState(false);
+
+	const { data: companies = [], isLoading: companiesLoading } = useQuery<Company[]>({
+		queryKey: ["admin-companies"],
+		queryFn: adminApi.listCompanies,
+	});
+
+	const { data: invites = [], isLoading: invitesLoading } = useQuery<InviteToken[]>({
+		queryKey: ["admin-invites"],
+		queryFn: () => adminApi.listInvites(),
+	});
+
+	const createCompanyMutation = useMutation({
+		mutationFn: adminApi.createCompany,
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+			setNewCompanyName("");
+			setNewCompanySlug("");
+			setShowNewCompany(false);
+			toast.success("Компания создана");
+		},
+		onError: (err: any) => toast.error(err.response?.data?.detail ?? "Ошибка"),
+	});
+
+	const createInviteMutation = useMutation({
+		mutationFn: adminApi.createInvite,
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["admin-invites"] });
+			setInviteEmail("");
+			setInviteNote("");
+			setShowInviteForm(false);
+			toast.success("Приглашение создано");
+		},
+		onError: (err: any) => toast.error(err.response?.data?.detail ?? "Ошибка"),
+	});
+
+	const deleteInviteMutation = useMutation({
+		mutationFn: adminApi.deleteInvite,
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-invites"] }),
+		onError: () => toast.error("Не удалось удалить приглашение"),
+	});
+
+	function copyInviteLink(token: string) {
+		const url = `${window.location.origin}/register?token=${token}`;
+		navigator.clipboard.writeText(url);
+		toast.success("Ссылка скопирована");
+	}
+
+	const activeInvites = invites.filter((i) => !i.used_at && new Date(i.expires_at) > new Date());
+	const usedInvites = invites.filter((i) => i.used_at);
+
+	return (
+		<div className="space-y-6">
+			{/* Companies list */}
+			<div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+				<div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+					<p className="text-sm font-semibold text-gray-700">Компании</p>
+					<button
+						onClick={() => setShowNewCompany((v) => !v)}
+						className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 font-medium"
+					>
+						<Plus className="w-3.5 h-3.5" />
+						Добавить
+					</button>
+				</div>
+
+				{showNewCompany && (
+					<div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
+						<div className="flex gap-2">
+							<input
+								type="text"
+								placeholder="Название компании"
+								value={newCompanyName}
+								onChange={(e) => setNewCompanyName(e.target.value)}
+								className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400"
+							/>
+							<input
+								type="text"
+								placeholder="slug (латиница)"
+								value={newCompanySlug}
+								onChange={(e) => setNewCompanySlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+								className="w-32 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400"
+							/>
+							<button
+								onClick={() => createCompanyMutation.mutate({ name: newCompanyName, slug: newCompanySlug })}
+								disabled={!newCompanyName || !newCompanySlug || createCompanyMutation.isPending}
+								className="px-4 py-2 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
+							>
+								Создать
+							</button>
+						</div>
+					</div>
+				)}
+
+				{companiesLoading ? (
+					<div className="py-8 text-center text-sm text-gray-400">Загрузка…</div>
+				) : companies.length === 0 ? (
+					<div className="py-8 text-center text-sm text-gray-400">Компаний пока нет</div>
+				) : (
+					<table className="w-full text-sm">
+						<thead>
+							<tr className="bg-gray-50 border-b border-gray-100">
+								<th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-400">Название</th>
+								<th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-400">Slug</th>
+								<th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-400">Пользователей</th>
+								<th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-400">Статус</th>
+								<th className="text-right px-5 py-2.5 text-xs font-semibold text-gray-400">Приглашение</th>
+							</tr>
+						</thead>
+						<tbody>
+							{companies.map((c) => (
+								<tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/40">
+									<td className="px-5 py-3 font-medium text-gray-800">{c.name}</td>
+									<td className="px-3 py-3 font-mono text-xs text-gray-400">{c.slug}</td>
+									<td className="px-3 py-3 text-center">
+										<span className="inline-flex items-center justify-center bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full px-2.5 py-0.5">
+											{c.user_count}
+										</span>
+									</td>
+									<td className="px-3 py-3 text-center">
+										<span className={cn(
+											"text-xs px-2 py-0.5 rounded-full font-medium",
+											c.is_active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-500"
+										)}>
+											{c.is_active ? "Активна" : "Отключена"}
+										</span>
+									</td>
+									<td className="px-5 py-3 text-right">
+										<button
+											onClick={() => {
+												setSelectedCompanyForInvite(c.id);
+												setShowInviteForm(true);
+											}}
+											className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 font-medium ml-auto"
+										>
+											<Link2 className="w-3.5 h-3.5" />
+											Создать инвайт
+										</button>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				)}
+			</div>
+
+			{/* Invite creation form */}
+			{showInviteForm && selectedCompanyForInvite !== null && (
+				<div className="bg-white border border-brand-200 rounded-2xl p-5 space-y-3">
+					<div className="flex items-center justify-between">
+						<p className="text-sm font-semibold text-gray-700">
+							Новое приглашение — {companies.find((c) => c.id === selectedCompanyForInvite)?.name}
+						</p>
+						<button onClick={() => setShowInviteForm(false)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+					</div>
+					<div className="flex gap-2">
+						<input
+							type="email"
+							placeholder="Email (необязательно)"
+							value={inviteEmail}
+							onChange={(e) => setInviteEmail(e.target.value)}
+							className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400"
+						/>
+						<input
+							type="text"
+							placeholder="Заметка"
+							value={inviteNote}
+							onChange={(e) => setInviteNote(e.target.value)}
+							className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400"
+						/>
+						<button
+							onClick={() => createInviteMutation.mutate({
+								company_id: selectedCompanyForInvite,
+								email: inviteEmail || undefined,
+								note: inviteNote || undefined,
+								days: 30,
+							})}
+							disabled={createInviteMutation.isPending}
+							className="px-4 py-2 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
+						>
+							Создать
+						</button>
+					</div>
+					<p className="text-xs text-gray-400">Если указать email — ссылка будет привязана к конкретному адресу</p>
+				</div>
+			)}
+
+			{/* Active invites */}
+			<div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+				<div className="px-5 py-4 border-b border-gray-100">
+					<p className="text-sm font-semibold text-gray-700">
+						Активные приглашения
+						{activeInvites.length > 0 && (
+							<span className="ml-2 text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full font-medium">
+								{activeInvites.length}
+							</span>
+						)}
+					</p>
+				</div>
+				{invitesLoading ? (
+					<div className="py-8 text-center text-sm text-gray-400">Загрузка…</div>
+				) : activeInvites.length === 0 ? (
+					<div className="py-8 text-center text-sm text-gray-400">Нет активных приглашений</div>
+				) : (
+					<div className="divide-y divide-gray-50">
+						{activeInvites.map((inv) => (
+							<div key={inv.id} className="px-5 py-3 flex items-center gap-3">
+								<div className="flex-1 min-w-0">
+									<div className="flex items-center gap-2">
+										<span className="text-xs font-medium text-gray-700">{inv.company_name}</span>
+										{inv.email && (
+											<span className="text-xs text-gray-400">→ {inv.email}</span>
+										)}
+										{inv.note && (
+											<span className="text-xs text-gray-300 italic">{inv.note}</span>
+										)}
+									</div>
+									<p className="text-[11px] text-gray-300 mt-0.5">
+										до {new Date(inv.expires_at).toLocaleDateString("ru-RU")}
+									</p>
+								</div>
+								<button
+									onClick={() => copyInviteLink(inv.token)}
+									title="Скопировать ссылку"
+									className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+								>
+									<Copy className="w-4 h-4" />
+								</button>
+								<button
+									onClick={() => deleteInviteMutation.mutate(inv.id)}
+									disabled={deleteInviteMutation.isPending}
+									title="Удалить приглашение"
+									className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+								>
+									<Trash2 className="w-4 h-4" />
+								</button>
+							</div>
+						))}
+					</div>
+				)}
+			</div>
+
+			{/* Used invites */}
+			{usedInvites.length > 0 && (
+				<div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+					<div className="px-5 py-4 border-b border-gray-100">
+						<p className="text-sm font-semibold text-gray-700">Использованные приглашения</p>
+					</div>
+					<div className="divide-y divide-gray-50">
+						{usedInvites.map((inv) => (
+							<div key={inv.id} className="px-5 py-3 flex items-center gap-3 opacity-60">
+								<div className="flex-1 min-w-0">
+									<div className="flex items-center gap-2">
+										<span className="text-xs font-medium text-gray-700">{inv.company_name}</span>
+										{inv.used_by_name && (
+											<span className="text-xs text-gray-400">→ {inv.used_by_name}</span>
+										)}
+									</div>
+									<p className="text-[11px] text-gray-300 mt-0.5">
+										использовано {inv.used_at ? new Date(inv.used_at).toLocaleDateString("ru-RU") : "—"}
+									</p>
+								</div>
+								<span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">использовано</span>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
@@ -367,7 +653,6 @@ function SecurityTab() {
 
 	return (
 		<div className="space-y-6">
-			{/* Summary cards */}
 			<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
 				<div className="bg-white border border-gray-200 rounded-2xl p-4">
 					<p className="text-xs text-gray-400 mb-1">Попыток взлома</p>
@@ -392,7 +677,6 @@ function SecurityTab() {
 			</div>
 
 			<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-				{/* Top attacking IPs */}
 				<div className="bg-white border border-gray-200 rounded-2xl p-5">
 					<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Топ атакующих IP</p>
 					{data.top_ips.length === 0 ? (
@@ -411,7 +695,6 @@ function SecurityTab() {
 					)}
 				</div>
 
-				{/* Banned IPs from fail2ban */}
 				<div className="bg-white border border-gray-200 rounded-2xl p-5">
 					<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Заблокированы fail2ban</p>
 					{data.fail2ban_banned.length === 0 ? (
@@ -429,7 +712,6 @@ function SecurityTab() {
 				</div>
 			</div>
 
-			{/* Recent failed logins */}
 			<div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
 				<div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
 					<p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Последние попытки входа</p>
@@ -498,7 +780,6 @@ function TemplatesTab() {
 		<div className="space-y-2">
 			{templates.map((t) => (
 				<div key={t.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex items-center gap-3">
-					{/* Preview thumbnails */}
 					<div className="flex -space-x-2 shrink-0">
 						{t.slides_preview.slice(0, 3).map((s) => (
 							<img
@@ -513,7 +794,6 @@ function TemplatesTab() {
 						)}
 					</div>
 
-					{/* Info */}
 					<div className="flex-1 min-w-0">
 						<p className="text-sm font-medium text-gray-800 truncate">{t.name}</p>
 						<p className="text-[11px] text-gray-400 truncate">
@@ -521,14 +801,12 @@ function TemplatesTab() {
 						</p>
 					</div>
 
-					{/* Public badge */}
 					{t.is_public && (
 						<span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 shrink-0">
 							Публичный
 						</span>
 					)}
 
-					{/* Toggle button */}
 					<button
 						onClick={() => toggleMutation.mutate({ id: t.id, is_public: !t.is_public })}
 						disabled={toggleMutation.isPending}
@@ -552,19 +830,72 @@ function TemplatesTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Admin() {
-	const [tab, setTab] = useState<"stats" | "users" | "feedback" | "templates" | "security">("stats");
+	const [tab, setTab] = useState<"stats" | "users" | "companies" | "feedback" | "templates" | "security">("stats");
+	const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+
+	const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin());
+	const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
+	const setActiveCompany = useAuthStore((s) => s.setActiveCompany);
+
+	const { data: companies = [] } = useQuery<Company[]>({
+		queryKey: ["admin-companies"],
+		queryFn: adminApi.listCompanies,
+		enabled: isSuperAdmin,
+	});
+
+	const activeCompany = companies.find((c) => c.id === activeCompanyId);
 
 	const { data: stats, isLoading, isError, refetch, isFetching } = useQuery<AdminStats>({
-		queryKey: ["admin-stats"],
-		queryFn: adminApi.getStats,
+		queryKey: ["admin-stats", activeCompanyId],
+		queryFn: () => adminApi.getStats(isSuperAdmin ? activeCompanyId : undefined),
 		refetchInterval: 30_000,
 	});
 
 	return (
 		<div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+			{/* Super-admin company switcher */}
+			{isSuperAdmin && (
+				<div className="relative">
+					<button
+						onClick={() => setShowCompanyDropdown((v) => !v)}
+						className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
+					>
+						<Building2 className="w-4 h-4 text-gray-400" />
+						{activeCompany ? activeCompany.name : "Все компании"}
+						<ChevronDown className="w-4 h-4 text-gray-400 ml-1" />
+					</button>
+
+					{showCompanyDropdown && (
+						<div className="absolute top-full mt-1 left-0 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-48 overflow-hidden">
+							<button
+								onClick={() => { setActiveCompany(null); setShowCompanyDropdown(false); }}
+								className={cn(
+									"w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors",
+									!activeCompanyId ? "font-semibold text-brand-600" : "text-gray-700"
+								)}
+							>
+								Все компании
+							</button>
+							{companies.map((c) => (
+								<button
+									key={c.id}
+									onClick={() => { setActiveCompany(c.id); setShowCompanyDropdown(false); }}
+									className={cn(
+										"w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors border-t border-gray-50",
+										activeCompanyId === c.id ? "font-semibold text-brand-600" : "text-gray-700"
+									)}
+								>
+									{c.name}
+								</button>
+							))}
+						</div>
+					)}
+				</div>
+			)}
+
 			{/* Header + tabs */}
-			<div className="flex items-center justify-between">
-				<div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+			<div className="flex items-center justify-between flex-wrap gap-2">
+				<div className="flex gap-1 bg-gray-100 rounded-xl p-1 flex-wrap">
 					<button
 						onClick={() => setTab("stats")}
 						className={cn(
@@ -583,6 +914,17 @@ export default function Admin() {
 					>
 						<Users className="w-4 h-4" /> Пользователи
 					</button>
+					{isSuperAdmin && (
+						<button
+							onClick={() => setTab("companies")}
+							className={cn(
+								"flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+								tab === "companies" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+							)}
+						>
+							<Building2 className="w-4 h-4" /> Компании
+						</button>
+					)}
 					<button
 						onClick={() => setTab("feedback")}
 						className={cn(
@@ -624,7 +966,10 @@ export default function Admin() {
 			</div>
 
 			{/* Users tab */}
-			{tab === "users" && <UsersTab />}
+			{tab === "users" && <UsersTab companyId={isSuperAdmin ? activeCompanyId : undefined} />}
+
+			{/* Companies tab */}
+			{tab === "companies" && <CompaniesTab />}
 
 			{/* Feedback tab */}
 			{tab === "feedback" && <FeedbackTab />}
