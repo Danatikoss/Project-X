@@ -75,7 +75,7 @@ function SaveSlidesModal({
 	const clearAll = () => setSelected(new Set());
 
 	return (
-		<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+		<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
 			<div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
 				{/* Header */}
 				<div className="p-5 border-b border-gray-100">
@@ -944,7 +944,7 @@ function UploadTemplateModal({
 	};
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+		<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
 			<div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
 				<div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
 					<div>
@@ -1605,7 +1605,7 @@ export default function Generate() {
 			)}
 
 			{showDeleteAllConfirm && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
 					<div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
 						<div className="flex items-center gap-3 mb-4">
 							<div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
