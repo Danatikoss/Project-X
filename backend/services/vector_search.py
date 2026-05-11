@@ -44,10 +44,12 @@ def search_slides(
     exclude_ids: list[int] | None = None,
     access_levels: list[str] | None = None,
     user_id: int | None = None,
+    company_id: int | None = None,
 ) -> list[tuple["SlideLibraryEntry", float]]:
     """
     Find top_k most similar slides using cosine similarity.
     Returns list of (SlideLibraryEntry, similarity_score) tuples, sorted descending.
+    Scope priority: company_id (all company slides) > user_id (personal only).
     """
     from models.slide import SlideLibraryEntry, SourcePresentation
 
@@ -57,7 +59,10 @@ def search_slides(
         SlideLibraryEntry.embedding_json.isnot(None),
         SlideLibraryEntry.is_outdated == False,  # noqa: E712
     )
-    if user_id is not None:
+    if company_id is not None:
+        # Search entire company library (multi-tenant mode)
+        query = query.join(SourcePresentation).filter(SourcePresentation.company_id == company_id)
+    elif user_id is not None:
         query = query.join(SourcePresentation).filter(SourcePresentation.owner_id == user_id)
     if exclude_ids:
         query = query.filter(SlideLibraryEntry.id.notin_(exclude_ids))
@@ -111,11 +116,13 @@ def keyword_search(
     query: str,
     top_k: int = 20,
     user_id: int | None = None,
+    company_id: int | None = None,
 ) -> list[tuple["SlideLibraryEntry", float]]:
     """
     Keyword search on title, summary, key_message, tags, text_content.
     Uses OR logic with simple term-frequency scoring.
     Returns list of (slide, keyword_score) sorted by score descending.
+    Scope priority: company_id > user_id.
     """
     from models.slide import SlideLibraryEntry, SourcePresentation
     from sqlalchemy import or_
@@ -127,7 +134,9 @@ def keyword_search(
     base_query = db.query(SlideLibraryEntry).filter(
         SlideLibraryEntry.is_outdated == False  # noqa: E712
     )
-    if user_id is not None:
+    if company_id is not None:
+        base_query = base_query.join(SourcePresentation).filter(SourcePresentation.company_id == company_id)
+    elif user_id is not None:
         base_query = base_query.join(SourcePresentation).filter(SourcePresentation.owner_id == user_id)
 
     # OR across keywords and fields — find any slide that matches any keyword
@@ -232,19 +241,22 @@ def hybrid_search(
     query_text: str,
     top_k: int = 50,
     user_id: int | None = None,
+    company_id: int | None = None,
     mmr_lambda: float = 0.7,
 ) -> list[tuple["SlideLibraryEntry", float]]:
     """
     Full hybrid retrieval: vector search + keyword search → score fusion → MMR rerank.
     Returns top_k diverse, relevant slides.
+    Scope priority: company_id (shared library) > user_id (personal only).
     """
     # 1. Vector search
     vector_results = search_slides(
-        db, query_embedding, top_k=min(100, top_k * 4), user_id=user_id
+        db, query_embedding, top_k=min(100, top_k * 4),
+        user_id=user_id, company_id=company_id,
     )
 
     # 2. Keyword search
-    keyword_results = keyword_search(db, query_text, top_k=30, user_id=user_id)
+    keyword_results = keyword_search(db, query_text, top_k=30, user_id=user_id, company_id=company_id)
 
     # 3. Score fusion — normalize vector scores, add keyword bonus
     seen_ids: dict[int, tuple["SlideLibraryEntry", float]] = {}
