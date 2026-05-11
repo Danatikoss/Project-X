@@ -323,22 +323,26 @@ def get_stats(
     new_users_7d = uq.filter(User.created_at >= week_ago).count()
 
     # Returning users: have 2+ presentations
-    ap_q = db.query(AssembledPresentation).filter(AssembledPresentation.owner_id.isnot(None))
+    _ret_q = (
+        db.query(AssembledPresentation.owner_id)
+        .filter(AssembledPresentation.owner_id.isnot(None))
+    )
     if user_ids:
-        ap_q = ap_q.filter(AssembledPresentation.owner_id.in_(user_ids))
+        _ret_q = _ret_q.filter(AssembledPresentation.owner_id.in_(user_ids))
     elif scope_company_id and not user_ids:
-        ap_q = ap_q.filter(False)  # no users in scope
+        _ret_q = _ret_q.filter(False)
     returning_users = (
         db.query(func.count())
         .select_from(
-            ap_q.group_by(AssembledPresentation.owner_id)
-            .having(func.count(AssembledPresentation.id) >= 2)
+            _ret_q.group_by(AssembledPresentation.owner_id)
+            .having(func.count(AssembledPresentation.owner_id) >= 2)
             .subquery()
         )
         .scalar() or 0
     )
     users_with_any = (
-        ap_q.with_entities(func.count(func.distinct(AssembledPresentation.owner_id)))
+        db.query(func.count(func.distinct(AssembledPresentation.owner_id)))
+        .filter(AssembledPresentation.owner_id.isnot(None))
         .scalar() or 0
     )
     retention_rate = round(returning_users / users_with_any * 100) if users_with_any else 0
