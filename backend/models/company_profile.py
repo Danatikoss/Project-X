@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from database import Base
@@ -8,6 +8,7 @@ class CompanyProfile(Base):
     __tablename__ = "company_profiles"
 
     id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     org_name = Column(String, nullable=True)
     org_name_short = Column(String, nullable=True)
     leader_name = Column(String, nullable=True)
@@ -22,9 +23,12 @@ class CompanyProfile(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
 
 
-def get_company_context(db: Session) -> str:
+def get_company_context(db: Session, company_id: int | None = None) -> str:
     """Build a company context string to inject into AI generation prompts."""
-    profile = db.query(CompanyProfile).first()
+    q = db.query(CompanyProfile)
+    if company_id is not None:
+        q = q.filter(CompanyProfile.company_id == company_id)
+    profile = q.first()
     if not profile:
         return ""
 

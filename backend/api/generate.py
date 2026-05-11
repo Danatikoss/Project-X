@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user
+from api.deps import get_current_user, get_company_id
 from database import get_db
 from models.user import User
 from models.slide import SourcePresentation, SlideLibraryEntry
@@ -231,6 +231,7 @@ async def create_plan(
     body: GeneratePlanRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     """
     Step 1: Ask LLM to create a presentation plan.
@@ -258,7 +259,7 @@ async def create_plan(
     _t0 = _time.perf_counter()
 
     try:
-        company_context = get_company_context(db)
+        company_context = get_company_context(db, company_id=company_id)
         plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme, has_media=body.has_media, company_context=company_context)
     except Exception as e:
         logger.error("Plan generation failed: %s", e)

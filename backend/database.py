@@ -179,6 +179,8 @@ def migrate_db():
             _add_column_if_missing(conn, "brand_templates", "prohibitions_json",     "TEXT")
             _add_column_if_missing(conn, "brand_templates", "brand_guidelines_text", "TEXT")
             _add_column_if_missing(conn, "brand_templates", "target_audience",       "TEXT")
+        if "company_profiles" in tables and "companies" in tables:
+            _add_column_if_missing(conn, "company_profiles", "company_id", "INTEGER REFERENCES companies(id)")
 
 
 def create_tables():

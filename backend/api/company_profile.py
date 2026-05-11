@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, get_admin_user
+from api.deps import get_current_user, get_admin_user, get_company_id
 from database import get_db
 from models.company_profile import CompanyProfile
 from models.user import User
@@ -50,8 +50,11 @@ class OrgProfileUpdateRequest(BaseModel):
 def get_org_profile(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
-    profile = db.query(CompanyProfile).first()
+    profile = db.query(CompanyProfile).filter(
+        CompanyProfile.company_id == company_id
+    ).first()
     if not profile:
         return None
     return OrgProfileResponse.model_validate(profile)
@@ -62,10 +65,13 @@ def update_org_profile(
     body: OrgProfileUpdateRequest,
     db: Session = Depends(get_db),
     _: User = Depends(get_admin_user),
+    company_id: int = Depends(get_company_id),
 ):
-    profile = db.query(CompanyProfile).first()
+    profile = db.query(CompanyProfile).filter(
+        CompanyProfile.company_id == company_id
+    ).first()
     if not profile:
-        profile = CompanyProfile()
+        profile = CompanyProfile(company_id=company_id)
         db.add(profile)
 
     for field, value in body.model_dump().items():
