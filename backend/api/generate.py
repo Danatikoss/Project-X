@@ -1325,6 +1325,7 @@ def delete_template(
         raise HTTPException(status_code=404, detail="Шаблон не найден")
 
     entry_company = entry.get("company_id")
+    # Allow deleting own templates and legacy unowned (null) templates; block other companies'
     if entry_company is not None and entry_company != company_id:
         raise HTTPException(status_code=403, detail="Нет доступа к этому шаблону")
 
@@ -1346,20 +1347,21 @@ def delete_all_custom_templates(
     current_user: User = Depends(get_current_user),
     company_id: int = Depends(get_company_id),
 ):
-    """Remove all templates for the current company. Global (null company_id) templates are not affected."""
+    """Remove all templates for the current company, including legacy unowned (null) entries."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администратор может удалять шаблоны")
 
     with open(CATALOG_PATH, encoding="utf-8") as f:
         catalog_data = json.load(f)
 
-    to_delete = [e for e in catalog_data if e.get("company_id") == company_id]
+    # Delete company-owned entries AND legacy unowned (null) entries
+    to_delete = [e for e in catalog_data if e.get("company_id") == company_id or e.get("company_id") is None]
     for entry in to_delete:
         if entry.get("pptx_file", "").startswith("uploads/"):
             pptx_path = TEMPLATES_DIR / entry["pptx_file"]
             pptx_path.unlink(missing_ok=True)
 
-    remaining = [e for e in catalog_data if e.get("company_id") != company_id]
+    remaining = [e for e in catalog_data if e not in to_delete]
     _save_catalog(remaining)
     logger.info("Deleted %d templates for company %d by user %d", len(to_delete), company_id, current_user.id)
     return {"deleted": len(to_delete)}
