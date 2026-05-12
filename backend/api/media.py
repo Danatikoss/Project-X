@@ -21,6 +21,7 @@ router = APIRouter()
 # ── Storage ──────────────────────────────────────────────────────────────────
 
 MEDIA_DIR = Path(settings.upload_dir) / "media"
+THUMB_DIR = MEDIA_DIR / "thumbs"
 
 ALLOWED_TYPES: dict[str, str] = {
     "image/gif":       "gif",
@@ -42,6 +43,32 @@ def _media_url(file_path: str) -> str:
     return f"/media-files/{file_path}"
 
 
+def _generate_thumbnail(image_path: Path) -> None:
+    """Generate a small WebP thumbnail for grid display. Skips SVG/GIF/video."""
+    try:
+        from PIL import Image
+        THUMB_DIR.mkdir(parents=True, exist_ok=True)
+        with Image.open(image_path) as img:
+            img.thumbnail((800, 800), Image.LANCZOS)
+            if img.mode in ("RGBA", "P", "LA"):
+                img = img.convert("RGB")
+            thumb_path = THUMB_DIR / f"{image_path.stem}.webp"
+            img.save(thumb_path, "WEBP", quality=82, method=4)
+    except Exception as e:
+        logger.warning("thumbnail generation failed for %s: %s", image_path.name, e)
+
+
+def _thumbnail_url(file_path: str, file_type: str, mime: str) -> Optional[str]:
+    """Return thumbnail URL if a webp thumb exists for this asset."""
+    if file_type != "image" or mime in ("image/svg+xml",):
+        return None
+    stem = Path(file_path).stem
+    thumb = THUMB_DIR / f"{stem}.webp"
+    if thumb.exists():
+        return _media_url(f"thumbs/{stem}.webp")
+    return None
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class FolderResponse(BaseModel):
@@ -61,6 +88,7 @@ class AssetResponse(BaseModel):
     mime_type: Optional[str] = None
     file_size: Optional[int] = None
     url: str
+    thumbnail_url: Optional[str] = None
     owner_company_id: Optional[int] = None  # set when asset belongs to another company (shared)
 
     class Config:
@@ -196,6 +224,7 @@ def list_assets(
             mime_type=a.mime_type,
             file_size=a.file_size,
             url=_media_url(a.file_path),
+            thumbnail_url=_thumbnail_url(a.file_path, a.file_type, a.mime_type or ""),
             owner_company_id=a.company_id if a.company_id != company_id else None,
         )
         for a in assets
@@ -260,6 +289,10 @@ async def upload_asset(
         logger.error("media upload write error: %s", e)
         raise HTTPException(500, "Ошибка при сохранении файла")
 
+    # Generate thumbnail for images (skip SVG, GIF, video)
+    if file_type == "image" and mime not in ("image/svg+xml",):
+        _generate_thumbnail(dest)
+
     asset = MediaAsset(
         owner_id=user.id,
         company_id=company_id,
@@ -282,6 +315,7 @@ async def upload_asset(
         mime_type=asset.mime_type,
         file_size=asset.file_size,
         url=_media_url(asset.file_path),
+        thumbnail_url=_thumbnail_url(asset.file_path, asset.file_type, asset.mime_type or ""),
     )
 
 
@@ -322,6 +356,7 @@ def update_asset(
         mime_type=asset.mime_type,
         file_size=asset.file_size,
         url=_media_url(asset.file_path),
+        thumbnail_url=_thumbnail_url(asset.file_path, asset.file_type, asset.mime_type or ""),
     )
 
 

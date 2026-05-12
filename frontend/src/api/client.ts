@@ -554,13 +554,23 @@ export const mediaApi = {
 		return res.data;
 	},
 
-	upload: async (file: File, name: string, folder_id?: number): Promise<MediaAsset> => {
+	upload: async (
+		file: File,
+		name: string,
+		folder_id?: number,
+		onProgress?: (pct: number) => void
+	): Promise<MediaAsset> => {
 		const form = new FormData();
 		form.append("file", file);
 		form.append("name", name);
 		if (folder_id != null) form.append("folder_id", String(folder_id));
 		const res = await api.post<MediaAsset>("/media/assets/upload", form, {
 			headers: { "Content-Type": "multipart/form-data" },
+			onUploadProgress: onProgress
+				? (e) => {
+						if (e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+					}
+				: undefined,
 		});
 		return res.data;
 	},

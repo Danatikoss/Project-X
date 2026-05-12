@@ -123,14 +123,11 @@ feedback_attach_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/feedback-attachments", StaticFiles(directory=str(feedback_attach_dir)), name="feedback-attachments")
 
 
-@app.get("/media-files/{filename}")
-async def serve_media(filename: str, request: Request):
+@app.get("/media-files/{file_path:path}")
+async def serve_media(file_path: str, request: Request):
     """Serve media assets — requires valid session (Bearer token or refresh cookie)."""
     from fastapi import HTTPException as _HTTPException
     from fastapi.responses import FileResponse as _FileResponse
-    from api.deps import get_current_user as _get_current_user
-    from database import get_db as _get_db
-    from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _Creds
     from jose import jwt as _jwt, JWTError as _JWTError
 
     # Try Bearer token first, then fall back to refresh cookie to verify identity
@@ -160,13 +157,15 @@ async def serve_media(filename: str, request: Request):
     if user_id is None:
         raise _HTTPException(status_code=401, detail="Требуется авторизация")
 
-    # Prevent path traversal
-    safe_filename = Path(filename).name
-    file_path = media_dir / safe_filename
-    if not file_path.exists() or not file_path.is_file():
+    # Resolve safely within media_dir — allow thumbs/ subdir, block traversal
+    resolved = (media_dir / file_path).resolve()
+    media_dir_resolved = media_dir.resolve()
+    if not str(resolved).startswith(str(media_dir_resolved) + "/") and resolved != media_dir_resolved:
+        raise _HTTPException(status_code=403, detail="Доступ запрещён")
+    if not resolved.exists() or not resolved.is_file():
         raise _HTTPException(status_code=404, detail="Файл не найден")
 
-    return _FileResponse(str(file_path))
+    return _FileResponse(str(resolved))
 
 
 @app.get("/health")
