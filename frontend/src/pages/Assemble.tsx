@@ -90,13 +90,13 @@ function OverlayItem({
 					muted
 					playsInline
 					preload="auto"
-					className="w-full h-full object-contain pointer-events-none"
+					className="w-full h-full object-cover pointer-events-none"
 				/>
 			) : (
 				<img
 					src={overlay.url}
 					alt=""
-					className="w-full h-full object-contain pointer-events-none"
+					className="w-full h-full object-cover pointer-events-none"
 					draggable={false}
 				/>
 			)}
@@ -632,11 +632,13 @@ export default function Assemble() {
 			}
 			const naturalAR = await getNaturalAR(asset);
 			const w0 = 35;
-			const h0 = naturalAR ? Math.round((w0 * (16 / 9)) / naturalAR) : 22;
-			// Scale down proportionally so the overlay fits within the slide on first placement
+			// h in slide-% units: width_% / (naturalAR * slideAR) = width_% * 16 / (9 * naturalAR)
+			const h0 = naturalAR ? (w0 * (16 / 9)) / naturalAR : w0 * (9 / 16);
+			// Scale down so the overlay fits within 90% of slide on the dominant axis
 			const scale = Math.min(1, 90 / Math.max(w0, h0));
-			const w = Math.max(10, Math.round(w0 * scale));
-			const h = Math.max(5, Math.round(h0 * scale));
+			const w = Math.max(10, w0 * scale);
+			// Derive h from exact w so the bounding box matches the natural AR with no letterboxing
+			const h = Math.max(5, naturalAR ? (w * (16 / 9)) / naturalAR : w * (9 / 16));
 			const newOverlay: SlideOverlay = {
 				id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 				asset_id: asset.id,
@@ -702,10 +704,10 @@ export default function Assemble() {
 				getNaturalAR({ url: localObjectUrl, file_type: fileType } as MediaAsset).then((ar) => {
 					if (ar) {
 						const w0 = 35;
-						const h0 = Math.round((w0 * (16 / 9)) / ar);
+						const h0 = (w0 * (16 / 9)) / ar;
 						const scale = Math.min(1, 90 / Math.max(w0, h0));
-						const w = Math.max(10, Math.round(w0 * scale));
-						const h = Math.max(5, Math.round(h0 * scale));
+						const w = Math.max(10, w0 * scale);
+						const h = Math.max(5, (w * (16 / 9)) / ar);
 						setOverlays((prev) => {
 							const slideOverlays = (prev[slideId] || []).map((o) =>
 								o.id === tempOverlayId ? { ...o, w, h } : o
