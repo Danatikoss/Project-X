@@ -1,0 +1,1 @@
+/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/codex/SKILL.md

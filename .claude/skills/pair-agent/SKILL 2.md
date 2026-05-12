@@ -1,0 +1,1 @@
+/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/pair-agent/SKILL.md

@@ -579,7 +579,11 @@ export default function Assemble() {
 					o.y = startOverlay.y + dy;
 				} else {
 					const ratio = startOverlay.h / startOverlay.w;
-					const newW = Math.max(10, startOverlay.w + dx);
+					// For portrait overlays, dy is the dominant resize signal.
+					// Convert dy (in height-%) to equivalent dx (width-%) via overlay ratio.
+					const dxFromDy = dy * (startOverlay.w / startOverlay.h);
+					const effectiveDx = Math.abs(dx) >= Math.abs(dxFromDy) ? dx : dxFromDy;
+					const newW = Math.max(10, startOverlay.w + effectiveDx);
 					o.w = newW;
 					o.h = Math.max(5, newW * ratio);
 				}

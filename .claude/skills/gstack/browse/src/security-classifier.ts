@@ -29,7 +29,9 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { mkdirSecure } from './file-permissions';
 import { THRESHOLDS, type LayerSignal } from './security';
+import { resolveClaudeCommand } from './claude-bin';
 
 /**
  * Pinned Haiku model for the transcript classifier. Bumped deliberately when a
@@ -155,7 +157,7 @@ async function downloadFile(url: string, dest: string): Promise<void> {
 }
 
 async function ensureTestsavantStaged(onProgress?: (msg: string) => void): Promise<void> {
-  fs.mkdirSync(path.join(TESTSAVANT_DIR, 'onnx'), { recursive: true, mode: 0o700 });
+  mkdirSecure(path.join(TESTSAVANT_DIR, 'onnx'));
 
   // Small config/tokenizer files
   for (const f of TESTSAVANT_FILES) {
@@ -300,7 +302,7 @@ export async function scanPageContent(text: string): Promise<LayerSignal> {
 // ─── L4c: DeBERTa-v3 ensemble (opt-in) ───────────────────────
 
 async function ensureDebertaStaged(onProgress?: (msg: string) => void): Promise<void> {
-  fs.mkdirSync(path.join(DEBERTA_DIR, 'onnx'), { recursive: true, mode: 0o700 });
+  mkdirSecure(path.join(DEBERTA_DIR, 'onnx'));
   for (const f of DEBERTA_FILES) {
     const dst = path.join(DEBERTA_DIR, f);
     if (fs.existsSync(dst)) continue;
@@ -392,8 +394,13 @@ let haikuAvailableCache: boolean | null = null;
 
 function checkHaikuAvailable(): Promise<boolean> {
   if (haikuAvailableCache !== null) return Promise.resolve(haikuAvailableCache);
+  const claude = resolveClaudeCommand();
+  if (!claude) {
+    haikuAvailableCache = false;
+    return Promise.resolve(false);
+  }
   return new Promise((resolve) => {
-    const p = spawn('claude', ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(claude.command, [...claude.argsPrefix, '--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
     let done = false;
     const finish = (ok: boolean) => {
       if (done) return;
@@ -493,7 +500,12 @@ export async function checkTranscript(params: {
     // timeout rate in the v1.5.2.0 ensemble bench because of this, plus
     // ~44k cache_creation tokens per call (massive cost inflation).
     // Using os.tmpdir() gives Haiku a clean context for pure classification.
-    const p = spawn('claude', [
+    const claude = resolveClaudeCommand();
+    if (!claude) {
+      return finish({ layer: 'transcript_classifier', confidence: 0, meta: { degraded: true, reason: 'claude_cli_not_found' } });
+    }
+    const p = spawn(claude.command, [
+      ...claude.argsPrefix,
       '-p', prompt,
       '--model', HAIKU_MODEL,
       '--output-format', 'json',

@@ -145,7 +145,22 @@
       "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse goto *)",
       "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse snapshot *)",
       "Bash(/Users/danatikoss/Desktop/SLIDEX/.claude/skills/gstack/browse/dist/browse js *)",
-      "Bash(ssh *)"
+      "Bash(ssh *)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-config get *)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-timeline-log '{\"skill\":\"office-hours\",\"event\":\"completed\",\"branch\":\"master\",\"outcome\":\"success\"}')",
+      "Bash(npm run *)",
+      "Bash(echo \"PID: $!\")",
+      "WebFetch(domain:www.mkhamzanov.com)",
+      "Skill(land-and-deploy)",
+      "Bash(xargs ls)",
+      "Bash(awk -F: '{print $1}')",
+      "Bash(~/.claude/skills/gstack/bin/gstack-learnings-search --limit 10)",
+      "Bash(wait)",
+      "Skill(ship)",
+      "Bash(git remote *)",
+      "Skill(gstack)",
+      "Skill(gstack-upgrade)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-config set *)"
     ]
   }
 }

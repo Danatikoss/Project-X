@@ -137,7 +137,7 @@ export function MediaPanel({
 							<button
 								key={asset.id}
 								onClick={() => onAdd(asset)}
-								className="relative group rounded-lg overflow-hidden border border-gray-200 hover:border-brand-400 transition-all bg-gray-50 hover:shadow-md"
+								className="relative group rounded-lg overflow-hidden border border-gray-200 hover:border-brand-400 transition-all bg-gray-100 hover:shadow-md"
 								style={{ aspectRatio: "16/9" }}
 								title={asset.name}
 							>
@@ -146,7 +146,7 @@ export function MediaPanel({
 										<Play className="w-6 h-6 text-white/60" />
 									</div>
 								) : (
-									<img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
+									<img src={asset.url} alt={asset.name} className="w-full h-full object-contain" />
 								)}
 								<div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
 									<Plus className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-lg" />
