@@ -432,7 +432,7 @@ def _render_pptx_slide_with_pillow(prs, slide_index: int, slide_cx: int, slide_c
     draw = ImageDraw.Draw(img)
 
     def _font(size_pt: float, bold: bool = False) -> ImageFont.FreeTypeFont:
-        size_px = max(8, int(size_pt * 96 / 72 * scale_y))
+        size_px = max(8, int(size_pt * 12700 * scale_y))
         candidates = (
             [
                 "/usr/share/fonts/montserrat/Montserrat.ttf",
@@ -762,13 +762,15 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
                         import numpy as np
                         from PIL import Image
                         img = Image.open(io.BytesIO(thumb)).convert("RGB")
-                        # Sample 1000 random pixels — avoids loading all 2M pixels into memory
-                        arr = np.array(img).reshape(-1, 3)
-                        rng = np.random.default_rng(42)
-                        idx = rng.choice(len(arr), size=min(1000, len(arr)), replace=False)
-                        sampled = arr[idx]
+                        # Grid-based sampling — deterministic and resolution-independent
+                        GRID_N = 20
+                        arr = np.array(img)
+                        H, W = arr.shape[:2]
+                        ys = np.linspace(0, H - 1, GRID_N, dtype=int)
+                        xs = np.linspace(0, W - 1, GRID_N, dtype=int)
+                        sampled = arr[np.ix_(ys, xs)].reshape(-1, 3)
                         white_count = int(np.sum(np.all(sampled > 240, axis=1)))
-                        if white_count / len(sampled) > 0.95:
+                        if white_count / len(sampled) > 0.98:
                             logger.info(f"Slide {i} appears blank, re-rendering with Pillow")
                             try:
                                 thumb = _render_pptx_slide_with_pillow(prs, i, slide_cx, slide_cy)
