@@ -397,7 +397,7 @@ def _render_pptx_slide_with_pillow(prs, slide_index: int, slide_cx: int, slide_c
     """
     from PIL import Image, ImageDraw, ImageFont
 
-    TARGET_W, TARGET_H = 3840, 2160
+    TARGET_W, TARGET_H = 2560, 1440
     scale_x = TARGET_W / slide_cx
     scale_y = TARGET_H / slide_cy
 
@@ -586,10 +586,10 @@ def render_single_slide_thumbnail(pptx_bytes: bytes, slide_index: int = 0) -> by
                 import fitz
                 doc = fitz.open(pdf_path)
                 idx = min(slide_index, doc.page_count - 1)
-                pix = doc[idx].get_pixmap(matrix=fitz.Matrix(4.0, 4.0))
+                pix = doc[idx].get_pixmap(matrix=fitz.Matrix(2.67, 2.67))
                 from PIL import Image
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                img = img.resize((3840, 2160), Image.LANCZOS)
+                img = img.resize((2560, 1440), Image.LANCZOS)
                 doc.close()
                 buf = _io.BytesIO()
                 img.save(buf, "PNG")
@@ -688,10 +688,10 @@ def extract_pptx_slides(file_path: str) -> list[SlideData]:
             pdf_tmp_dir = os.path.dirname(pdf_path)
             doc = fitz.open(pdf_path)
             for i, page in enumerate(doc):
-                pix = page.get_pixmap(matrix=fitz.Matrix(4.0, 4.0))
+                pix = page.get_pixmap(matrix=fitz.Matrix(2.67, 2.67))
                 from PIL import Image
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                img = img.resize((3840, 2160), Image.LANCZOS)
+                img = img.resize((2560, 1440), Image.LANCZOS)
                 buf = io.BytesIO()
                 img.save(buf, "PNG")
                 thumbnail_map[i] = buf.getvalue()
@@ -820,11 +820,11 @@ def extract_pdf_slides(file_path: str) -> list[SlideData]:
 
     for i, page in enumerate(doc):
         # Render thumbnail
-        mat = fitz.Matrix(4.0, 4.0)
+        mat = fitz.Matrix(2.67, 2.67)
         pix = page.get_pixmap(matrix=mat)
         from PIL import Image
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        img = img.resize((3840, 2160), Image.LANCZOS)
+        img = img.resize((2560, 1440), Image.LANCZOS)
         buf = io.BytesIO()
         img.save(buf, "PNG")
         thumb = buf.getvalue()
