@@ -258,20 +258,30 @@ async def generate_presentation_plan(prompt: str, theme: str = "default", has_me
     if not slide_intents:
         raise ValueError("LLM returned no slide intents")
 
+    usage_count: dict[str, int] = {}
     result_slides = []
     for item in slide_intents:
         intent = item.get("intent", "")
         content = item.get("content", "")
 
-        # Step 2 — match
+        # Step 2 — match (respect max_uses per template)
+        available = [
+            t for t in catalog
+            if t.max_uses is None or usage_count.get(t.id, 0) < t.max_uses
+        ]
+        if not available:
+            available = catalog  # all exhausted — fall back to full catalog
+
         search_text = f"{intent} {content}".strip()
         try:
             query_emb = await embed_single(search_text)
-            matches = _template_vector_search(query_emb, catalog, top_k=1)
+            matches = _template_vector_search(query_emb, available, top_k=1)
             template = matches[0]
         except Exception as e:
             logger.warning("Vector search failed for intent %r: %s — using first template", intent[:50], e)
-            template = catalog[0]
+            template = available[0]
+
+        usage_count[template.id] = usage_count.get(template.id, 0) + 1
 
         # Step 3 — fill
         try:

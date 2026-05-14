@@ -991,6 +991,7 @@ async def upload_template(
     slide_index: int = Form(default=0),
     theme: str = Form(default="default"),
     layout_role: str = Form(default="content"),  # "title" | "content"
+    max_uses: int = Form(default=0),             # 0 = unlimited
     current_user: User = Depends(get_current_user),
     company_id: int = Depends(get_company_id),
 ):
@@ -1092,6 +1093,7 @@ async def upload_template(
         "ai_description": ai_description,
         "embedding": [],
         "company_id": company_id,
+        "max_uses": max_uses if max_uses > 0 else None,
     }
 
     # Append to catalog
@@ -1331,6 +1333,46 @@ async def reindex_templates(
     _save_catalog(catalog_data)
     logger.info("Reindex complete: %d templates updated", updated)
     return {"updated": updated, "total": len(catalog_data)}
+
+
+class TemplatePatchRequest(BaseModel):
+    max_uses: Optional[int] = None  # None = unlimited; positive int = limit
+
+
+@router.patch("/templates/{template_id}", response_model=TemplateSlotInfo)
+def patch_template(
+    template_id: str,
+    body: TemplatePatchRequest,
+    current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
+):
+    """Update mutable fields of a template (currently: max_uses)."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор")
+
+    with open(CATALOG_PATH, encoding="utf-8") as f:
+        catalog_data = json.load(f)
+
+    entry = next((e for e in catalog_data if e["id"] == template_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+    if entry.get("company_id") is not None and entry["company_id"] != company_id:
+        raise HTTPException(status_code=403, detail="Нет доступа к этому шаблону")
+
+    if "max_uses" in body.model_fields_set:
+        entry["max_uses"] = body.max_uses if (body.max_uses and body.max_uses > 0) else None
+
+    _save_catalog(catalog_data)
+    logger.info("Patched template %r: max_uses=%r (company=%d)", template_id, entry.get("max_uses"), company_id)
+
+    from services.template_library import TemplateInfo as _TI
+    known = {f.name for f in _TI.__dataclass_fields__.values()}
+    tmpl = _TI(**{k: v for k, v in entry.items() if k in known})
+    return TemplateSlotInfo(
+        id=tmpl.id, name=tmpl.name, description=tmpl.description,
+        slots=tmpl.slots, scenario_tags=tmpl.scenario_tags,
+        theme=tmpl.theme, layout_role=tmpl.layout_role,
+    )
 
 
 @router.delete("/templates/{template_id}", status_code=204)

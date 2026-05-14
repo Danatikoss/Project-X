@@ -30,6 +30,7 @@ class TemplateInfo:
     ai_description: str = ""
     embedding: list = None
     company_id: int | None = None  # None = global (visible to all companies)
+    max_uses: int | None = None    # None = unlimited; 1 = use once per presentation
 
     def __post_init__(self):
         if self.embedding is None:
