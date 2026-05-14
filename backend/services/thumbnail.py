@@ -639,7 +639,7 @@ def _pptx_to_pdf_via_libreoffice(pptx_path: str) -> str | None:
     try:
         result = subprocess.run(
             [soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp_dir, pptx_path],
-            capture_output=True, text=True, timeout=300
+            capture_output=True, text=True, timeout=60
         )
         if result.returncode != 0:
             logger.warning(f"LibreOffice conversion failed: {result.stderr[:200]}")

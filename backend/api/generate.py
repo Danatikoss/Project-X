@@ -1354,8 +1354,8 @@ def delete_all_custom_templates(
     with open(CATALOG_PATH, encoding="utf-8") as f:
         catalog_data = json.load(f)
 
-    # Delete company-owned entries AND legacy unowned (null) entries
-    to_delete = [e for e in catalog_data if e.get("company_id") == company_id or e.get("company_id") is None]
+    # Delete only company-owned entries — global (null) entries are shared across all companies
+    to_delete = [e for e in catalog_data if e.get("company_id") == company_id]
     for entry in to_delete:
         if entry.get("pptx_file", "").startswith("uploads/"):
             pptx_path = TEMPLATES_DIR / entry["pptx_file"]
