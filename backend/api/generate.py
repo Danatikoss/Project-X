@@ -132,13 +132,17 @@ async def _enrich_plan_with_library_slides(
             result.append(slide)
             continue
 
-        # Only consider slides from user-uploaded presentations (not AI-generated)
-        # AND only from sources that use slot_* named shapes (ensures visual consistency with templates)
+        # Only consider slides from user-uploaded presentations (not AI-generated).
+        # Exclude slides whose source file lives inside the template catalog directory —
+        # those are design-template PPTX files, not real content, and cloning them
+        # produces raw unfilled slot shapes instead of AI-filled slides.
+        _tpl_dir = str(Path(settings.template_dir).resolve())
         human_candidates = [
             (entry, score) for entry, score in candidates
             if entry.source
             and not entry.source.is_ai_source
             and entry.source.file_path
+            and not str(Path(entry.source.file_path).resolve()).startswith(_tpl_dir)
             and _source_has_slots(entry.source.file_path)
         ]
 
@@ -277,10 +281,9 @@ async def create_plan(
         raise HTTPException(status_code=502, detail="LLM не вернул слайды")
 
     base_slides = [SlideInPlan(template_id=s["template_id"], slots=s.get("slots", {})) for s in slides]
-    enriched = await _enrich_plan_with_library_slides(base_slides, db=db, user_id=current_user.id)
 
     elapsed = round(_time.perf_counter() - _t0, 2)
-    logger.info("Plan generated: %d slides in %.2fs (user=%d)", len(enriched), elapsed, current_user.id)
+    logger.info("Plan generated: %d slides in %.2fs (user=%d)", len(base_slides), elapsed, current_user.id)
     try:
         from api.admin import log_generation
         log_generation(db, "plan", elapsed, user_id=current_user.id, slide_count=len(enriched))
@@ -289,7 +292,7 @@ async def create_plan(
 
     return PresentationPlan(
         title=plan.get("title", "Презентация"),
-        slides=enriched,
+        slides=base_slides,
         theme=body.theme,
         title_template_id=body.title_template_id,
         plan_elapsed_seconds=elapsed,
