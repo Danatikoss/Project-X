@@ -616,6 +616,7 @@ export interface SlideTemplate {
 	scenario_tags: string[];
 	theme: string;
 	layout_role: string;
+	max_uses?: number | null;
 }
 
 function _downloadBlob(blob: Blob, filename: string) {
@@ -747,6 +748,11 @@ export const generateApi = {
 			form,
 			{ headers: { "Content-Type": "multipart/form-data" } }
 		);
+		return res.data;
+	},
+
+	patchTemplate: async (id: string, data: { max_uses?: number | null }): Promise<SlideTemplate> => {
+		const res = await api.patch<SlideTemplate>(`/generate/templates/${id}`, data);
 		return res.data;
 	},
 

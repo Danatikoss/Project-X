@@ -818,13 +818,31 @@ function TemplateCard({
 	template,
 	isAdmin,
 	onDelete,
+	onPatch,
 }: {
 	template: SlideTemplate;
 	isAdmin: boolean;
 	onDelete: (id: string) => void;
+	onPatch?: (id: string, data: { max_uses?: number | null }) => void;
 }) {
 	const [expanded, setExpanded] = useState(false);
+	const [editingMaxUses, setEditingMaxUses] = useState(false);
+	const [maxUsesInput, setMaxUsesInput] = useState(String(template.max_uses ?? ""));
+	const [savingMaxUses, setSavingMaxUses] = useState(false);
 	const isCustom = template.id.startsWith("custom_");
+
+	const handleSaveMaxUses = async () => {
+		if (!onPatch) return;
+		setSavingMaxUses(true);
+		const val = parseInt(maxUsesInput, 10);
+		const newVal = isNaN(val) || val <= 0 ? null : val;
+		try {
+			await onPatch(template.id, { max_uses: newVal });
+			setEditingMaxUses(false);
+		} finally {
+			setSavingMaxUses(false);
+		}
+	};
 
 	return (
 		<div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:border-gray-300 transition-all">
@@ -886,17 +904,72 @@ function TemplateCard({
 				</div>
 			</div>
 			{expanded && (
-				<div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
-					<p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-						Слоты ({Object.keys(template.slots).length})
-					</p>
-					<div className="space-y-1">
-						{Object.entries(template.slots).map(([key]) => (
-							<code key={key} className="block text-[11px] text-indigo-600 font-mono">
-								{key}
-							</code>
-						))}
+				<div className="border-t border-gray-100 bg-gray-50 px-4 py-3 space-y-3">
+					<div>
+						<p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+							Слоты ({Object.keys(template.slots).length})
+						</p>
+						<div className="space-y-1">
+							{Object.entries(template.slots).map(([key]) => (
+								<code key={key} className="block text-[11px] text-indigo-600 font-mono">
+									{key}
+								</code>
+							))}
+						</div>
 					</div>
+
+					{isAdmin && (
+						<div className="pt-2 border-t border-gray-100">
+							<p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+								Лимит использования
+							</p>
+							{editingMaxUses ? (
+								<div className="flex items-center gap-2">
+									<input
+										type="number"
+										min="1"
+										placeholder="∞"
+										value={maxUsesInput}
+										onChange={(e) => setMaxUsesInput(e.target.value)}
+										className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-400"
+										autoFocus
+										onKeyDown={(e) => { if (e.key === "Enter") handleSaveMaxUses(); if (e.key === "Escape") setEditingMaxUses(false); }}
+									/>
+									<span className="text-[11px] text-gray-400">раз на презентацию</span>
+									<button
+										onClick={handleSaveMaxUses}
+										disabled={savingMaxUses}
+										className="text-[11px] text-white bg-indigo-500 hover:bg-indigo-600 px-2.5 py-1 rounded-lg transition-all disabled:opacity-50"
+									>
+										{savingMaxUses ? "..." : "Сохранить"}
+									</button>
+									<button
+										onClick={() => { setEditingMaxUses(false); setMaxUsesInput(String(template.max_uses ?? "")); }}
+										className="text-[11px] text-gray-400 hover:text-gray-600"
+									>
+										Отмена
+									</button>
+								</div>
+							) : (
+								<div className="flex items-center gap-2">
+									<span className={cn(
+										"text-[11px] px-2 py-0.5 rounded-full font-medium",
+										template.max_uses
+											? "bg-amber-100 text-amber-700"
+											: "bg-gray-100 text-gray-400"
+									)}>
+										{template.max_uses ? `${template.max_uses}× за презентацию` : "Без ограничений"}
+									</span>
+									<button
+										onClick={() => setEditingMaxUses(true)}
+										className="text-[11px] text-indigo-500 hover:text-indigo-700 underline"
+									>
+										Изменить
+									</button>
+								</div>
+							)}
+						</div>
+					)}
 				</div>
 			)}
 		</div>
@@ -1163,6 +1236,16 @@ export default function Generate() {
 				(e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Ошибка"
 			);
 		},
+	});
+
+	const patchMutation = useMutation({
+		mutationFn: ({ id, data }: { id: string; data: { max_uses?: number | null } }) =>
+			generateApi.patchTemplate(id, data),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["slide-templates"] });
+			toast.success("Лимит сохранён");
+		},
+		onError: () => toast.error("Не удалось сохранить лимит"),
 	});
 
 	const deleteAllMutation = useMutation({
@@ -1571,6 +1654,7 @@ export default function Generate() {
 											template={t}
 											isAdmin={isAdmin}
 											onDelete={(id) => deleteMutation.mutate(id)}
+											onPatch={(id, data) => patchMutation.mutate({ id, data })}
 										/>
 									))}
 								</div>
@@ -1588,6 +1672,7 @@ export default function Generate() {
 											template={t}
 											isAdmin={isAdmin}
 											onDelete={(id) => deleteMutation.mutate(id)}
+											onPatch={(id, data) => patchMutation.mutate({ id, data })}
 										/>
 									))}
 								</div>
