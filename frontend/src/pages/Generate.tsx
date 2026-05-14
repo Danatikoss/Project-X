@@ -1224,6 +1224,8 @@ export default function Generate() {
 
 	const [showCelebration, setShowCelebration] = useState(false);
 	const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+	const [showBulkMaxUses, setShowBulkMaxUses] = useState(false);
+	const [bulkMaxUsesValue, setBulkMaxUsesValue] = useState<number>(1);
 
 	const deleteMutation = useMutation({
 		mutationFn: generateApi.deleteTemplate,
@@ -1246,6 +1248,16 @@ export default function Generate() {
 			toast.success("Лимит сохранён");
 		},
 		onError: () => toast.error("Не удалось сохранить лимит"),
+	});
+
+	const bulkMaxUsesMutation = useMutation({
+		mutationFn: (max_uses: number | null) => generateApi.bulkSetMaxUses(max_uses),
+		onSuccess: (data) => {
+			queryClient.invalidateQueries({ queryKey: ["slide-templates"] });
+			setShowBulkMaxUses(false);
+			toast.success(`Лимит применён к ${data.updated} шаблонам`);
+		},
+		onError: () => toast.error("Не удалось применить лимит"),
 	});
 
 	const deleteAllMutation = useMutation({
@@ -1623,6 +1635,15 @@ export default function Generate() {
 								)}
 								{reindexMutation.isPending ? "Индексирую..." : reindexDone ? "Готово" : "Reindex"}
 							</button>
+							{custom.length > 0 && (
+								<button
+									onClick={() => setShowBulkMaxUses(true)}
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 transition-all"
+								>
+									<Layers className="w-3.5 h-3.5" />
+									Лимит для всех
+								</button>
+							)}
 							<button
 								onClick={() => setShowUpload(true)}
 								className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all"
@@ -1719,6 +1740,71 @@ export default function Generate() {
 								className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60"
 							>
 								{deleteAllMutation.isPending ? "Удаляю..." : "Да, удалить"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{showBulkMaxUses && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+					<div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-5">
+						<div>
+							<h3 className="text-sm font-semibold text-gray-900">Лимит для всех шаблонов</h3>
+							<p className="text-xs text-gray-500 mt-1">
+								Применится ко всем контентным шаблонам твоей компании. Титульные слайды не затронет.
+							</p>
+						</div>
+
+						<div>
+							<div className="flex items-center justify-between mb-2">
+								<span className="text-xs font-medium text-gray-700">Использований на презентацию</span>
+								<span className="text-sm font-bold text-violet-600">
+									{bulkMaxUsesValue === 0 ? "∞" : bulkMaxUsesValue}
+								</span>
+							</div>
+							<input
+								type="range"
+								min={0}
+								max={10}
+								value={bulkMaxUsesValue}
+								onChange={(e) => setBulkMaxUsesValue(Number(e.target.value))}
+								className="w-full accent-violet-600"
+							/>
+							<div className="flex justify-between text-[10px] text-gray-400 mt-1">
+								<span>∞ без лимита</span>
+								<span>10 раз</span>
+							</div>
+						</div>
+
+						<div className={cn(
+							"rounded-xl px-3 py-2 text-xs",
+							bulkMaxUsesValue === 0
+								? "bg-gray-50 text-gray-500"
+								: bulkMaxUsesValue === 1
+									? "bg-green-50 text-green-700"
+									: "bg-violet-50 text-violet-700"
+						)}>
+							{bulkMaxUsesValue === 0
+								? "ИИ может выбрать любой шаблон неограниченное число раз"
+								: bulkMaxUsesValue === 1
+									? "Каждый шаблон появится максимум 1 раз — максимальное разнообразие"
+									: `Каждый шаблон появится не более ${bulkMaxUsesValue} раз в одной презентации`}
+						</div>
+
+						<div className="flex gap-2">
+							<button
+								onClick={() => setShowBulkMaxUses(false)}
+								disabled={bulkMaxUsesMutation.isPending}
+								className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50"
+							>
+								Отмена
+							</button>
+							<button
+								onClick={() => bulkMaxUsesMutation.mutate(bulkMaxUsesValue === 0 ? null : bulkMaxUsesValue)}
+								disabled={bulkMaxUsesMutation.isPending}
+								className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 transition-all disabled:opacity-50"
+							>
+								{bulkMaxUsesMutation.isPending ? "Применяю..." : "Применить"}
 							</button>
 						</div>
 					</div>

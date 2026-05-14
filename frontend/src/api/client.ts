@@ -756,6 +756,11 @@ export const generateApi = {
 		return res.data;
 	},
 
+	bulkSetMaxUses: async (max_uses: number | null): Promise<{ updated: number }> => {
+		const res = await api.post<{ updated: number }>("/generate/templates/bulk-max-uses", { max_uses });
+		return res.data;
+	},
+
 	deleteTemplate: async (id: string): Promise<void> => {
 		await api.delete(`/generate/templates/${id}`);
 	},

@@ -1375,6 +1375,38 @@ def patch_template(
     )
 
 
+class BulkMaxUsesRequest(BaseModel):
+    max_uses: Optional[int] = None  # None = unlimited
+
+
+@router.post("/templates/bulk-max-uses", status_code=200)
+def bulk_set_max_uses(
+    body: BulkMaxUsesRequest,
+    current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
+):
+    """Set max_uses on all content templates belonging to the current company."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администратор")
+
+    with open(CATALOG_PATH, encoding="utf-8") as f:
+        catalog_data = json.load(f)
+
+    updated = 0
+    for entry in catalog_data:
+        if entry.get("company_id") != company_id:
+            continue
+        if entry.get("layout_role") == "title":
+            continue
+        val = body.max_uses if (body.max_uses and body.max_uses > 0) else None
+        entry["max_uses"] = val
+        updated += 1
+
+    _save_catalog(catalog_data)
+    logger.info("Bulk max_uses=%r applied to %d templates (company=%d)", body.max_uses, updated, company_id)
+    return {"updated": updated}
+
+
 @router.delete("/templates/{template_id}", status_code=204)
 def delete_template(
     template_id: str,
