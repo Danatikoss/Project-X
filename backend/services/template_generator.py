@@ -228,14 +228,14 @@ async def _fill_slots(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def generate_presentation_plan(prompt: str, theme: str = "default", has_media: bool = False, company_context: str = "") -> dict:
+async def generate_presentation_plan(prompt: str, theme: str = "default", has_media: bool = False, company_context: str = "", company_id: int | None = None) -> dict:
     """
     3-step pipeline: decompose → match → fill.
     Returns {title, slides: [{template_id, slots}]}
     """
     from services.embedding import embed_single
 
-    full_catalog = load_catalog()
+    full_catalog = load_catalog(company_id=company_id)
     catalog = get_content_catalog(theme=theme, catalog=full_catalog)
     if not catalog:
         logger.warning("No templates for theme %r — ignoring theme filter", theme)
@@ -346,6 +346,7 @@ async def fill_single_slide(
     template_id: str | None = None,
     theme: str = "default",
     has_media: bool = False,
+    company_id: int | None = None,
 ) -> dict:
     """
     Generate content for a single slide.
@@ -355,7 +356,7 @@ async def fill_single_slide(
     """
     from services.embedding import embed_single
 
-    full_catalog = load_catalog()
+    full_catalog = load_catalog(company_id=company_id)
     catalog = get_content_catalog(theme=theme, catalog=full_catalog)
     if not catalog:
         logger.warning("No templates for theme %r in fill_single_slide — ignoring theme filter", theme)

@@ -267,7 +267,7 @@ async def create_plan(
 
     try:
         company_context = get_company_context(db, company_id=company_id)
-        plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme, has_media=body.has_media, company_context=company_context)
+        plan = await generate_presentation_plan(prompt=body.prompt, theme=body.theme, has_media=body.has_media, company_context=company_context, company_id=company_id)
     except Exception as e:
         logger.error("Plan generation failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Ошибка генерации плана: {e}")
@@ -301,6 +301,7 @@ async def download_presentation(
     body: PresentationPlan,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     """
     Step 2: Render a confirmed plan to PPTX and return as a download.
@@ -309,8 +310,8 @@ async def download_presentation(
     import time as _time
     _t0 = _time.perf_counter()
 
-    body.slides = await _resolve_media_slides(body.slides)
-    out_prs = _build_pptx_from_plan(body, db=db)
+    body.slides = await _resolve_media_slides(body.slides, company_id=company_id)
+    out_prs = _build_pptx_from_plan(body, db=db, company_id=company_id)
 
     if len(out_prs.slides) == 0:
         raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")
@@ -330,7 +331,7 @@ async def download_presentation(
     return response
 
 
-async def _resolve_media_slides(slides: list[SlideInPlan]) -> list[SlideInPlan]:
+async def _resolve_media_slides(slides: list[SlideInPlan], company_id: int | None = None) -> list[SlideInPlan]:
     """
     For slides marked has_media=True that don't already use a media template,
     re-match to a media template and re-fill slots using current slot values as context.
@@ -338,7 +339,7 @@ async def _resolve_media_slides(slides: list[SlideInPlan]) -> list[SlideInPlan]:
     """
     from services.template_generator import fill_single_slide
 
-    full_catalog = load_catalog()
+    full_catalog = load_catalog(company_id=company_id)
     result = []
     for slide in slides:
         if not slide.has_media:
@@ -360,6 +361,7 @@ async def _resolve_media_slides(slides: list[SlideInPlan]) -> list[SlideInPlan]:
             new_plan = await fill_single_slide(
                 slide_description=content_desc or "Медиа слайд",
                 has_media=True,
+                company_id=company_id,
             )
             result.append(SlideInPlan(
                 template_id=new_plan["template_id"],
@@ -374,13 +376,13 @@ async def _resolve_media_slides(slides: list[SlideInPlan]) -> list[SlideInPlan]:
     return result
 
 
-def _build_pptx_from_plan(body: "PresentationPlan", db: Session | None = None) -> "PptxPresentation":
+def _build_pptx_from_plan(body: "PresentationPlan", db: Session | None = None, company_id: int | None = None) -> "PptxPresentation":
     """Shared helper: render a PresentationPlan into an in-memory PPTX."""
     from pptx import Presentation as PptxPrs
     from services.template_injector import PPTX_PATH as TPL_PATH
     from services.export import _clone_slide
 
-    catalog = load_catalog()
+    catalog = load_catalog(company_id=company_id)
 
     # Determine slide dimensions from the first template in the plan
     # (template files may differ in size from Libraryslides.pptx)
@@ -549,6 +551,7 @@ async def create_assembly_from_plan(
     body: PresentationPlan,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     """
     Generate a presentation from a confirmed plan, save slides to the library,
@@ -557,8 +560,8 @@ async def create_assembly_from_plan(
     import time as _time
     _t0 = _time.perf_counter()
 
-    body.slides = await _resolve_media_slides(body.slides)
-    out_prs = _build_pptx_from_plan(body, db=db)
+    body.slides = await _resolve_media_slides(body.slides, company_id=company_id)
+    out_prs = _build_pptx_from_plan(body, db=db, company_id=company_id)
     if len(out_prs.slides) == 0:
         raise HTTPException(status_code=502, detail="Не удалось собрать ни одного слайда")
 
