@@ -41,7 +41,7 @@ class TemplateInfo:
 
 
 def load_catalog(company_id: int | None = None) -> list[TemplateInfo]:
-    """Load catalog. If company_id given, returns company-specific + global (null) templates.
+    """Load catalog. If company_id given, returns ONLY that company's templates.
     If company_id is None (super-admin), returns all templates regardless of ownership."""
     with open(CATALOG_PATH, encoding="utf-8") as f:
         raw = json.load(f)
@@ -49,7 +49,7 @@ def load_catalog(company_id: int | None = None) -> list[TemplateInfo]:
     all_templates = [TemplateInfo(**{k: v for k, v in entry.items() if k in known}) for entry in raw]
     if company_id is None:
         return all_templates
-    return [t for t in all_templates if t.company_id is None or t.company_id == company_id]
+    return [t for t in all_templates if t.company_id == company_id]
 
 
 def list_themes(catalog: Optional[list[TemplateInfo]] = None, company_id: int | None = None) -> list[str]:
