@@ -621,6 +621,30 @@ def render_single_slide_thumbnail(pptx_bytes: bytes, slide_index: int = 0) -> by
             pass
 
 
+def _kill_stale_soffice() -> None:
+    """Kill any soffice processes older than 90 seconds to prevent zombie accumulation."""
+    import subprocess, signal, time
+    try:
+        result = subprocess.run(["pgrep", "-f", "soffice"], capture_output=True, text=True)
+        for pid_str in result.stdout.strip().splitlines():
+            try:
+                pid = int(pid_str)
+                stat = open(f"/proc/{pid}/stat").read().split()
+                # field 22 = starttime in clock ticks; clock ticks/sec = os.sysconf('SC_CLK_TCK')
+                import os as _os
+                ticks = int(stat[21])
+                hz = _os.sysconf("SC_CLK_TCK")
+                uptime = float(open("/proc/uptime").read().split()[0])
+                age = uptime - (ticks / hz)
+                if age > 90:
+                    _os.kill(pid, signal.SIGKILL)
+                    logger.info("Killed stale soffice pid=%d (age=%.0fs)", pid, age)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _pptx_to_pdf_via_libreoffice(pptx_path: str) -> str | None:
     """
     Convert PPTX to PDF using LibreOffice headless.
@@ -634,6 +658,8 @@ def _pptx_to_pdf_via_libreoffice(pptx_path: str) -> str | None:
     if not soffice:
         logger.warning("soffice not found in PATH — falling back to direct PyMuPDF render")
         return None
+
+    _kill_stale_soffice()
 
     tmp_dir = tempfile.mkdtemp()
     try:
