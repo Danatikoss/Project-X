@@ -762,25 +762,28 @@ async def _auto_detect_slots(
     slide_index: int,
     user_description: str,
     user_tags: str,
+    thumbnail_bytes: bytes | None = None,
 ) -> tuple[dict[str, str], str, list[str]]:
     """
     Use GPT-4o vision to auto-detect content slots in a slide.
     Renames shapes in the PPTX file in-place.
     Returns (slots_dict, suggested_description, suggested_tags).
+    thumbnail_bytes: pre-rendered thumbnail to avoid redundant LibreOffice calls.
     """
     import base64
     import io as _io
     from openai import AsyncOpenAI
     from pptx import Presentation as PptxPrs
     from pptx.util import Emu
-    from services.thumbnail import extract_pptx_slides
 
-    # Render slide thumbnail
-    try:
-        slide_data_list = extract_pptx_slides(str(pptx_path))
-        thumbnail_bytes = slide_data_list[slide_index].thumbnail_bytes if slide_index < len(slide_data_list) else None
-    except Exception:
-        thumbnail_bytes = None
+    # Render slide thumbnail only if not provided by caller
+    if thumbnail_bytes is None:
+        try:
+            from services.thumbnail import extract_pptx_slides
+            slide_data_list = extract_pptx_slides(str(pptx_path))
+            thumbnail_bytes = slide_data_list[slide_index].thumbnail_bytes if slide_index < len(slide_data_list) else None
+        except Exception:
+            thumbnail_bytes = None
 
     # Collect all text shapes info
     prs = PptxPrs(str(pptx_path))
@@ -1151,9 +1154,21 @@ async def upload_templates_batch(
         pptx_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=f"Не удалось прочитать PPTX: {e}")
 
-    new_entries: list[dict] = []
-    for slide_index, slide in enumerate(prs.slides):
-        # Read slot_* shapes — use actual shape text as hint (shows expected format)
+    # Extract all slide thumbnails once (single LibreOffice run for the whole file)
+    slide_thumbnails: dict[int, bytes | None] = {}
+    try:
+        from services.thumbnail import extract_pptx_slides
+        slide_data_list = extract_pptx_slides(str(pptx_path))
+        for idx, sd in enumerate(slide_data_list):
+            slide_thumbnails[idx] = sd.thumbnail_bytes
+        logger.info("Extracted %d slide thumbnails for batch upload", len(slide_thumbnails))
+    except Exception as e:
+        logger.warning("Thumbnail extraction failed for batch upload: %s", e)
+
+    async def _process_slide(slide_index: int, slide) -> dict | None:
+        """Process a single slide: detect slots + AI metadata + embedding. Returns entry or None."""
+        from services.embedding import embed_single
+
         slots: dict[str, str] = {}
         for shape in slide.shapes:
             if (
@@ -1163,17 +1178,19 @@ async def upload_templates_batch(
             ):
                 raw_text = shape.text_frame.text.strip()
                 slots[shape.name] = raw_text if raw_text else f"Слот {shape.name}"
+
         if not slots:
-            # AI auto-detects and renames shapes in-place
+            thumb = slide_thumbnails.get(slide_index)
             try:
-                ai_slots, ai_desc, ai_tags = await _auto_detect_slots(pptx_path, slide_index, "", "")
+                ai_slots, ai_desc, ai_tags = await _auto_detect_slots(
+                    pptx_path, slide_index, "", "", thumbnail_bytes=thumb
+                )
                 slots = ai_slots
             except Exception as e:
                 logger.warning("Auto-detect slots failed for slide %d: %s, skipping", slide_index, e)
             if not slots:
-                continue
+                return None
 
-        # Collect visible text for AI context (non-slot shapes only, to avoid noise)
         text_previews = [
             shape.text_frame.text.strip()[:60]
             for shape in slide.shapes
@@ -1196,7 +1213,6 @@ async def upload_templates_batch(
                 "ai_description": "",
             }
 
-        # Generate embedding: concatenation of all semantic fields
         embed_text = " ".join(filter(None, [
             meta["name"],
             meta["description"],
@@ -1204,17 +1220,14 @@ async def upload_templates_batch(
             meta["ai_description"],
         ]))
         try:
-            from services.embedding import embed_single
             embedding = await embed_single(embed_text)
         except Exception as e:
             logger.warning("Embedding failed for slide %d: %s", slide_index, e)
             embedding = []
 
         safe_name = "".join(c if c.isalnum() else "_" for c in meta["name"].lower())[:30]
-        template_id = f"custom_{safe_name}_{file_id[:6]}_{slide_index}"
-
-        new_entries.append({
-            "id": template_id,
+        return {
+            "id": f"custom_{safe_name}_{file_id[:6]}_{slide_index}",
             "slide_index": slide_index,
             "name": meta["name"],
             "description": meta["description"],
@@ -1226,7 +1239,14 @@ async def upload_templates_batch(
             "ai_description": meta["ai_description"],
             "embedding": embedding,
             "company_id": company_id,
-        })
+        }
+
+    # Process all slides in parallel
+    import asyncio as _asyncio
+    results = await _asyncio.gather(*[
+        _process_slide(i, slide) for i, slide in enumerate(prs.slides)
+    ])
+    new_entries = [r for r in results if r is not None]
 
     if not new_entries:
         pptx_path.unlink(missing_ok=True)
