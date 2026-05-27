@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fontconfig \
     libreoffice-impress \
     libreoffice-common \
+    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Montserrat font and refresh font cache (LibreOffice reads fontconfig at runtime)
