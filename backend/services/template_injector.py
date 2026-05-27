@@ -9,6 +9,7 @@ Key design:
 - Multi-paragraph text is split on \\n
 """
 import copy
+import io
 import logging
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from pptx.oxml.ns import qn, nsmap
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 
 from services.template_library import TemplateInfo, TEMPLATES_DIR
+from services.icon_service import icon_to_png
 
 PPTX_PATH = TEMPLATES_DIR / "Libraryslides.pptx"
 
@@ -124,6 +126,40 @@ def _set_shape_text(shape, new_text: str):
     logger.debug("Set text on shape %r: %r", shape.name, new_text[:60])
 
 
+# ── Icon injection ────────────────────────────────────────────────────────────
+
+def _inject_icon(slide, shape, icon_name: str, color: str = "#FFFFFF"):
+    """
+    Replace a placeholder shape with a Lucide icon PNG at the same position/size.
+    Preserves the z-order by inserting the picture element where the placeholder was.
+    """
+    left, top, width, height = shape.left, shape.top, shape.width, shape.height
+
+    png_bytes = icon_to_png(icon_name, color=color, size=512)
+    if png_bytes is None:
+        logger.warning("Icon %r not found — skipping slot %r", icon_name, shape.name)
+        return
+
+    sp_tree = slide.shapes._spTree
+    sp_elem = shape._element
+
+    # Record z-position before removing placeholder
+    insert_idx = list(sp_tree).index(sp_elem) if sp_elem in sp_tree else None
+    if insert_idx is not None:
+        sp_tree.remove(sp_elem)
+
+    # Add picture (appended to end of sp_tree by python-pptx)
+    slide.shapes.add_picture(io.BytesIO(png_bytes), left, top, width, height)
+
+    # Move the new picture element to the original z-position
+    if insert_idx is not None:
+        pic_elem = sp_tree[-1]
+        sp_tree.remove(pic_elem)
+        sp_tree.insert(insert_idx, pic_elem)
+
+    logger.debug("Injected icon %r into slide at (%d, %d)", icon_name, left, top)
+
+
 # ── Core copy logic ───────────────────────────────────────────────────────────
 
 def _copy_slide_into(source_prs: Presentation, slide_index: int,
@@ -167,7 +203,11 @@ def _copy_slide_into(source_prs: Presentation, slide_index: int,
 
     # ── Inject slot text ─────────────────────────────────────────────────────
     for shape in new_slide.shapes:
-        if shape.name in slots and hasattr(shape, "has_text_frame") and shape.has_text_frame:
+        if shape.name not in slots:
+            continue
+        if shape.name.startswith("slot_icon_"):
+            _inject_icon(new_slide, shape, icon_name=slots[shape.name])
+        elif hasattr(shape, "has_text_frame") and shape.has_text_frame:
             _set_shape_text(shape, slots[shape.name])
 
     return new_slide

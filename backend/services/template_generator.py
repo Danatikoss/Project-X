@@ -127,10 +127,15 @@ FILL_SYSTEM = """Ты — копирайтер для презентаций. Т
 
 
 _MEDIA_SLOT_PREFIXES = ("slot_image_", "slot_media_", "slot_video_", "slot_photo_")
+_ICON_SLOT_PREFIX = "slot_icon_"
 
 
 def _is_media_slot(slot_name: str) -> bool:
     return any(slot_name.lower().startswith(p) for p in _MEDIA_SLOT_PREFIXES)
+
+
+def _is_icon_slot(slot_name: str) -> bool:
+    return slot_name.lower().startswith(_ICON_SLOT_PREFIX)
 
 
 def _describe_slot_format(slot_name: str, hint: str) -> str:
@@ -172,9 +177,11 @@ async def _fill_slots(
     template: TemplateInfo,
 ) -> dict[str, str]:
     """Step 3: ask LLM to fill template slots for a specific slide intent."""
-    # Separate text slots from media slots — media slots are not filled by LLM
-    text_slots = {k: v for k, v in template.slots.items() if not _is_media_slot(k)}
+    # Separate text slots from media/icon slots
+    text_slots = {k: v for k, v in template.slots.items()
+                  if not _is_media_slot(k) and not _is_icon_slot(k)}
     media_slots = {k: v for k, v in template.slots.items() if _is_media_slot(k)}
+    icon_slots  = {k: v for k, v in template.slots.items() if _is_icon_slot(k)}
 
     _GENERIC_HINT = ("слот ", "slot_")
 
@@ -190,6 +197,14 @@ async def _fill_slots(
         else:
             line = f"  - {slot_name}: {fmt}"
         slots_lines.append(line)
+
+    # Add icon slots to the prompt
+    for slot_name in icon_slots:
+        slots_lines.append(
+            f"  - {slot_name}: название иконки Lucide (kebab-case). "
+            f"Примеры: bar-chart, globe, users, shield, zap, star, check-circle, arrow-right, brain, rocket"
+        )
+
     slots_block = "\n".join(slots_lines)
 
     user_msg = (
@@ -221,7 +236,13 @@ async def _fill_slots(
             logger.warning("LLM missing slot %r for template %r — using hint as fallback", slot_key, template.id)
             result[slot_key] = hint
 
-    # Media slots are excluded from result — injector will leave them untouched
+    # Icon slots — carry LLM-chosen name into result for injector
+    for slot_key in icon_slots:
+        if slot_key in raw and str(raw[slot_key]).strip():
+            result[slot_key] = str(raw[slot_key]).strip()
+        else:
+            result[slot_key] = "circle"  # safe fallback
+
     logger.debug("Skipped %d media slots for template %r: %s", len(media_slots), template.id, list(media_slots))
     return result
 
