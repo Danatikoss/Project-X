@@ -201,8 +201,8 @@ def _inject_chart(slide, shape, chart_data_raw: str):
             logger.warning("Non-numeric values in chart series %r — skipping series", s.get("name"))
             continue
         if len(values) != len(categories):
-            logger.warning("Series %r length %d ≠ categories %d — truncating", s.get("name"), len(values), len(categories))
-            values = values[:len(categories)]
+            logger.warning("Series %r length %d ≠ categories %d — padding/truncating", s.get("name"), len(values), len(categories))
+            values = (values + [0.0] * len(categories))[:len(categories)]
         clean_series.append({"name": s.get("name", ""), "values": values})
 
     if not clean_series:
@@ -216,14 +216,21 @@ def _inject_chart(slide, shape, chart_data_raw: str):
     for s in clean_series:
         cd.add_series(s["name"], tuple(s["values"]))
 
-    # Remove placeholder before adding chart (preserve z-order slot position)
+    # Remove placeholder, record z-position, then reinsert chart at same index
     sp_tree = slide.shapes._spTree
     sp_elem  = shape._element
-    if sp_elem in list(sp_tree):
+    sp_list  = list(sp_tree)
+    insert_idx = sp_list.index(sp_elem) if sp_elem in sp_list else None
+    if insert_idx is not None:
         sp_tree.remove(sp_elem)
 
     chart_frame = slide.shapes.add_chart(chart_type, left, top, width, height, cd)
     chart = chart_frame.chart
+
+    if insert_idx is not None:
+        chart_elem = sp_tree[-1]
+        sp_tree.remove(chart_elem)
+        sp_tree.insert(insert_idx, chart_elem)
 
     if title:
         chart.has_title = True
