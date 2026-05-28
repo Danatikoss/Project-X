@@ -43,6 +43,9 @@ DECOMPOSE_SYSTEM = """Ты — архитектор презентаций. Тв
 2. Для каждого слайда опиши: что он должен донести (intent) и какие конкретные данные/факты на нём (content)
 3. НЕ придумывай шаблоны — только смысл и содержание
 4. Ответ строго в JSON, без лишнего текста
+5. Если слайд содержит числовые данные для сравнения категорий, динамику по времени или распределение долей —
+   добавь в поле intent слово "диаграмма" или "график". Это помогает выбрать правильный шаблон.
+   Примеры: "диаграмма роста пользователей по годам", "график сравнения регионов", "диаграмма распределения бюджета"
 
 Формат:
 {
@@ -128,6 +131,7 @@ FILL_SYSTEM = """Ты — копирайтер для презентаций. Т
 
 _MEDIA_SLOT_PREFIXES = ("slot_image_", "slot_media_", "slot_video_", "slot_photo_")
 _ICON_SLOT_PREFIX = "slot_icon_"
+_CHART_SLOT_PREFIX = "slot_chart_"
 
 
 def _is_media_slot(slot_name: str) -> bool:
@@ -136,6 +140,10 @@ def _is_media_slot(slot_name: str) -> bool:
 
 def _is_icon_slot(slot_name: str) -> bool:
     return slot_name.lower().startswith(_ICON_SLOT_PREFIX)
+
+
+def _is_chart_slot(slot_name: str) -> bool:
+    return slot_name.lower().startswith(_CHART_SLOT_PREFIX)
 
 
 def _describe_slot_format(slot_name: str, hint: str) -> str:
@@ -171,17 +179,78 @@ def _describe_slot_format(slot_name: str, hint: str) -> str:
     return "plain text, кратко"
 
 
+CHART_FILL_SYSTEM = """Ты — аналитик данных для презентаций. Твоя задача: структурировать числовые данные для визуализации.
+
+Правила выбора типа диаграммы:
+- "bar": горизонтальные полосы — сравнение категорий без временной оси (рейтинги, регионы, продукты)
+- "column": вертикальные столбцы — сравнение по периодам (кварталы, годы рядом)
+- "line": линия тренда — динамика одного или нескольких показателей во времени (помесячно, по годам)
+- "pie": круговая — доли целого, только если сумма ~100% и категорий не более 5
+
+Правила данных:
+- categories: 3–6 коротких меток, до 12 символов каждая
+- values: только числа (int или float), без знаков % и единиц измерения
+- Если в content есть реальные цифры — используй их. Если нет — придумай правдоподобные
+- series: обычно 1 серия; 2–3 серии только если сравниваются разные показатели
+
+Ответ строго в JSON (без лишнего текста):
+{
+  "type": "bar|column|line|pie",
+  "title": "Заголовок диаграммы (до 40 символов)",
+  "categories": ["метка1", "метка2", "метка3"],
+  "series": [
+    {"name": "Название серии", "values": [число1, число2, число3]}
+  ]
+}"""
+
+
+async def _fill_chart_slot(intent: str, content: str, slot_name: str) -> str:
+    """Ask LLM to generate chart data JSON for a single chart slot. Returns JSON string."""
+    client = _get_client()
+    user_msg = (
+        f"Слайд должен показать: {intent}\n"
+        f"Данные и контекст: {content}\n\n"
+        f"Сгенерируй данные для диаграммы в слот {slot_name}."
+    )
+    response = await client.chat.completions.create(
+        model=settings.assembly_model,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": CHART_FILL_SYSTEM},
+            {"role": "user", "content": user_msg},
+        ],
+        temperature=0.2,
+        max_tokens=600,
+    )
+    raw = response.choices[0].message.content or "{}"
+    # Validate minimal structure
+    try:
+        parsed = json.loads(raw)
+        if "categories" not in parsed or "series" not in parsed:
+            raise ValueError("missing required fields")
+        return raw
+    except Exception as e:
+        logger.warning("Chart fill returned invalid JSON for slot %r: %s", slot_name, e)
+        return json.dumps({
+            "type": "bar",
+            "title": intent[:40],
+            "categories": ["A", "B", "C"],
+            "series": [{"name": "Данные", "values": [1, 2, 3]}],
+        })
+
+
 async def _fill_slots(
     intent: str,
     content: str,
     template: TemplateInfo,
 ) -> dict[str, str]:
     """Step 3: ask LLM to fill template slots for a specific slide intent."""
-    # Separate text slots from media/icon slots
+    # Separate text slots from media/icon/chart slots
     text_slots = {k: v for k, v in template.slots.items()
-                  if not _is_media_slot(k) and not _is_icon_slot(k)}
+                  if not _is_media_slot(k) and not _is_icon_slot(k) and not _is_chart_slot(k)}
     media_slots = {k: v for k, v in template.slots.items() if _is_media_slot(k)}
     icon_slots  = {k: v for k, v in template.slots.items() if _is_icon_slot(k)}
+    chart_slots = {k: v for k, v in template.slots.items() if _is_chart_slot(k)}
 
     _GENERIC_HINT = ("слот ", "slot_")
 
@@ -242,6 +311,10 @@ async def _fill_slots(
             result[slot_key] = str(raw[slot_key]).strip()
         else:
             result[slot_key] = "circle"  # safe fallback
+
+    # Chart slots — separate LLM call with chart-specific instructions
+    for slot_key in chart_slots:
+        result[slot_key] = await _fill_chart_slot(intent, content, slot_key)
 
     logger.debug("Skipped %d media slots for template %r: %s", len(media_slots), template.id, list(media_slots))
     return result

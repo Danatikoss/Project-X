@@ -10,16 +10,26 @@ Key design:
 """
 import copy
 import io
+import json
 import logging
 from pathlib import Path
 
 from lxml import etree
 from pptx import Presentation
+from pptx.enum.chart import XL_CHART_TYPE
+from pptx.chart.data import ChartData
 from pptx.oxml.ns import qn, nsmap
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 
 from services.template_library import TemplateInfo, TEMPLATES_DIR
 from services.icon_service import icon_to_png
+
+_CHART_TYPE_MAP = {
+    "bar":    XL_CHART_TYPE.BAR_CLUSTERED,
+    "column": XL_CHART_TYPE.COLUMN_CLUSTERED,
+    "line":   XL_CHART_TYPE.LINE,
+    "pie":    XL_CHART_TYPE.PIE,
+}
 
 PPTX_PATH = TEMPLATES_DIR / "Libraryslides.pptx"
 
@@ -160,6 +170,73 @@ def _inject_icon(slide, shape, icon_name: str, color: str = "#FFFFFF"):
     logger.debug("Injected icon %r into slide at (%d, %d)", icon_name, left, top)
 
 
+# ── Chart injection ───────────────────────────────────────────────────────────
+
+def _inject_chart(slide, shape, chart_data_raw: str):
+    """
+    Replace a placeholder shape with a native PPTX chart.
+    chart_data_raw: JSON string produced by _fill_chart_slot.
+    """
+    try:
+        data = json.loads(chart_data_raw)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Invalid chart JSON for slot %r — skipping", shape.name)
+        return
+
+    chart_type = _CHART_TYPE_MAP.get(str(data.get("type", "bar")).lower(), XL_CHART_TYPE.BAR_CLUSTERED)
+    categories  = data.get("categories", [])
+    series_list = data.get("series", [])
+    title       = data.get("title", "")
+
+    if not categories or not series_list:
+        logger.warning("Chart missing categories/series for slot %r — skipping", shape.name)
+        return
+
+    # Validate all values are numeric; drop non-numeric entries gracefully
+    clean_series = []
+    for s in series_list:
+        try:
+            values = [float(v) for v in s.get("values", [])]
+        except (TypeError, ValueError):
+            logger.warning("Non-numeric values in chart series %r — skipping series", s.get("name"))
+            continue
+        if len(values) != len(categories):
+            logger.warning("Series %r length %d ≠ categories %d — truncating", s.get("name"), len(values), len(categories))
+            values = values[:len(categories)]
+        clean_series.append({"name": s.get("name", ""), "values": values})
+
+    if not clean_series:
+        logger.warning("No valid series for chart slot %r — skipping", shape.name)
+        return
+
+    left, top, width, height = shape.left, shape.top, shape.width, shape.height
+
+    cd = ChartData()
+    cd.categories = categories
+    for s in clean_series:
+        cd.add_series(s["name"], tuple(s["values"]))
+
+    # Remove placeholder before adding chart (preserve z-order slot position)
+    sp_tree = slide.shapes._spTree
+    sp_elem  = shape._element
+    if sp_elem in list(sp_tree):
+        sp_tree.remove(sp_elem)
+
+    chart_frame = slide.shapes.add_chart(chart_type, left, top, width, height, cd)
+    chart = chart_frame.chart
+
+    if title:
+        chart.has_title = True
+        chart.chart_title.text_frame.text = title
+    else:
+        chart.has_title = False
+
+    chart.has_legend = len(clean_series) > 1
+
+    logger.debug("Injected %r chart (%d cats, %d series) into slot %r",
+                 data.get("type"), len(categories), len(clean_series), shape.name)
+
+
 # ── Core copy logic ───────────────────────────────────────────────────────────
 
 def _copy_slide_into(source_prs: Presentation, slide_index: int,
@@ -202,10 +279,12 @@ def _copy_slide_into(source_prs: Presentation, slide_index: int,
             sp_tree.append(remapped)
 
     # ── Inject slot text ─────────────────────────────────────────────────────
-    for shape in new_slide.shapes:
+    for shape in list(new_slide.shapes):
         if shape.name not in slots:
             continue
-        if shape.name.startswith("slot_icon_"):
+        if shape.name.startswith("slot_chart_"):
+            _inject_chart(new_slide, shape, slots[shape.name])
+        elif shape.name.startswith("slot_icon_"):
             _inject_icon(new_slide, shape, icon_name=slots[shape.name])
         elif hasattr(shape, "has_text_frame") and shape.has_text_frame:
             _set_shape_text(shape, slots[shape.name])
