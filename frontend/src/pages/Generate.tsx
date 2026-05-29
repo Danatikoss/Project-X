@@ -462,7 +462,15 @@ function InputStep({
 			}
 		} catch (e: unknown) {
 			const raw = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-			const msg = typeof raw === "string" ? raw : "Ошибка генерации. Опишите тему подробнее.";
+			let msg = "Ошибка генерации";
+			if (typeof raw === "string") {
+				msg = raw;
+			} else if (Array.isArray(raw) && raw.length > 0) {
+				const first = raw[0] as { type?: string; msg?: string };
+				if (first.type === "string_too_short") msg = "Текст слишком короткий — опишите тему подробнее";
+				else if (first.type === "string_too_long") msg = "Текст слишком длинный — сократите промпт";
+				else if (typeof first.msg === "string") msg = first.msg;
+			}
 			toast.error(msg);
 		} finally {
 			setGenerating(false);

@@ -41,7 +41,7 @@ router = APIRouter()
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class GeneratePlanRequest(BaseModel):
-    prompt: str = Field(..., min_length=5, max_length=4000)
+    prompt: str = Field(..., min_length=5, max_length=10000)
     theme: str = "default"
     title_template_id: Optional[str] = None
     has_media: bool = False
