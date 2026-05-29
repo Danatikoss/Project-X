@@ -461,9 +461,8 @@ function InputStep({
 				onPlanReady(plan);
 			}
 		} catch (e: unknown) {
-			const msg =
-				(e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-				"Ошибка генерации";
+			const raw = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+			const msg = typeof raw === "string" ? raw : "Ошибка генерации. Опишите тему подробнее.";
 			toast.error(msg);
 		} finally {
 			setGenerating(false);
@@ -672,10 +671,10 @@ function InputStep({
 
 			<button
 				onClick={handleGenerate}
-				disabled={!prompt.trim() || generating || extracting}
+				disabled={prompt.trim().length < 5 || generating || extracting}
 				className={cn(
 					"w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all",
-					prompt.trim() && !generating && !extracting
+					prompt.trim().length >= 5 && !generating && !extracting
 						? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md"
 						: "bg-gray-100 text-gray-400 cursor-not-allowed"
 				)}
@@ -736,7 +735,7 @@ function PlanStep({
 			toast.success("Презентация скачана");
 		} catch (e: unknown) {
 			const msg =
-				(e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Ошибка";
+				((e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail as string | undefined) || "Ошибка";
 			toast.error(msg);
 		} finally {
 			setDownloading(false);
@@ -750,7 +749,7 @@ function PlanStep({
 			onOpenInEditor(assembly_id);
 		} catch (e: unknown) {
 			const msg =
-				(e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Ошибка";
+				((e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail as string | undefined) || "Ошибка";
 			toast.error(msg);
 		} finally {
 			setOpeningEditor(false);
@@ -1337,7 +1336,7 @@ export default function Generate() {
 		},
 		onError: (e: unknown) => {
 			toast.error(
-				(e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Ошибка"
+				((e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail as string | undefined) || "Ошибка"
 			);
 		},
 	});
@@ -1371,7 +1370,7 @@ export default function Generate() {
 		},
 		onError: (e: unknown) => {
 			toast.error(
-				(e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Ошибка"
+				((e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail as string | undefined) || "Ошибка"
 			);
 		},
 	});
@@ -1390,7 +1389,7 @@ export default function Generate() {
 		},
 		onError: (e: unknown) => {
 			toast.error(
-				(e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Ошибка"
+				((e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail as string | undefined) || "Ошибка"
 			);
 		},
 	});
