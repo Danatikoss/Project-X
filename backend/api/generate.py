@@ -286,7 +286,7 @@ async def create_plan(
     logger.info("Plan generated: %d slides in %.2fs (user=%d)", len(base_slides), elapsed, current_user.id)
     try:
         from api.admin import log_generation
-        log_generation(db, "plan", elapsed, user_id=current_user.id, slide_count=len(enriched))
+        log_generation(db, "plan", elapsed, user_id=current_user.id, slide_count=len(base_slides))
     except Exception:
         pass
 

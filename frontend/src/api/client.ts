@@ -93,7 +93,7 @@ api.interceptors.response.use(
 			_refreshQueue.forEach((cb) => cb(null));
 			_refreshQueue = [];
 			clearAuth();
-			window.location.href = "/login";
+			// Let PrivateRoute handle the redirect via React Router — no hard reload
 			return Promise.reject(error);
 		} finally {
 			_refreshing = false;
