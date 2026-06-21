@@ -9,15 +9,19 @@ if _db_url.startswith("sqlite:///"):
     if _db_path and not _db_path.startswith(":"):
         Path(_db_path).parent.mkdir(parents=True, exist_ok=True)
 
+_is_sqlite = _db_url.startswith("sqlite")
+
 engine = create_engine(
     settings.database_url,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False} if _is_sqlite else {},
     echo=False,
 )
 
 
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_conn, connection_record):
+    if not _is_sqlite:
+        return
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
@@ -76,5 +80,18 @@ def migrate_db():
 
 def create_tables():
     from models import slide, assembly, user, project  # noqa: F401
+    from models import global_settings  # noqa: F401
     Base.metadata.create_all(bind=engine)
     migrate_db()
+    _seed_global_settings()
+
+
+def _seed_global_settings():
+    from models.global_settings import GlobalSettings, _DEFAULT_WRITING_RULES
+    with engine.begin() as conn:
+        existing = conn.execute(text("SELECT COUNT(*) FROM global_settings WHERE id = 1")).scalar()
+        if existing == 0:
+            conn.execute(
+                text("INSERT INTO global_settings (id, base_writing_rules) VALUES (1, :rules)"),
+                {"rules": _DEFAULT_WRITING_RULES},
+            )
