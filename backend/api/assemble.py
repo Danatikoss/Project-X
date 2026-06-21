@@ -144,9 +144,10 @@ def get_public_assembly(share_token: str, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[AssemblyListItem])
-def list_assemblies(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_assemblies(db: Session = Depends(get_db), user: User = Depends(get_current_user), company_id: int = Depends(get_company_id)):
     assemblies = db.query(AssembledPresentation).filter(
-        AssembledPresentation.owner_id == user.id
+        AssembledPresentation.owner_id == user.id,
+        AssembledPresentation.company_id == company_id,
     ).order_by(AssembledPresentation.id.desc()).limit(50).all()
 
     result = []
