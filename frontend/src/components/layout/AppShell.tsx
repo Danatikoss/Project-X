@@ -473,9 +473,9 @@ export function AppShell() {
 					</button>
 					<IndexingBell />
 					{orgName && (
-						<div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 border border-brand-100 mx-1">
+						<div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-50 border border-brand-100 mx-1">
 							{orgLogo && (
-								<img src={orgLogo} alt="" className="h-4 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+								<img src={orgLogo} alt="" className="h-6 w-auto max-w-[80px] object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
 							)}
 							<span className="text-xs font-semibold text-brand-700 max-w-[140px] truncate">
 								{orgName}
