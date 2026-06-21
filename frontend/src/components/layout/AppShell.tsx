@@ -450,6 +450,14 @@ export function AppShell() {
 					</div>
 					<span className="font-bold text-[15px] tracking-tight text-gray-900">SLIDEX</span>
 				</NavLink>
+				{orgName && (
+					<div className="hidden lg:flex items-center gap-2 pl-3 ml-2 border-l border-gray-200">
+						{orgLogo && (
+							<img src={orgLogo} alt="" className="h-6 w-auto max-w-[80px] object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+						)}
+						<span className="text-xs font-semibold text-gray-600 max-w-[140px] truncate">{orgName}</span>
+					</div>
+				)}
 
 				{/* Center nav — absolutely centered */}
 				<div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
@@ -472,16 +480,7 @@ export function AppShell() {
 						<span className="hidden lg:inline">Гайд</span>
 					</button>
 					<IndexingBell />
-					{orgName && (
-						<div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-50 border border-brand-100 mx-1">
-							{orgLogo && (
-								<img src={orgLogo} alt="" className="h-6 w-auto max-w-[80px] object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-							)}
-							<span className="text-xs font-semibold text-brand-700 max-w-[140px] truncate">
-								{orgName}
-							</span>
-						</div>
-					)}
+
 					<div className="w-px h-5 bg-gray-200 mx-1" />
 					<UserMenu />
 				</div>

@@ -494,25 +494,9 @@ const [editingId, setEditingId] = useState<number | null>(null);
 			{/* ── Hero header ─────────────────────────────────────────────────────── */}
 			<div className="bg-gradient-hero border-b border-slate-100 px-6 pt-10 pb-8">
 				<div className="max-w-3xl mx-auto">
-					{orgName ? (
-						<div className="flex items-center gap-2 mb-3">
-							{orgLogo && (
-								<img
-									src={orgLogo}
-									alt=""
-									className="h-5 w-auto object-contain"
-									onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-								/>
-							)}
-							<span className="text-xs font-semibold text-brand-600 uppercase tracking-widest">
-								{orgShort || orgName}
-							</span>
-						</div>
-					) : (
-						<p className="text-xs font-semibold text-brand-600 uppercase tracking-widest mb-2">
-							Быстрый старт
-						</p>
-					)}
+					<p className="text-xs font-semibold text-brand-600 uppercase tracking-widest mb-2">
+						{orgName ? (orgShort || orgName) : "Быстрый старт"}
+					</p>
 					<h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Мои шаблоны</h1>
 					<p className="text-sm text-slate-500">
 						Создайте шаблон из слайдов библиотеки — один клик для сборки презентации.
