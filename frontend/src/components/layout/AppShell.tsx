@@ -450,12 +450,9 @@ export function AppShell() {
 					</div>
 					<span className="font-bold text-[15px] tracking-tight text-gray-900">SLIDEX</span>
 				</NavLink>
-				{orgName && (
-					<div className="hidden lg:flex items-center gap-2 pl-3 ml-2 border-l border-gray-200">
-						{orgLogo && (
-							<img src={orgLogo} alt="" className="h-6 w-auto max-w-[80px] object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-						)}
-						<span className="text-xs font-semibold text-gray-600 max-w-[140px] truncate">{orgName}</span>
+				{orgLogo && (
+					<div className="hidden lg:flex items-center pl-3 ml-2 border-l border-gray-200">
+						<img src={orgLogo} alt="" className="h-6 w-auto max-w-[80px] object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
 					</div>
 				)}
 
