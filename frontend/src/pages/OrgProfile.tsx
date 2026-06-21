@@ -104,7 +104,7 @@ export default function OrgProfile() {
 						<Field label="Полное официальное название" hint="Используется в заголовках и официальных слайдах">
 							<input
 								className={inputCls}
-								placeholder="Министерство цифрового развития, инноваций и аэрокосмической промышленности РК"
+								placeholder="Введите полное официальное название организации"
 								value={form.org_name ?? ""}
 								onChange={set("org_name")}
 							/>
@@ -112,7 +112,7 @@ export default function OrgProfile() {
 						<Field label="Аббревиатура / короткое название">
 							<input
 								className={inputCls}
-								placeholder="МЦРИАП"
+								placeholder="Аббревиатура или сокращение"
 								value={form.org_name_short ?? ""}
 								onChange={set("org_name_short")}
 							/>
@@ -120,7 +120,7 @@ export default function OrgProfile() {
 						<Field label="Руководитель" hint="Имя и должность — AI не будет галлюцинировать">
 							<input
 								className={inputCls}
-								placeholder="Министр Багдат Мусин"
+								placeholder="Имя и должность руководителя"
 								value={form.leader_name ?? ""}
 								onChange={set("leader_name")}
 							/>
@@ -129,7 +129,7 @@ export default function OrgProfile() {
 							<textarea
 								className={textareaCls}
 								rows={2}
-								placeholder="Цифровая трансформация государственного управления Казахстана"
+								placeholder="Кратко опишите основную деятельность и цели организации"
 								value={form.mission ?? ""}
 								onChange={set("mission")}
 							/>
@@ -147,7 +147,7 @@ export default function OrgProfile() {
 							<textarea
 								className={textareaCls}
 								rows={2}
-								placeholder="eGov.kz, ЦОН, Государственная база данных «Физические лица»"
+								placeholder="Перечислите основные продукты, проекты или сервисы организации"
 								value={form.key_products ?? ""}
 								onChange={set("key_products")}
 							/>
@@ -156,7 +156,7 @@ export default function OrgProfile() {
 							<textarea
 								className={textareaCls}
 								rows={3}
-								placeholder={"12.5 млн активных пользователей eGov\n97% госуслуг переведено в цифровой формат\n2 место в рейтинге ООН по e-government (2024)"}
+								placeholder={"Каждый факт с новой строки\nНапример: 500 млрд тенге активов под управлением\nИли: присутствие в 12 отраслях экономики"}
 								value={form.key_stats ?? ""}
 								onChange={set("key_stats")}
 							/>
@@ -165,7 +165,7 @@ export default function OrgProfile() {
 							<textarea
 								className={textareaCls}
 								rows={2}
-								placeholder="Цифровой Казахстан 2025-2029, ИИ-стратегия РК, цифровизация сельских регионов"
+								placeholder="Основные стратегические направления и программы развития"
 								value={form.strategic_priorities ?? ""}
 								onChange={set("strategic_priorities")}
 							/>
@@ -192,7 +192,7 @@ export default function OrgProfile() {
 							<textarea
 								className={textareaCls}
 								rows={2}
-								placeholder="коррупция, провал, нет данных, неизвестно"
+								placeholder="Слова или фразы через запятую, которые нельзя использовать"
 								value={form.forbidden_words ?? ""}
 								onChange={set("forbidden_words")}
 							/>
