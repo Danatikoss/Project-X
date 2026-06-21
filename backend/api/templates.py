@@ -120,9 +120,10 @@ def get_template(
     template_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     template = db.query(AssemblyTemplate).get(template_id)
-    if not template:
+    if not template or template.company_id != company_id:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
     if not current_user.is_admin and template.owner_id != current_user.id and not template.is_public:
         raise HTTPException(status_code=403, detail="Доступ запрещён")
@@ -200,13 +201,14 @@ def get_template_slides(
     template_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    company_id: int = Depends(get_company_id),
 ):
     """Return full slide data for all slides in a template.
     Access: owner, admin, or any user if template is public.
     Bypasses per-user library filter so the editor loads correctly.
     """
     template = db.query(AssemblyTemplate).get(template_id)
-    if not template:
+    if not template or template.company_id != company_id:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
     if not current_user.is_admin and template.owner_id != current_user.id and not template.is_public:
         raise HTTPException(status_code=403, detail="Доступ запрещён")
