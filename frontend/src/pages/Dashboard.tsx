@@ -491,32 +491,28 @@ const [editingId, setEditingId] = useState<number | null>(null);
 
 	return (
 		<div className="min-h-full bg-surface">
-			{/* ── Org welcome banner ──────────────────────────────────────────────── */}
-			{orgName && (
-				<div className="bg-gradient-to-r from-brand-600 to-indigo-700 px-6 py-3 flex items-center gap-3">
-					{orgLogo && (
-						<img src={orgLogo} alt={orgName} className="h-7 w-auto object-contain shrink-0 brightness-0 invert" />
-					)}
-					<div className="flex items-center gap-2 min-w-0">
-						<span className="text-white/60 text-xs font-medium hidden sm:block">SLIDEX для</span>
-						<span className="text-white font-semibold text-sm truncate">
-							{orgShort || orgName}
-						</span>
-					</div>
-					{orgProfile?.mission && (
-						<span className="hidden lg:block text-white/50 text-xs ml-2 truncate max-w-xs">
-							— {orgProfile.mission}
-						</span>
-					)}
-				</div>
-			)}
-
 			{/* ── Hero header ─────────────────────────────────────────────────────── */}
 			<div className="bg-gradient-hero border-b border-slate-100 px-6 pt-10 pb-8">
 				<div className="max-w-3xl mx-auto">
-					<p className="text-xs font-semibold text-brand-600 uppercase tracking-widest mb-2">
-						Быстрый старт
-					</p>
+					{orgName ? (
+						<div className="flex items-center gap-2 mb-3">
+							{orgLogo && (
+								<img
+									src={orgLogo}
+									alt=""
+									className="h-5 w-auto object-contain"
+									onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+								/>
+							)}
+							<span className="text-xs font-semibold text-brand-600 uppercase tracking-widest">
+								{orgShort || orgName}
+							</span>
+						</div>
+					) : (
+						<p className="text-xs font-semibold text-brand-600 uppercase tracking-widest mb-2">
+							Быстрый старт
+						</p>
+					)}
 					<h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Мои шаблоны</h1>
 					<p className="text-sm text-slate-500">
 						Создайте шаблон из слайдов библиотеки — один клик для сборки презентации.
