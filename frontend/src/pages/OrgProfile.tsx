@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Lock, Save } from "lucide-react";
+import { Building2, ImagePlus, Lock, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { globalSettingsApi, orgProfileApi, type GlobalSettings, type OrgProfile } from "../api/client";
@@ -27,6 +27,7 @@ const EMPTY: OrgProfile = {
 	writing_rules: "",
 	forbidden_words: "",
 	language: "ru",
+	logo_url: null,
 };
 
 function Field({
@@ -85,6 +86,15 @@ export default function OrgProfile() {
 		onError: () => toast.error("Не удалось сохранить"),
 	});
 
+	const logoMutation = useMutation({
+		mutationFn: orgProfileApi.uploadLogo,
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["org-profile"] });
+			toast.success("Логотип загружен");
+		},
+		onError: () => toast.error("Не удалось загрузить логотип"),
+	});
+
 	const globalMutation = useMutation({
 		mutationFn: globalSettingsApi.update,
 		onSuccess: () => {
@@ -130,6 +140,41 @@ export default function OrgProfile() {
 						Организация
 					</p>
 					<div className="flex flex-col gap-4">
+						{/* Logo — super-admin only */}
+						<Field label="Логотип организации" hint={isSuperAdmin ? "PNG, JPG, SVG или WebP, макс. 2 МБ" : "Логотип устанавливает только супер-администратор"}>
+							<div className="flex items-center gap-3">
+								{form.logo_url ? (
+									<div className="h-12 w-24 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
+										<img src={form.logo_url} alt="Логотип" className="h-10 w-auto object-contain" />
+									</div>
+								) : (
+									<div className="h-12 w-24 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center">
+										<Building2 className="w-5 h-5 text-slate-300" />
+									</div>
+								)}
+								{isSuperAdmin && (
+									<label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm text-slate-600 cursor-pointer transition">
+										{logoMutation.isPending ? (
+											<div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+										) : (
+											<ImagePlus className="w-4 h-4" />
+										)}
+										{form.logo_url ? "Заменить" : "Загрузить"}
+										<input
+											type="file"
+											className="hidden"
+											accept="image/png,image/jpeg,image/svg+xml,image/webp"
+											onChange={(e) => {
+												const file = e.target.files?.[0];
+												if (file) logoMutation.mutate(file);
+												e.target.value = "";
+											}}
+										/>
+									</label>
+								)}
+							</div>
+						</Field>
+
 						<Field label="Полное официальное название" hint="Используется в заголовках и официальных слайдах">
 							<input
 								className={inputCls}

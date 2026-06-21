@@ -26,7 +26,8 @@ import { OnboardingChecklist } from "../components/onboarding/OnboardingChecklis
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { assemblyApi, templatesApi } from "../api/client";
+import { assemblyApi, orgProfileApi, templatesApi } from "../api/client";
+import { useAuthStore } from "../store/auth";
 import { Spinner } from "../components/common/Spinner";
 import { TemplateCardSkeleton } from "../components/common/Skeleton";
 import type { AssemblyListItem, AssemblyTemplate, Slide } from "../types";
@@ -350,6 +351,15 @@ const [editingId, setEditingId] = useState<number | null>(null);
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 
+	const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
+	const user = useAuthStore((s) => s.user);
+
+	const { data: orgProfile } = useQuery({
+		queryKey: ["org-profile", activeCompanyId],
+		queryFn: orgProfileApi.get,
+		staleTime: 5 * 60 * 1000,
+	});
+
 	const { data: assemblies, isLoading } = useQuery({
 		queryKey: ["assemblies"],
 		queryFn: assemblyApi.list,
@@ -475,8 +485,32 @@ const [editingId, setEditingId] = useState<number | null>(null);
 
 	const isBuilding = createFromTemplateMutation.isPending;
 
+	const orgName = orgProfile?.org_name || user?.company_name || null;
+	const orgLogo = orgProfile?.logo_url || null;
+	const orgShort = orgProfile?.org_name_short || null;
+
 	return (
 		<div className="min-h-full bg-surface">
+			{/* ── Org welcome banner ──────────────────────────────────────────────── */}
+			{orgName && (
+				<div className="bg-gradient-to-r from-brand-600 to-indigo-700 px-6 py-3 flex items-center gap-3">
+					{orgLogo && (
+						<img src={orgLogo} alt={orgName} className="h-7 w-auto object-contain shrink-0 brightness-0 invert" />
+					)}
+					<div className="flex items-center gap-2 min-w-0">
+						<span className="text-white/60 text-xs font-medium hidden sm:block">SLIDEX для</span>
+						<span className="text-white font-semibold text-sm truncate">
+							{orgShort || orgName}
+						</span>
+					</div>
+					{orgProfile?.mission && (
+						<span className="hidden lg:block text-white/50 text-xs ml-2 truncate max-w-xs">
+							— {orgProfile.mission}
+						</span>
+					)}
+				</div>
+			)}
+
 			{/* ── Hero header ─────────────────────────────────────────────────────── */}
 			<div className="bg-gradient-hero border-b border-slate-100 px-6 pt-10 pb-8">
 				<div className="max-w-3xl mx-auto">

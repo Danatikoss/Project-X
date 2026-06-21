@@ -76,6 +76,8 @@ def migrate_db():
                 "CREATE UNIQUE INDEX IF NOT EXISTS ix_user_profiles_user_id "
                 "ON user_profiles(user_id) WHERE user_id IS NOT NULL"
             ))
+        if "company_profiles" in tables:
+            _add_column_if_missing(conn, "company_profiles", "logo_url", "TEXT")
 
 
 def create_tables():

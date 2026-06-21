@@ -852,6 +852,7 @@ export interface OrgProfile {
 	writing_rules: string | null;
 	forbidden_words: string | null;
 	language: string;
+	logo_url: string | null;
 }
 
 export interface GlobalSettings {
@@ -877,6 +878,14 @@ export const orgProfileApi = {
 	},
 	update: async (data: OrgProfile): Promise<OrgProfile> => {
 		const res = await api.put<OrgProfile>("/org-profile", data);
+		return res.data;
+	},
+	uploadLogo: async (file: File): Promise<OrgProfile> => {
+		const form = new FormData();
+		form.append("file", file);
+		const res = await api.post<OrgProfile>("/org-profile/logo", form, {
+			headers: { "Content-Type": "multipart/form-data" },
+		});
 		return res.data;
 	},
 };

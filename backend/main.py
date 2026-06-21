@@ -109,6 +109,11 @@ brand_bg_dir = Path(settings.upload_dir) / "brand_backgrounds"
 brand_bg_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/brand-backgrounds", StaticFiles(directory=str(brand_bg_dir)), name="brand-backgrounds")
 
+# /org-logos — public (org logo images uploaded by super-admin)
+org_logo_dir = Path(settings.upload_dir) / "org_logos"
+org_logo_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/org-logos", StaticFiles(directory=str(org_logo_dir)), name="org-logos")
+
 # /exports — removed static mount; served only via authenticated POST /assemble/{id}/export
 export_dir = Path(settings.export_dir)
 export_dir.mkdir(parents=True, exist_ok=True)

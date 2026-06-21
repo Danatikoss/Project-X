@@ -18,10 +18,11 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { authApi } from "../../api/client";
+import { authApi, orgProfileApi } from "../../api/client";
 import { WelcomeModal } from "../onboarding/WelcomeModal";
 import { useAuthStore } from "../../store/auth";
 import { cn } from "../../utils/cn";
+import { useQuery } from "@tanstack/react-query";
 import { IndexingBell } from "./IndexingBell";
 import { FeedbackWidget } from "../common/FeedbackWidget";
 
@@ -415,7 +416,17 @@ export function AppShell() {
 	const location = useLocation();
 	const isAssemblePage = location.pathname.startsWith("/assemble/");
 	const user = useAuthStore((s) => s.user);
+	const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
 	const [helpOpen, setHelpOpen] = useState(false);
+
+	const { data: orgProfile } = useQuery({
+		queryKey: ["org-profile", activeCompanyId],
+		queryFn: orgProfileApi.get,
+		staleTime: 5 * 60 * 1000,
+	});
+
+	const orgName = orgProfile?.org_name || user?.company_name || null;
+	const orgLogo = orgProfile?.logo_url || null;
 
 	const initials = user?.name
 		? user.name
@@ -439,6 +450,20 @@ export function AppShell() {
 					</div>
 					<span className="font-bold text-[15px] tracking-tight text-gray-900">SLIDEX</span>
 				</NavLink>
+
+				{/* Org badge — right of logo */}
+				{orgName && (
+					<div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-gray-200">
+						{orgLogo ? (
+							<img src={orgLogo} alt={orgName} className="h-5 w-auto object-contain" />
+						) : (
+							<Building2 className="w-3.5 h-3.5 text-brand-500 shrink-0" />
+						)}
+						<span className="text-xs font-semibold text-brand-700 hidden lg:block max-w-[160px] truncate">
+							{orgName}
+						</span>
+					</div>
+				)}
 
 				{/* Center nav — absolutely centered */}
 				<div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">

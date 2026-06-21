@@ -20,6 +20,7 @@ class CompanyProfile(Base):
     writing_rules = Column(Text, nullable=True)
     forbidden_words = Column(Text, nullable=True)
     language = Column(String, default="ru")
+    logo_url = Column(String, nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
