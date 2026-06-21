@@ -20,6 +20,7 @@ from api.deps import get_current_user, get_admin_user, get_company_id_optional
 from database import get_db
 from models.user import User
 from models.company import Company, InviteToken
+from models.global_settings import GlobalSettings, get_global_settings
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -562,6 +563,51 @@ def get_security(
         "total_failed_logins": db.query(func.count(SecurityEvent.id))
             .filter(SecurityEvent.event_type == "failed_login").scalar() or 0,
     }
+
+
+# ── Global settings (super-admin only) ───────────────────────────────────────
+
+class GlobalSettingsOut(BaseModel):
+    base_writing_rules: str | None
+    base_forbidden_words: str | None
+
+
+class GlobalSettingsUpdate(BaseModel):
+    base_writing_rules: str | None = None
+    base_forbidden_words: str | None = None
+
+
+@router.get("/global-settings", response_model=GlobalSettingsOut)
+def get_global_settings_endpoint(
+    db: Session = Depends(get_db),
+    current: User = Depends(get_admin_user),
+):
+    gs = get_global_settings(db)
+    return GlobalSettingsOut(
+        base_writing_rules=gs.base_writing_rules,
+        base_forbidden_words=gs.base_forbidden_words,
+    )
+
+
+@router.put("/global-settings", response_model=GlobalSettingsOut)
+def update_global_settings_endpoint(
+    body: GlobalSettingsUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_admin_user),
+):
+    if not current.is_super_admin:
+        raise HTTPException(status_code=403, detail="Только для супер-администратора")
+    gs = get_global_settings(db)
+    if body.base_writing_rules is not None:
+        gs.base_writing_rules = body.base_writing_rules
+    if body.base_forbidden_words is not None:
+        gs.base_forbidden_words = body.base_forbidden_words
+    db.commit()
+    db.refresh(gs)
+    return GlobalSettingsOut(
+        base_writing_rules=gs.base_writing_rules,
+        base_forbidden_words=gs.base_forbidden_words,
+    )
 
 
 def log_generation(

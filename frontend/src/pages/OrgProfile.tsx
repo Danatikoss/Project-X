@@ -1,14 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Save } from "lucide-react";
+import { Building2, Lock, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { orgProfileApi, type OrgProfile } from "../api/client";
+import { globalSettingsApi, orgProfileApi, type GlobalSettings, type OrgProfile } from "../api/client";
+import { useAuthStore } from "../store/auth";
 
 const LANGUAGES = [
 	{ value: "ru", label: "Русский" },
 	{ value: "kk", label: "Қазақша" },
 	{ value: "both", label: "Оба языка" },
 ];
+
+const EMPTY_GLOBAL: GlobalSettings = {
+	base_writing_rules: "",
+	base_forbidden_words: "",
+};
 
 const EMPTY: OrgProfile = {
 	org_name: "",
@@ -48,16 +54,27 @@ const textareaCls = `${inputCls} resize-none`;
 
 export default function OrgProfile() {
 	const qc = useQueryClient();
+	const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin());
 	const [form, setForm] = useState<OrgProfile>(EMPTY);
+	const [globalForm, setGlobalForm] = useState<GlobalSettings>(EMPTY_GLOBAL);
 
 	const { data, isLoading } = useQuery({
 		queryKey: ["org-profile"],
 		queryFn: orgProfileApi.get,
 	});
 
+	const { data: globalData, isLoading: isLoadingGlobal } = useQuery({
+		queryKey: ["global-settings"],
+		queryFn: globalSettingsApi.get,
+	});
+
 	useEffect(() => {
 		if (data) setForm({ ...EMPTY, ...data });
 	}, [data]);
+
+	useEffect(() => {
+		if (globalData) setGlobalForm({ ...EMPTY_GLOBAL, ...globalData });
+	}, [globalData]);
 
 	const mutation = useMutation({
 		mutationFn: orgProfileApi.update,
@@ -68,10 +85,22 @@ export default function OrgProfile() {
 		onError: () => toast.error("Не удалось сохранить"),
 	});
 
+	const globalMutation = useMutation({
+		mutationFn: globalSettingsApi.update,
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["global-settings"] });
+			toast.success("Базовые правила сохранены");
+		},
+		onError: () => toast.error("Не удалось сохранить базовые правила"),
+	});
+
 	const set = (key: keyof OrgProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
 		setForm((f) => ({ ...f, [key]: e.target.value }));
 
-	if (isLoading) {
+	const setGlobal = (key: keyof GlobalSettings) => (e: React.ChangeEvent<HTMLTextAreaElement>) =>
+		setGlobalForm((f) => ({ ...f, [key]: e.target.value }));
+
+	if (isLoading || isLoadingGlobal) {
 		return (
 			<div className="flex items-center justify-center h-64">
 				<div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -173,13 +202,72 @@ export default function OrgProfile() {
 					</div>
 				</div>
 
+				{/* Base rules — visible to all, editable only by super-admin */}
+				<div>
+					<div className="flex items-center gap-2 mb-4">
+						<p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+							Базовые правила
+						</p>
+						<span className="text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">
+							применяются ко всем организациям
+						</span>
+					</div>
+					<div className="flex flex-col gap-4">
+						<Field label="Правила написания" hint={isSuperAdmin ? undefined : "Только супер-администратор может редактировать"}>
+							{isSuperAdmin ? (
+								<textarea
+									className={textareaCls}
+									rows={3}
+									value={globalForm.base_writing_rules ?? ""}
+									onChange={setGlobal("base_writing_rules")}
+								/>
+							) : (
+								<div className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+									<Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-300" />
+									<span>{globalForm.base_writing_rules || "—"}</span>
+								</div>
+							)}
+						</Field>
+						<Field label="Запрещённые слова и фразы" hint={isSuperAdmin ? undefined : "Только супер-администратор может редактировать"}>
+							{isSuperAdmin ? (
+								<textarea
+									className={textareaCls}
+									rows={2}
+									placeholder="Слова или фразы через запятую"
+									value={globalForm.base_forbidden_words ?? ""}
+									onChange={setGlobal("base_forbidden_words")}
+								/>
+							) : (
+								<div className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+									<Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-300" />
+									<span>{globalForm.base_forbidden_words || "—"}</span>
+								</div>
+							)}
+						</Field>
+						{isSuperAdmin && (
+							<button
+								onClick={() => globalMutation.mutate(globalForm)}
+								disabled={globalMutation.isPending}
+								className="flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium transition disabled:opacity-50"
+							>
+								{globalMutation.isPending ? (
+									<div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+								) : (
+									<Save className="w-4 h-4" />
+								)}
+								Сохранить базовые правила
+							</button>
+						)}
+					</div>
+				</div>
+
 				{/* Rules */}
 				<div>
 					<p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4">
-						Правила генерации
+						Правила организации
 					</p>
 					<div className="flex flex-col gap-4">
-						<Field label="Правила написания текста в слайдах">
+						<Field label="Дополнительные правила написания" hint="Добавляются к базовым правилам">
 							<textarea
 								className={textareaCls}
 								rows={3}
@@ -188,7 +276,7 @@ export default function OrgProfile() {
 								onChange={set("writing_rules")}
 							/>
 						</Field>
-						<Field label="Запрещённые слова и фразы" hint="AI никогда не будет использовать эти выражения">
+						<Field label="Запрещённые слова и фразы" hint="Добавляются к базовому списку">
 							<textarea
 								className={textareaCls}
 								rows={2}

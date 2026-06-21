@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from database import Base
+from models.global_settings import get_global_settings
 
 
 class CompanyProfile(Base):
@@ -23,19 +24,14 @@ class CompanyProfile(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
 
 
-BASE_WRITING_RULES = (
-    "Тезисы — не более 2 строк; "
-    "без воды и общих фраз («активно развивается», «успешно реализуется»); "
-    "цифры писать точно, без «около» и «примерно» — если данных нет, писать [данные]"
-)
-
-
 def get_company_context(db: Session, company_id: int | None = None) -> str:
     """Build a company context string to inject into AI generation prompts."""
     q = db.query(CompanyProfile)
     if company_id is not None:
         q = q.filter(CompanyProfile.company_id == company_id)
     profile = q.first()
+
+    gs = get_global_settings(db)
 
     parts = []
 
@@ -59,11 +55,16 @@ def get_company_context(db: Session, company_id: int | None = None) -> str:
             parts.append(f"Язык генерации: {profile.language}")
 
     # Base rules always apply; org-specific rules are appended on top
+    base_rules = gs.base_writing_rules or ""
     org_rules = profile.writing_rules if profile and profile.writing_rules else None
-    combined_rules = BASE_WRITING_RULES + (f"; {org_rules}" if org_rules else "")
-    parts.append(f"Правила написания текста в слайдах: {combined_rules}")
+    combined_rules = base_rules + (f"; {org_rules}" if org_rules else "")
+    if combined_rules:
+        parts.append(f"Правила написания текста в слайдах: {combined_rules}")
 
-    if profile and profile.forbidden_words:
-        parts.append(f"ЗАПРЕЩЕНО использовать эти слова и фразы: {profile.forbidden_words}")
+    base_forbidden = gs.base_forbidden_words or ""
+    org_forbidden = profile.forbidden_words if profile and profile.forbidden_words else None
+    combined_forbidden = ", ".join(filter(None, [base_forbidden, org_forbidden]))
+    if combined_forbidden:
+        parts.append(f"ЗАПРЕЩЕНО использовать эти слова и фразы: {combined_forbidden}")
 
     return "### Контекст организации (следуй строго)\n" + "\n".join(parts)

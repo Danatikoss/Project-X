@@ -854,6 +854,22 @@ export interface OrgProfile {
 	language: string;
 }
 
+export interface GlobalSettings {
+	base_writing_rules: string | null;
+	base_forbidden_words: string | null;
+}
+
+export const globalSettingsApi = {
+	get: async (): Promise<GlobalSettings> => {
+		const res = await api.get<GlobalSettings>("/admin/global-settings");
+		return res.data;
+	},
+	update: async (data: Partial<GlobalSettings>): Promise<GlobalSettings> => {
+		const res = await api.put<GlobalSettings>("/admin/global-settings", data);
+		return res.data;
+	},
+};
+
 export const orgProfileApi = {
 	get: async (): Promise<OrgProfile | null> => {
 		const res = await api.get<OrgProfile | null>("/org-profile");
