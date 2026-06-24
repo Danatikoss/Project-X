@@ -18,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, X } from "lucide-react";
 import type { Slide } from "../../types";
 import { cn } from "../../utils/cn";
+import type { RemoteUserState } from "../../hooks/useAssemblyRoom";
 
 interface SortableSlideProps {
 	slide: Slide;
@@ -26,9 +27,10 @@ interface SortableSlideProps {
 	onSelect: () => void;
 	onRemove: () => void;
 	dark?: boolean;
+	dots?: { color: string; name: string }[];
 }
 
-function SortableSlide({ slide, index, isSelected, onSelect, onRemove, dark }: SortableSlideProps) {
+function SortableSlide({ slide, index, isSelected, onSelect, onRemove, dark, dots }: SortableSlideProps) {
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id: slide.id,
 	});
@@ -111,6 +113,20 @@ function SortableSlide({ slide, index, isSelected, onSelect, onRemove, dark }: S
 							<span className={cn("text-[9px]", dark ? "text-white/30" : "text-gray-400")}>—</span>
 						</div>
 					)}
+
+					{/* Presence dots — users currently on this slide */}
+					{dots && dots.length > 0 && (
+						<div className="absolute bottom-1 right-1 flex gap-0.5">
+							{dots.slice(0, 4).map((d, i) => (
+								<div
+									key={i}
+									title={d.name}
+									className="w-2.5 h-2.5 rounded-full border border-white/80 shadow-sm"
+									style={{ backgroundColor: d.color }}
+								/>
+							))}
+						</div>
+					)}
 				</div>
 			</div>
 
@@ -138,6 +154,7 @@ interface FilmStripProps {
 	onReorder: (slides: Slide[]) => void;
 	onRemove: (id: number) => void;
 	dark?: boolean;
+	remoteUsers?: RemoteUserState[];
 }
 
 export function FilmStrip({
@@ -147,6 +164,7 @@ export function FilmStrip({
 	onReorder,
 	onRemove,
 	dark,
+	remoteUsers,
 }: FilmStripProps) {
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -175,6 +193,9 @@ export function FilmStrip({
 							onSelect={() => onSelect(i)}
 							onRemove={() => onRemove(slide.id)}
 							dark={dark}
+							dots={remoteUsers
+								?.filter((u) => u.slideIndex === i)
+								.map((u) => ({ color: u.color, name: u.name }))}
 						/>
 					))}
 				</div>

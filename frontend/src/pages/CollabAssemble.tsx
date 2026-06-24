@@ -126,41 +126,58 @@ function CollabFilmstrip({
 	selectedIndex,
 	onSelect,
 	onRemove,
+	remoteUsers,
 }: {
 	slides: Slide[];
 	selectedIndex: number;
 	onSelect: (i: number) => void;
 	onRemove: (id: number) => void;
+	remoteUsers?: import("../hooks/useAssemblyRoom").RemoteUserState[];
 }) {
 	return (
 		<div className="flex flex-col gap-1 p-2 overflow-y-auto flex-1">
-			{slides.map((slide, i) => (
-				<div key={slide.id} className="relative group">
-					<button
-						onClick={() => onSelect(i)}
-						className={cn(
-							"w-full rounded-lg overflow-hidden border-2 transition-all",
-							i === selectedIndex ? "border-brand-500" : "border-transparent opacity-60 hover:opacity-90"
+			{slides.map((slide, i) => {
+				const dots = remoteUsers?.filter((u) => u.slideIndex === i) ?? [];
+				return (
+					<div key={slide.id} className="relative group">
+						<button
+							onClick={() => onSelect(i)}
+							className={cn(
+								"w-full rounded-lg overflow-hidden border-2 transition-all",
+								i === selectedIndex ? "border-brand-500" : "border-transparent opacity-60 hover:opacity-90"
+							)}
+						>
+							<img
+								src={slide.thumbnail_url}
+								alt={slide.title || `Слайд ${i + 1}`}
+								className="w-full aspect-video object-cover"
+							/>
+						</button>
+						<span className="absolute top-1 left-1 w-4 h-4 bg-black/50 rounded text-white text-[9px] flex items-center justify-center font-medium pointer-events-none">
+							{i + 1}
+						</span>
+						<button
+							onClick={() => onRemove(slide.id)}
+							className="absolute top-1 right-1 w-5 h-5 rounded bg-red-500/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all"
+							title="Удалить слайд"
+						>
+							<Trash2 className="w-2.5 h-2.5" />
+						</button>
+						{dots.length > 0 && (
+							<div className="absolute bottom-1 right-1 flex gap-0.5 pointer-events-none">
+								{dots.slice(0, 4).map((u, idx) => (
+									<div
+										key={idx}
+										title={u.name}
+										className="w-2.5 h-2.5 rounded-full border border-white/80 shadow-sm"
+										style={{ backgroundColor: u.color }}
+									/>
+								))}
+							</div>
 						)}
-					>
-						<img
-							src={slide.thumbnail_url}
-							alt={slide.title || `Слайд ${i + 1}`}
-							className="w-full aspect-video object-cover"
-						/>
-					</button>
-					<span className="absolute top-1 left-1 w-4 h-4 bg-black/50 rounded text-white text-[9px] flex items-center justify-center font-medium pointer-events-none">
-						{i + 1}
-					</span>
-					<button
-						onClick={() => onRemove(slide.id)}
-						className="absolute top-1 right-1 w-5 h-5 rounded bg-red-500/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all"
-						title="Удалить слайд"
-					>
-						<Trash2 className="w-2.5 h-2.5" />
-					</button>
-				</div>
-			))}
+					</div>
+				);
+			})}
 		</div>
 	);
 }
@@ -214,7 +231,7 @@ export default function CollabAssemble() {
 	}, [overlays]);
 
 	// Real-time sync from WS room + presence tracking
-	const { onlineUsers } = useAssemblyRoom(
+	const { onlineUsers, remoteUsers, sendMessage } = useAssemblyRoom(
 		assemblyId,
 		(updated: Assembly) => {
 			setLocalSlides(updated.slides);
@@ -224,6 +241,30 @@ export default function CollabAssemble() {
 		},
 		{ name: "Гость" },
 	);
+
+	// Announce which slide we're on whenever it changes
+	useEffect(() => {
+		sendMessage({ type: "slide_focus", slideIndex: selectedIndex });
+	}, [selectedIndex, sendMessage]);
+
+	const cursorThrottleRef = useRef(0);
+
+	const handleCanvasMouseMove = useCallback(
+		(e: React.MouseEvent<HTMLDivElement>) => {
+			const now = Date.now();
+			if (now - cursorThrottleRef.current < 40) return;
+			cursorThrottleRef.current = now;
+			const rect = e.currentTarget.getBoundingClientRect();
+			const x = Math.round(((e.clientX - rect.left) / rect.width) * 1000) / 10;
+			const y = Math.round(((e.clientY - rect.top) / rect.height) * 1000) / 10;
+			sendMessage({ type: "cursor", x, y });
+		},
+		[sendMessage],
+	);
+
+	const handleCanvasMouseLeave = useCallback(() => {
+		sendMessage({ type: "cursor", x: null, y: null });
+	}, [sendMessage]);
 
 	const updateMutation = useMutation({
 		mutationFn: (data: {
@@ -600,6 +641,7 @@ export default function CollabAssemble() {
 							selectedIndex={selectedIndex}
 							onSelect={setSelectedIndex}
 							onRemove={handleRemove}
+							remoteUsers={remoteUsers}
 						/>
 					)}
 				</aside>
@@ -645,6 +687,8 @@ export default function CollabAssemble() {
 									<div
 										ref={containerRef}
 										className="relative w-full rounded-2xl shadow-[0_4px_32px_rgba(0,0,0,0.12)] ring-1 ring-gray-200"
+										onMouseMove={handleCanvasMouseMove}
+										onMouseLeave={handleCanvasMouseLeave}
 									>
 										{selectedSlide.video_url ? (
 											<video
@@ -669,6 +713,31 @@ export default function CollabAssemble() {
 												onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
 											/>
 										))}
+
+										{/* Remote cursors */}
+										{remoteUsers
+											.filter((u) => u.slideIndex === selectedIndex && u.cursor)
+											.map((u) => (
+												<div
+													key={u.name}
+													className="absolute pointer-events-none z-50"
+													style={{
+														left: `${u.cursor!.x}%`,
+														top: `${u.cursor!.y}%`,
+													}}
+												>
+													<svg width="14" height="18" viewBox="0 0 14 18" fill="none" className="drop-shadow-sm">
+														<path d="M0 0L0 13L3.5 9.5L6 16.5L8 15.5L5.5 8.5L10 8.5L0 0Z" fill={u.color} />
+														<path d="M0 0L0 13L3.5 9.5L6 16.5L8 15.5L5.5 8.5L10 8.5L0 0Z" stroke="white" strokeWidth="0.8" />
+													</svg>
+													<span
+														className="absolute top-4 left-3 text-[9px] font-semibold text-white px-1.5 py-0.5 rounded whitespace-nowrap shadow-sm"
+														style={{ backgroundColor: u.color }}
+													>
+														{u.name}
+													</span>
+												</div>
+											))}
 									</div>
 								</div>
 								{selectedOverlayId && (

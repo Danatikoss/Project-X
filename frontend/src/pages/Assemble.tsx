@@ -807,7 +807,7 @@ export default function Assemble() {
 		if (titleValue !== assembly?.title) updateMutation.mutate({ title: titleValue });
 	};
 	// Sync changes from collaborators in real time + presence tracking
-	const { onlineUsers } = useAssemblyRoom(
+	const { onlineUsers, remoteUsers, sendMessage } = useAssemblyRoom(
 		assemblyId || null,
 		(updated) => {
 			setLocalSlides(updated.slides);
@@ -816,6 +816,31 @@ export default function Assemble() {
 		},
 		{ name: user?.name || "Пользователь" },
 	);
+
+	// Announce which slide we're on whenever it changes
+	useEffect(() => {
+		sendMessage({ type: "slide_focus", slideIndex: selectedIndex });
+	}, [selectedIndex, sendMessage]);
+
+	// Throttle ref for cursor events
+	const cursorThrottleRef = useRef(0);
+
+	const handleCanvasMouseMove = useCallback(
+		(e: React.MouseEvent<HTMLDivElement>) => {
+			const now = Date.now();
+			if (now - cursorThrottleRef.current < 40) return;
+			cursorThrottleRef.current = now;
+			const rect = e.currentTarget.getBoundingClientRect();
+			const x = Math.round(((e.clientX - rect.left) / rect.width) * 1000) / 10;
+			const y = Math.round(((e.clientY - rect.top) / rect.height) * 1000) / 10;
+			sendMessage({ type: "cursor", x, y });
+		},
+		[sendMessage],
+	);
+
+	const handleCanvasMouseLeave = useCallback(() => {
+		sendMessage({ type: "cursor", x: null, y: null });
+	}, [sendMessage]);
 	const handleExport = async (format: "pptx" | "pdf") => {
 		setIsExporting(true);
 		try {
@@ -1096,6 +1121,7 @@ export default function Assemble() {
 									onSelect={setSelectedIndex}
 									onReorder={handleReorder}
 									onRemove={handleRemove}
+									remoteUsers={remoteUsers}
 								/>
 							)}
 						</div>
@@ -1217,6 +1243,8 @@ export default function Assemble() {
 											<div
 												ref={containerRef}
 												className="relative w-full rounded-2xl shadow-[0_4px_32px_rgba(0,0,0,0.12)] ring-1 ring-gray-200"
+												onMouseMove={handleCanvasMouseMove}
+												onMouseLeave={handleCanvasMouseLeave}
 											>
 												{selectedSlide.video_url ? (
 													<video
@@ -1241,6 +1269,31 @@ export default function Assemble() {
 														onDelete={() => deleteOverlay(currentSlideId!, overlay.id)}
 													/>
 												))}
+
+												{/* Remote cursors */}
+												{remoteUsers
+													.filter((u) => u.slideIndex === selectedIndex && u.cursor)
+													.map((u) => (
+														<div
+															key={u.name}
+															className="absolute pointer-events-none z-50"
+															style={{
+																left: `${u.cursor!.x}%`,
+																top: `${u.cursor!.y}%`,
+															}}
+														>
+															<svg width="14" height="18" viewBox="0 0 14 18" fill="none" className="drop-shadow-sm">
+																<path d="M0 0L0 13L3.5 9.5L6 16.5L8 15.5L5.5 8.5L10 8.5L0 0Z" fill={u.color} />
+																<path d="M0 0L0 13L3.5 9.5L6 16.5L8 15.5L5.5 8.5L10 8.5L0 0Z" stroke="white" strokeWidth="0.8" />
+															</svg>
+															<span
+																className="absolute top-4 left-3 text-[9px] font-semibold text-white px-1.5 py-0.5 rounded whitespace-nowrap shadow-sm"
+																style={{ backgroundColor: u.color }}
+															>
+																{u.name}
+															</span>
+														</div>
+													))}
 											</div>
 										</div>
 
