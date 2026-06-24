@@ -1206,11 +1206,12 @@ export default function Assemble() {
 								thumbnailUrl={editingSlide.thumbnail_url}
 								onClose={() => setEditingSlideId(null)}
 								onSaved={(thumbVersion) => {
+									const savedId = editingSlideId;
 									setEditingSlideId(null);
-									if (thumbVersion && editingSlideId !== null) {
+									if (thumbVersion && savedId !== null) {
 										setLocalSlides((prev) =>
 											prev.map((s) =>
-												s.id === editingSlideId
+												s.id === savedId
 													? {
 															...s,
 															thumbnail_url: `${s.thumbnail_url.split("?")[0]}?t=${thumbVersion}`,
@@ -1218,6 +1219,8 @@ export default function Assemble() {
 													: s
 											)
 										);
+										// Notify collaborators so they bust their thumbnail cache too
+										sendMessage({ type: "slide_thumbnail_updated", slideId: savedId, thumbVersion });
 									}
 								}}
 							/>

@@ -249,7 +249,18 @@ export default function CollabAssemble() {
 			setTitleValue(updated.title);
 			queryClient.setQueryData(["collab-assembly", editToken], updated);
 		},
-		{ name: guestName },
+		{
+			name: guestName,
+			onSlideUpdated: (slideId, thumbVersion) => {
+				setLocalSlides((prev) =>
+					prev.map((s) =>
+						s.id === slideId
+							? { ...s, thumbnail_url: `${s.thumbnail_url.split("?")[0]}?t=${thumbVersion}` }
+							: s
+					)
+				);
+			},
+		},
 	);
 
 	// Announce which slide we're on — wait for WS to open first

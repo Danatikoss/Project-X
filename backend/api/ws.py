@@ -147,8 +147,8 @@ async def assembly_room_endpoint(websocket: WebSocket, assembly_id: int, name: s
                 text = await asyncio.wait_for(websocket.receive_text(), timeout=25)
                 try:
                     msg = json.loads(text)
-                    # Relay typing/cursor events from this client to others
-                    allowed = {"typing", "cursor", "slide_focus"}
+                    # Relay cursor/focus/slide-content events from this client to others
+                    allowed = {"typing", "cursor", "slide_focus", "slide_thumbnail_updated"}
                     if isinstance(msg, dict) and msg.get("type") in allowed:
                         msg["user"] = user_info
                         await assembly_room.relay(assembly_id, websocket, msg)

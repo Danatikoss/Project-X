@@ -13,9 +13,11 @@ export interface RemoteUserState extends RoomUser {
 }
 
 type OnUpdateFn = (assembly: Assembly) => void;
+type OnSlideUpdatedFn = (slideId: number, thumbVersion: number) => void;
 
 interface UseAssemblyRoomOptions {
 	name?: string;
+	onSlideUpdated?: OnSlideUpdatedFn;
 }
 
 export function useAssemblyRoom(
@@ -26,6 +28,8 @@ export function useAssemblyRoom(
 	const queryClient = useQueryClient();
 	const onUpdateRef = useRef<OnUpdateFn | undefined>(onUpdate);
 	onUpdateRef.current = onUpdate;
+	const onSlideUpdatedRef = useRef<OnSlideUpdatedFn | undefined>(options?.onSlideUpdated);
+	onSlideUpdatedRef.current = options?.onSlideUpdated;
 
 	const [onlineUsers, setOnlineUsers] = useState<RoomUser[]>([]);
 	const [remoteUsers, setRemoteUsers] = useState<Map<string, RemoteUserState>>(new Map());
@@ -57,6 +61,8 @@ export function useAssemblyRoom(
 					x?: number | null;
 					y?: number | null;
 					slideIndex?: number;
+					slideId?: number;
+					thumbVersion?: number;
 				};
 
 				if (msg.type === "assembly_updated" && msg.data) {
@@ -93,6 +99,8 @@ export function useAssemblyRoom(
 						next.set(user.name, { ...existing, slideIndex: msg.slideIndex });
 						return next;
 					});
+				} else if (msg.type === "slide_thumbnail_updated" && msg.slideId != null && msg.thumbVersion != null) {
+					onSlideUpdatedRef.current?.(msg.slideId, msg.thumbVersion);
 				}
 			} catch {
 				// ignore malformed messages
