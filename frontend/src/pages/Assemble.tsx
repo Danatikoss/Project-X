@@ -40,6 +40,7 @@ import { Slideshow } from "../components/common/Slideshow";
 import { SlideTextEditor } from "../components/common/SlideTextEditor";
 import { Spinner } from "../components/common/Spinner";
 import { useAppStore } from "../store";
+import { useAuthStore } from "../store/auth";
 import type { Assembly, MediaAsset, MediaFolder, Project, Slide, SlideOverlay } from "../types";
 import { cn } from "../utils/cn";
 
@@ -463,6 +464,7 @@ export default function Assemble() {
 
 	const { selectedSlideIndex: selectedIndex, setSelectedSlideIndex: setSelectedIndex } =
 		useAppStore();
+	const { user } = useAuthStore();
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [titleValue, setTitleValue] = useState("");
 	const [localSlides, setLocalSlides] = useState<Slide[]>([]);
@@ -804,12 +806,16 @@ export default function Assemble() {
 		setEditingTitle(false);
 		if (titleValue !== assembly?.title) updateMutation.mutate({ title: titleValue });
 	};
-	// Sync changes from collaborators in real time
-	useAssemblyRoom(assemblyId || null, (updated) => {
-		setLocalSlides(updated.slides);
-		setOverlays(updated.overlays || {});
-		setTitleValue(updated.title);
-	});
+	// Sync changes from collaborators in real time + presence tracking
+	const { onlineUsers } = useAssemblyRoom(
+		assemblyId || null,
+		(updated) => {
+			setLocalSlides(updated.slides);
+			setOverlays(updated.overlays || {});
+			setTitleValue(updated.title);
+		},
+		{ name: user?.name || "Пользователь" },
+	);
 	const handleExport = async (format: "pptx" | "pdf") => {
 		setIsExporting(true);
 		try {
@@ -955,6 +961,27 @@ export default function Assemble() {
 						</span>
 					)}
 				</div>
+
+				{/* Presence avatars */}
+				{onlineUsers.length > 1 && (
+					<div className="flex items-center shrink-0">
+						<div className="flex -space-x-1.5">
+							{onlineUsers.slice(0, 5).map((u, i) => (
+								<div
+									key={i}
+									title={u.name}
+									className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+									style={{ backgroundColor: u.color }}
+								>
+									{u.name.charAt(0).toUpperCase()}
+								</div>
+							))}
+						</div>
+						{onlineUsers.length > 5 && (
+							<span className="ml-1 text-[10px] text-gray-400">+{onlineUsers.length - 5}</span>
+						)}
+					</div>
+				)}
 
 				<div className="w-px h-5 bg-gray-100 shrink-0" />
 

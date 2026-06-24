@@ -96,7 +96,8 @@ async def ws_indexing(websocket: WebSocket, ws_token: str):
 
 @app.websocket("/ws/assembly/{assembly_id}")
 async def ws_assembly(websocket: WebSocket, assembly_id: int):
-    await assembly_room_endpoint(websocket, assembly_id)
+    name = websocket.query_params.get("name", "Гость")[:50]
+    await assembly_room_endpoint(websocket, assembly_id, name=name)
 
 # Static file serving
 # /thumbnails — public (PNG previews only, UUID-named, low sensitivity)

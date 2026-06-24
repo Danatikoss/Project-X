@@ -213,13 +213,17 @@ export default function CollabAssemble() {
 		overlaysRef.current = overlays;
 	}, [overlays]);
 
-	// Real-time sync from WS room
-	useAssemblyRoom(assemblyId, (updated: Assembly) => {
-		setLocalSlides(updated.slides);
-		setOverlays(updated.overlays || {});
-		setTitleValue(updated.title);
-		queryClient.setQueryData(["collab-assembly", editToken], updated);
-	});
+	// Real-time sync from WS room + presence tracking
+	const { onlineUsers } = useAssemblyRoom(
+		assemblyId,
+		(updated: Assembly) => {
+			setLocalSlides(updated.slides);
+			setOverlays(updated.overlays || {});
+			setTitleValue(updated.title);
+			queryClient.setQueryData(["collab-assembly", editToken], updated);
+		},
+		{ name: "Гость" },
+	);
 
 	const updateMutation = useMutation({
 		mutationFn: (data: {
@@ -500,10 +504,29 @@ export default function CollabAssemble() {
 
 				<div className="w-px h-5 bg-gray-100 shrink-0" />
 
-				{/* Collab badge */}
-				<div className="flex items-center gap-1.5 text-xs text-brand-600 bg-brand-50 border border-brand-200 px-2 py-1 rounded-full shrink-0">
-					<Users className="w-3 h-3" />
-					<span className="hidden sm:inline">Совместное редактирование</span>
+				{/* Collab badge + presence */}
+				<div className="flex items-center gap-2 shrink-0">
+					<div className="flex items-center gap-1.5 text-xs text-brand-600 bg-brand-50 border border-brand-200 px-2 py-1 rounded-full">
+						<Users className="w-3 h-3" />
+						<span className="hidden sm:inline">Совместное редактирование</span>
+					</div>
+					{onlineUsers.length > 0 && (
+						<div className="flex -space-x-1.5">
+							{onlineUsers.slice(0, 5).map((u, i) => (
+								<div
+									key={i}
+									title={u.name}
+									className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-white"
+									style={{ backgroundColor: u.color }}
+								>
+									{u.name.charAt(0).toUpperCase()}
+								</div>
+							))}
+							{onlineUsers.length > 5 && (
+								<span className="ml-1 text-[10px] text-gray-400">+{onlineUsers.length - 5}</span>
+							)}
+						</div>
+					)}
 				</div>
 
 				{/* Title */}
