@@ -29,6 +29,8 @@ export function useAssemblyRoom(
 
 	const [onlineUsers, setOnlineUsers] = useState<RoomUser[]>([]);
 	const [remoteUsers, setRemoteUsers] = useState<Map<string, RemoteUserState>>(new Map());
+	// true once the WS handshake is complete — slide_focus depends on this
+	const [isConnected, setIsConnected] = useState(false);
 	const wsRef = useRef<WebSocket | null>(null);
 
 	useEffect(() => {
@@ -42,6 +44,8 @@ export function useAssemblyRoom(
 
 		const ws = new WebSocket(url);
 		wsRef.current = ws;
+
+		ws.onopen = () => setIsConnected(true);
 
 		ws.onmessage = (e) => {
 			try {
@@ -61,7 +65,7 @@ export function useAssemblyRoom(
 				} else if (msg.type === "presence") {
 					const users = msg.users ?? [];
 					setOnlineUsers(users);
-					// Remove users who left the room
+					// Remove state for users who left
 					setRemoteUsers((prev) => {
 						const activeNames = new Set(users.map((u) => u.name));
 						const next = new Map(prev);
@@ -77,8 +81,7 @@ export function useAssemblyRoom(
 						const existing = next.get(user.name) ?? user;
 						next.set(user.name, {
 							...existing,
-							cursor:
-								msg.x != null && msg.y != null ? { x: msg.x, y: msg.y } : null,
+							cursor: msg.x != null && msg.y != null ? { x: msg.x, y: msg.y } : null,
 						});
 						return next;
 					});
@@ -98,6 +101,7 @@ export function useAssemblyRoom(
 
 		ws.onclose = () => {
 			wsRef.current = null;
+			setIsConnected(false);
 			setOnlineUsers([]);
 			setRemoteUsers(new Map());
 		};
@@ -105,6 +109,7 @@ export function useAssemblyRoom(
 		return () => {
 			ws.close();
 			wsRef.current = null;
+			setIsConnected(false);
 		};
 	// options.name intentionally excluded — reconnect only when assemblyId changes
 	// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,5 +125,6 @@ export function useAssemblyRoom(
 		onlineUsers,
 		remoteUsers: Array.from(remoteUsers.values()),
 		sendMessage,
+		isConnected,
 	};
 }

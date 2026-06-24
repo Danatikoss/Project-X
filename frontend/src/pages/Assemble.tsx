@@ -807,7 +807,7 @@ export default function Assemble() {
 		if (titleValue !== assembly?.title) updateMutation.mutate({ title: titleValue });
 	};
 	// Sync changes from collaborators in real time + presence tracking
-	const { onlineUsers, remoteUsers, sendMessage } = useAssemblyRoom(
+	const { onlineUsers, remoteUsers, sendMessage, isConnected } = useAssemblyRoom(
 		assemblyId || null,
 		(updated) => {
 			setLocalSlides(updated.slides);
@@ -817,10 +817,11 @@ export default function Assemble() {
 		{ name: user?.name || "Пользователь" },
 	);
 
-	// Announce which slide we're on whenever it changes
+	// Announce which slide we're on — wait for WS to open first
 	useEffect(() => {
+		if (!isConnected) return;
 		sendMessage({ type: "slide_focus", slideIndex: selectedIndex });
-	}, [selectedIndex, sendMessage]);
+	}, [selectedIndex, sendMessage, isConnected]);
 
 	// Throttle ref for cursor events
 	const cursorThrottleRef = useRef(0);
@@ -992,13 +993,16 @@ export default function Assemble() {
 					<div className="flex items-center shrink-0">
 						<div className="flex -space-x-1.5">
 							{onlineUsers.slice(0, 5).map((u, i) => (
-								<div
-									key={i}
-									title={u.name}
-									className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-									style={{ backgroundColor: u.color }}
-								>
-									{u.name.charAt(0).toUpperCase()}
+								<div key={i} className="relative group/avatar">
+									<div
+										className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shrink-0 cursor-default"
+										style={{ backgroundColor: u.color }}
+									>
+										{u.name.charAt(0).toUpperCase()}
+									</div>
+									<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-0.5 bg-gray-900 text-white text-[10px] font-medium rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
+										{u.name}
+									</div>
 								</div>
 							))}
 						</div>
